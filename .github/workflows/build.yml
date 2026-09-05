@@ -34,6 +34,16 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # The APK every run produces, kept so it can be sideloaded without a local Android
+      # toolchain. This is the only way to see the app on a real screen until someone on the
+      # project has Android Studio; GitHub keeps it for 90 days.
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: anodex-mobile-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
