@@ -5,10 +5,10 @@
   the system reads them before any Kotlin runs.
 -->
 <resources>
-    <!-- --bg-base from themes/midnight.css. The icon keeps its dark field in both themes: the
+    <!-- The `bg-base` token from themes/midnight.css. The icon keeps its dark field in both themes: the
          mark was drawn for it, and launchers composite icons against their own backgrounds. -->
     <color name="ic_launcher_background">#080808</color>
 
-    <!-- --bg-app. Painted behind the first frame so launch doesn't flash white. -->
+    <!-- The `bg-app` token. Painted behind the first frame so launch doesn't flash white. -->
     <color name="window_background">#F9F8F5</color>
 </resources>
