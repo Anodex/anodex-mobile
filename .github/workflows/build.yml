@@ -6,13 +6,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Gradle is invoked directly rather than through ./gradlew because the wrapper is not committed
-# yet — see README, "The Gradle wrapper". The `generate-wrapper` job below produces it as a
-# downloadable artifact so the first person with a local toolchain can drop it in and this file can
-# switch to ./gradlew.
-env:
-  GRADLE_VERSION: "8.9"
-
 jobs:
   build:
     name: Assemble and test
@@ -20,22 +13,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The wrapper jar is a committed binary. This checks it against Gradle's published
+      # checksums on every run, so a tampered or accidentally-replaced jar fails here rather
+      # than silently executing in CI.
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Assemble debug
-        run: gradle --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug
 
       - name: Unit tests
-        run: gradle --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon testDebugUnitTest
 
       - name: Upload test report on failure
         if: failure()
@@ -43,32 +40,3 @@ jobs:
         with:
           name: test-report
           path: app/build/reports/tests/
-
-  generate-wrapper:
-    name: Generate Gradle wrapper
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-
-      - name: Generate wrapper
-        run: gradle --no-daemon wrapper --gradle-version ${{ env.GRADLE_VERSION }}
-
-      - name: Upload wrapper
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-wrapper
-          path: |
-            gradlew
-            gradlew.bat
-            gradle/wrapper/
