@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      The bridge is a LAN socket to the user's own desktop, so INTERNET is required and
+      ACCESS_NETWORK_STATE backs the "you're on a different network than you paired on" diagnosis
+      on the offline screen. Both are normal permissions: neither prompts the user.
+
+      Deliberately absent: ACCESS_FINE_LOCATION. Naming the current Wi-Fi network would need it,
+      and a location prompt on an app that otherwise asks for nothing is a bad trade for a network
+      name — knowing *that* the network changed is what sends the user to check their Wi-Fi.
+      See HANDOFF_REMOTE_MOBILE.md §6.1.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AnodexMobile">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.AnodexMobile"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
