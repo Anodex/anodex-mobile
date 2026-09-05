@@ -47,17 +47,13 @@ What is here now, all of Phase 3's groundwork:
 Requires **JDK 17** and the Android SDK (compileSdk 35).
 
 ```bash
-gradle assembleDebug
+./gradlew assembleDebug
+./gradlew testDebugUnitTest
 ```
 
-CI does exactly this on every push, so the build is verified even if you have no local toolchain.
-
-### The Gradle wrapper
-
-Not committed yet — it contains a binary (`gradle-wrapper.jar`) that has to come from a real Gradle
-installation rather than be hand-written. The `generate-wrapper` CI job produces it as a
-downloadable artifact: grab it from any workflow run, commit `gradlew`, `gradlew.bat` and
-`gradle/wrapper/`, then switch `.github/workflows/build.yml` to `./gradlew`.
+The wrapper pins Gradle 8.9 and CI runs both of these on every push, so the build is verified even
+if you have no local toolchain. `gradle/actions/wrapper-validation` checks the committed wrapper jar
+against Gradle's published checksums on every run.
 
 ## House rules
 
