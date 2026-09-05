@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  The handful of colours the *platform* needs before Compose is running — the launcher icon
+  background and the window background behind the first frame. Everything else lives in
+  ui/theme/Colors.kt, which is the source of truth; these two are duplicated here only because
+  the system reads them before any Kotlin runs.
+-->
+<resources>
+    <!-- --bg-base from themes/midnight.css. The icon keeps its dark field in both themes: the
+         mark was drawn for it, and launchers composite icons against their own backgrounds. -->
+    <color name="ic_launcher_background">#080808</color>
+
+    <!-- --bg-app. Painted behind the first frame so launch doesn't flash white. -->
+    <color name="window_background">#F9F8F5</color>
+</resources>

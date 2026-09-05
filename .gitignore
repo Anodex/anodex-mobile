@@ -1,0 +1,23 @@
+# Gradle / Android build output
+build/
+.gradle/
+local.properties
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# The Play signing keystore. A signing key committed to history cannot be
+# cleanly rotated away, and Android identifies an app by its signing key — lose
+# it and existing installs can never be updated, only uninstalled and replaced.
+# See HANDOFF_REMOTE_MOBILE.md §10.1.
+*.jks
+*.keystore
+keystore.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
