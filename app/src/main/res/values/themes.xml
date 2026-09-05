@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  A minimal platform theme. All real styling is Compose (ui/theme/Theme.kt); this exists only to
+  own the window before the first frame is drawn, so launching the app doesn't flash a white
+  rectangle on the way into a near-black UI. It follows the system light/dark setting via
+  values-night, matching what AnodexTheme picks by default.
+
+  The bars are transparent because MainActivity draws edge to edge; AnodexTheme sets the bar icon
+  polarity once Compose is up.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.AnodexMobile" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
+    </style>
+</resources>
