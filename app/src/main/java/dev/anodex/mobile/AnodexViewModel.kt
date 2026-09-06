@@ -15,6 +15,7 @@ import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.diagnoseConnectionFailure
+import dev.anodex.mobile.connection.isUpdateAvailable
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
@@ -192,6 +193,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _openFile.value = null
         _openFileContent.value = null
     }
+
+    private val _newerVersion = MutableStateFlow<String?>(null)
+
+    /**
+     * The phone build the desktop expects, when this one is behind it.
+     *
+     * Null means nothing to say — either the versions match, this build is ahead, or
+     * the desktop is old enough not to send one. All three are silent on purpose.
+     */
+    val newerVersion: StateFlow<String?> = _newerVersion.asStateFlow()
 
     private val _unreadEmail = MutableStateFlow(0)
 
@@ -435,6 +446,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                         controller.onDisconnected(host)
                     }
                 }
+
+                _newerVersion.value = handshake.mobileVersion
+                    .takeIf { isUpdateAvailable(BuildConfig.VERSION_NAME, it) }
 
                 _connectionHint.value = null
                 socket = candidate
