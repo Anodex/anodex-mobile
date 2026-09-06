@@ -1,27 +1,31 @@
-# Preview signing key
+# Signing key
 
-`anodex-preview.jks` signs every preview build of Anodex Mobile, on every machine
-and every CI runner. Its password is `android`, the Android debug convention, and
-it is committed on purpose.
+Anodex Mobile is signed with a key that is **not in this repository** and must
+never be. CI decodes it from the `ANODEX_KEYSTORE_BASE64` secret into
+`keystore/anodex-release.jks` at build time, and `.gitignore` keeps it out.
 
-## Why it is not a secret
+## Why it cannot live here
 
-Android refuses to install an APK over one signed by a different key. Gradle
-generates a debug keystore per machine when none exists — so a fresh CI runner
-generated a fresh key on **every run**, and installing a new build meant
-uninstalling the old one first. Uninstalling wipes the app's storage, and the
-pairing with the desktop lives there.
+Android identifies an app by its signing key. It refuses to install a build signed
+by a different one — which is the only thing standing between a user and a hostile
+APK claiming to be an update. That protection is worth exactly as much as the
+key's secrecy. In a public repository, a committed key is a key anyone can sign
+with.
 
-So for twenty-one releases, every update silently cost a re-pair, and no update
-check could ever have worked. This key exists to fix that. It establishes that
-two builds came from the same place, not that the place is trustworthy.
+## The key that used to be here
 
-## What this key is not
+A preview key *was* committed for a while, on purpose. Without a fixed key, Gradle
+generates one per machine, and a CI runner is a fresh machine every run — so every
+build produced an APK Android refused to install over the last one. The only way
+to update was to uninstall, and uninstalling wipes the pairing with the desktop.
+Every update silently cost a re-pair.
 
-It is **not** a release key. If Anodex Mobile is ever published anywhere, the
-signing key for that must be generated fresh, kept out of the repository, and
-stored in CI secrets. Publishing an app whose signing key is in a readable
-repository means anyone with the repository can ship an update to it.
+That was the right trade while the repository was private and builds were handed
+over one at a time. Publishing ended it. The key was rotated and removed from
+history before the repository was made public; it signs nothing now.
 
-Changing the key later forces every existing install to be uninstalled once more,
-which is the reason to get it right before there are installs worth keeping.
+## If the key is ever lost
+
+Every existing install has to be uninstalled and replaced — an app signed by a new
+key cannot update one signed by the old. Keep a backup somewhere that is not this
+repository.
