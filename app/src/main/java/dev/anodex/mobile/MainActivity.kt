@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,15 @@ import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
+import kotlinx.coroutines.delay
+
+/**
+ * Mirrors the desktop's CONFIRMATION_TIMEOUT_MS.
+ *
+ * Only ever used to draw a countdown. The desktop owns the deadline and enforces it;
+ * if the two ever drift, the card is briefly wrong and nothing else is.
+ */
+private const val APPROVAL_WINDOW_SECONDS = 5 * 60
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -187,12 +197,30 @@ private fun ConnectedScaffold(
         val messages by chat.messages.collectAsStateWithLifecycle()
         val sending by chat.sending.collectAsStateWithLifecycle()
         val error by chat.error.collectAsStateWithLifecycle()
+        val approval by chat.approval.collectAsStateWithLifecycle()
+
+        // The desktop declines an unanswered prompt after five minutes so a phone
+        // that loses signal cannot wedge a generation. Counting down locally is an
+        // estimate of that deadline, not the authority on it - the desktop decides.
+        var secondsLeft by remember(approval?.id) { mutableStateOf(APPROVAL_WINDOW_SECONDS) }
+        LaunchedEffect(approval?.id) {
+            if (approval == null) return@LaunchedEffect
+            secondsLeft = APPROVAL_WINDOW_SECONDS
+            while (secondsLeft > 0) {
+                delay(1_000)
+                secondsLeft -= 1
+            }
+        }
 
         ChatScreen(
             messages = messages,
             sending = sending,
             error = error,
             onSend = chat::send,
+            approval = approval,
+            approvalSecondsRemaining = secondsLeft,
+            onApprove = { chat.respondToApproval(approved = true) },
+            onDeny = { chat.respondToApproval(approved = false) },
         )
     }
 }
