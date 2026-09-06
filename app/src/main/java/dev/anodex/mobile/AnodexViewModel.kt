@@ -86,6 +86,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    override fun onCleared() {
+        // viewModelScope cancellation would stop the loop anyway; saying so explicitly means the
+        // controller's lifecycle does not depend on knowing that.
+        controller.stop()
+        super.onCleared()
+    }
+
     private fun PairedHost.toRef() = PairedHostRef(
         identity = identity,
         secret = secret,
