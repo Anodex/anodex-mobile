@@ -1,15 +1,12 @@
 package dev.anodex.mobile.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -24,10 +21,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
+import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
-import dev.anodex.mobile.ui.theme.Touch
 
 /**
  * The screen shown when the desktop has been unreachable for longer than the grace period.
@@ -117,42 +115,9 @@ fun OfflineScreen(
             modifier = Modifier.padding(top = Spacing.x8),
             horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
         ) {
-            SecondaryAction(label = "Pairing", onClick = onOpenPairing)
-            PrimaryAction(label = "Retry", onClick = onRetry)
+            SecondaryButton(label = "Pairing", onClick = onOpenPairing)
+            PrimaryButton(label = "Retry", onClick = onRetry)
         }
-    }
-}
-
-@Composable
-private fun PrimaryAction(label: String, onClick: () -> Unit) {
-    val colors = AnodexTheme.colors
-    Box(
-        modifier = Modifier
-            .heightIn(min = Touch.minTarget)
-            .clip(Radii.md)
-            .background(colors.accent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.x6),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = AnodexTheme.type.bodyEmphasis, color = colors.textOnAccent)
-    }
-}
-
-@Composable
-private fun SecondaryAction(label: String, onClick: () -> Unit) {
-    val colors = AnodexTheme.colors
-    Box(
-        modifier = Modifier
-            .heightIn(min = Touch.minTarget)
-            .clip(Radii.md)
-            .background(colors.bgSurface2)
-            .border(1.dp, colors.border, Radii.md)
-            .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.x6),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = AnodexTheme.type.bodyEmphasis, color = colors.text)
     }
 }
 
