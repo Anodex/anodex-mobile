@@ -301,7 +301,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _projects.value = runCatching { client.state() }
                 .getOrDefault(ProjectsState(emptyList(), null))
-            _chat.value?.projectId = _projects.value.activeProjectId
         }
     }
 
@@ -312,6 +311,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * sitting at the desk too. The desktop refuses while it is mid-generation, and
      * that refusal is surfaced as "not now" rather than swallowed - the difference
      * between a wait and a failure is the whole message.
+     *
+     * Deliberately does **not** re-file the open chat. A plain chat belongs to no
+     * project: only the workspace and agent runs touch work files, and a chat that
+     * quietly acquired one would be able to edit real files because of a setting the
+     * user changed for an unrelated reason.
      */
     fun setActiveProject(projectId: String?) {
         val client = projectClient ?: return
@@ -321,7 +325,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 _projects.value = client.setActive(projectId)
-                _chat.value?.projectId = _projects.value.activeProjectId
             } catch (e: Exception) {
                 _projectError.value = e.message ?: "That didn't work."
             } finally {
@@ -376,14 +379,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Start a fresh conversation. Nothing is written until the first message is sent. */
+    /**
+     * Start a fresh conversation. Nothing is written until the first message is sent.
+     *
+     * With no project, always. This used to inherit whichever project was active,
+     * which put a chat started on the phone inside a project folder on the computer —
+     * so it did not appear in the general chat list where it was looked for, and the
+     * turn ran with access to real files nobody had asked it to touch.
+     *
+     * The desktop has held the same rule all along, in `chatStore.newConversation`:
+     * a chat created without an explicit project must not silently inherit one. Only
+     * the workspace and agent runs work against project files. The phone disagreeing
+     * with that was the bug.
+     */
     fun newConversation() {
         val open = socket ?: return
-        _chat.value = ChatSession(
-            open,
-            viewModelScope,
-            projectId = _projects.value.activeProjectId,
-        )
+        _chat.value = ChatSession(open, viewModelScope, projectId = null)
     }
 
     private var socket: AnodexSocket? = null

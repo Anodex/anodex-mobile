@@ -66,9 +66,14 @@ fun ConversationsScreen(
             PrimaryButton(label = "New", onClick = onNewChat)
         }
 
-        // What a turn will actually run against, stated before it does. Without a
-        // project Anodex is talking; with one it is editing real files, and that is
-        // too large a difference to leave implicit.
+        // Which project the *computer* has open — for the workspace and for agent
+        // runs, not for the chat below.
+        //
+        // This used to say what a turn would run against, and the phone made that
+        // true by filing every new chat into the active project. That was wrong: a
+        // plain chat belongs to no project, only the workspace and agents touch work
+        // files, and a chat that quietly acquired one could edit real files because
+        // of a setting changed for an unrelated reason.
         if (onChooseProject != null) {
             Row(
                 modifier = Modifier
@@ -79,7 +84,7 @@ fun ConversationsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
             ) {
-                Text("Working in", style = type.meta, color = colors.textFaint)
+                Text("Computer is working in", style = type.meta, color = colors.textFaint)
                 Text(
                     text = activeProjectName ?: "no project",
                     style = type.label,
