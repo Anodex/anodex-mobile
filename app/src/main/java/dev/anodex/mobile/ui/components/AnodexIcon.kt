@@ -124,6 +124,34 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
         filled = true,
     ),
 
+    /** The folder, with the Anodex cut across its top-right corner. Workspace. */
+    FOLDER(listOf("M2 6a2 2 0 0 1 2-2h4.5l2 2H20a2 2 0 0 1 2 2v8l-4 4H4a2 2 0 0 1-2-2V6z")),
+
+    /**
+     * A hexagonal clock, not a round one.
+     *
+     * `Icon.tsx` draws the face as the mark's own facet shape rather than a circle,
+     * which is the difference between the house set and a stock one.
+     */
+    CLOCK(
+        listOf(
+            "M12 2.8l7.9 4.6v9.2L12 21.2l-7.9-4.6V7.4z",
+            "M12 7.5V12l3.5 2",
+        )
+    ),
+
+    /**
+     * The gear, again as a facet: a hexagon rather than the usual cog teeth.
+     *
+     * The circle is written out as two arcs because a path parser has no ellipse.
+     */
+    SETTINGS(
+        listOf(
+            "M16.5 4.2h-9L3 12l4.5 7.8h9L21 12l-4.5-7.8z",
+            "M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 1 0-7z",
+        )
+    ),
+
     /** A screen on a stand — the computer this phone is driving. */
     MONITOR(
         listOf(
