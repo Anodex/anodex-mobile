@@ -22,8 +22,11 @@ private val Context.pairingDataStore: DataStore<Preferences> by preferencesDataS
  *
  * There is exactly one paired host at a time (§7.2). That is a deliberate simplification: it makes
  * revocation trivial and leaves one remote identity to reason about rather than a set.
+ *
+ * Internal because it is an implementation detail of the app rather than part of any surface: it
+ * hands out [SecretCipher], which must not escape this module.
  */
-class PairedHostStore(
+internal class PairedHostStore(
     private val context: Context,
     private val cipher: SecretCipher = SecretCipher(),
 ) {
