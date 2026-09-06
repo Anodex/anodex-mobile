@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -65,13 +67,18 @@ class ChatSession(
         val messageId = UUID.randomUUID().toString()
         _error.value = null
         _sending.value = true
+
+        // Built before the new turn is appended: the prompt carries this message, so
+        // including it in history too would send it twice.
+        val payload = request(messageId, trimmed)
+
         _messages.value = _messages.value +
             ChatMessage(messageId, ChatMessage.Role.USER, trimmed) +
             ChatMessage(assistantIdFor(messageId), ChatMessage.Role.ASSISTANT, "", streaming = true)
 
         scope.launch {
             try {
-                socket.invoke(CHANNEL_SEND, listOf(request(messageId, trimmed)))
+                socket.invoke(CHANNEL_SEND, listOf(payload))
             } catch (e: Exception) {
                 _error.value = e.message ?: "That didn't reach your computer."
             } finally {
@@ -81,10 +88,43 @@ class ChatSession(
         }
     }
 
+    /**
+     * A ChatRequest, shaped from `protocol/anodex-protocol.json` rather than from memory.
+     *
+     * The first version of this sent `content` and no `history`, which the desktop
+     * rejected outright: the required fields are `prompt` and `history`. Reading
+     * the generated contract is the entire reason it exists, and hand-writing the
+     * shape is exactly the mistake it is there to prevent.
+     *
+     * History is sent because the desktop is stateless per call — it holds the
+     * conversation on disk, but this request is what a turn is generated from, so
+     * omitting it means every message arrives with no memory of the last one.
+     */
     private fun request(messageId: String, text: String): JsonObject = buildJsonObject {
         put("conversationId", conversationId)
         put("messageId", messageId)
-        put("content", text)
+        put("prompt", text)
+        put("history", historyForRequest())
+    }
+
+    /**
+     * The turns so far, as the desktop's ChatHistoryTurn.
+     *
+     * Excludes the turn being sent and the empty assistant placeholder waiting to
+     * be streamed into — the prompt carries the former, and the latter has no
+     * content yet.
+     */
+    private fun historyForRequest(): JsonArray = buildJsonArray {
+        for (message in _messages.value) {
+            if (message.text.isBlank()) continue
+            add(
+                buildJsonObject {
+                    put("id", message.id)
+                    put("role", if (message.role == ChatMessage.Role.USER) "user" else "assistant")
+                    put("content", message.text)
+                },
+            )
+        }
     }
 
     private fun onEvent(event: ServerFrame.Event) {
