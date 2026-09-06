@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.anodex.mobile.connection.ConnectionController
+import dev.anodex.mobile.email.Email
+import dev.anodex.mobile.email.EmailNote
+import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.notify.NotificationKind
@@ -120,6 +123,82 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _busyRunId = MutableStateFlow<String?>(null)
     val busyRunId: StateFlow<String?> = _busyRunId.asStateFlow()
+
+    private var emailClient: Email? = null
+
+    private val _emailThreads = MutableStateFlow<List<EmailThread>>(emptyList())
+
+    /** The desktop's inbox, most recent first. Never cached across a disconnect. */
+    val emailThreads: StateFlow<List<EmailThread>> = _emailThreads.asStateFlow()
+
+    private val _emailLoading = MutableStateFlow(false)
+    val emailLoading: StateFlow<Boolean> = _emailLoading.asStateFlow()
+
+    /**
+     * Whether the computer has an account connected at all.
+     *
+     * Null until asked. An empty inbox and an inbox that does not exist look
+     * identical in a list of threads, and they need completely different words.
+     */
+    private val _emailConfigured = MutableStateFlow<Boolean?>(null)
+    val emailConfigured: StateFlow<Boolean?> = _emailConfigured.asStateFlow()
+
+    private val _openThread = MutableStateFlow<List<EmailNote>?>(null)
+
+    /** The thread being read, or null while the list is showing. */
+    val openThread: StateFlow<List<EmailNote>?> = _openThread.asStateFlow()
+
+    private val _threadLoading = MutableStateFlow(false)
+    val threadLoading: StateFlow<Boolean> = _threadLoading.asStateFlow()
+
+    private val _unreadEmail = MutableStateFlow(0)
+
+    /**
+     * Unread threads, for the tab badge.
+     *
+     * Fetched on connect rather than when the Email tab is opened, because a badge
+     * that only appears once you have already looked is telling you something you
+     * necessarily already know.
+     */
+    val unreadEmail: StateFlow<Int> = _unreadEmail.asStateFlow()
+
+    private fun refreshUnreadEmail() {
+        val client = emailClient ?: return
+        viewModelScope.launch {
+            _unreadEmail.value = runCatching { client.unreadCount() }.getOrDefault(0)
+        }
+    }
+
+    fun refreshEmail() {
+        val client = emailClient ?: return
+        viewModelScope.launch {
+            _emailLoading.value = true
+            // Asked first, so an empty result can be reported as "no account" rather
+            // than as "no mail" -- the two look identical in a list and mean opposite
+            // things to somebody waiting on a message.
+            _emailConfigured.value = runCatching { client.isConfigured() }.getOrDefault(false)
+            _emailThreads.value = runCatching { client.threads() }.getOrDefault(emptyList())
+            _emailLoading.value = false
+            // Re-read after listing, so acting on mail at the computer is reflected
+            // here rather than leaving a badge that outlives what it counted.
+            refreshUnreadEmail()
+        }
+    }
+
+    fun openEmailThread(thread: EmailThread) {
+        val client = emailClient ?: return
+        viewModelScope.launch {
+            _threadLoading.value = true
+            _openThread.value = runCatching {
+                client.messages(thread.id, thread.accountId.takeIf { it.isNotBlank() })
+            }.getOrDefault(emptyList())
+            _threadLoading.value = false
+        }
+    }
+
+    fun closeEmailThread() {
+        _openThread.value = null
+    }
 
     fun refreshAgentRuns() {
         val client = agentClient ?: return
@@ -315,11 +394,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 conversationReader = Conversations(candidate)
                 projectClient = Projects(candidate)
                 agentClient = Agents(candidate)
+                emailClient = Email(candidate)
                 _chat.value = ChatSession(candidate, viewModelScope)
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
                 refreshProjects()
                 refreshAgentRuns()
+                refreshUnreadEmail()
 
                 // Refreshed every time, so a desktop that gains a VPN — or has its
                 // port forwarded — after pairing becomes reachable from away without
