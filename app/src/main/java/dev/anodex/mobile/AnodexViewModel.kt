@@ -14,6 +14,7 @@ import dev.anodex.mobile.workspace.Workspace
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.connection.ConnectionState
+import dev.anodex.mobile.connection.diagnoseConnectionFailure
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
@@ -406,6 +407,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         // This is what makes working off the home network possible without Anodex
         // running a relay or anyone else's service sitting in between.
         var lastFailure: Exception? = null
+        var lastFailureAddress: String? = null
 
         for (address in Reachability.orderByPlausibility(stored.addresses, localIPv4Addresses())) {
             val candidate = AnodexSocket(
@@ -469,19 +471,29 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 candidate.close()
                 lastFailure = e
+                lastFailureAddress = address
             }
         }
 
         // Every address failed. Say why, if the phone can work it out - "reconnecting"
         // forever with no explanation is the worst version of being away from home.
-        val explanation = explainUnreachable(
+        // What the exception actually says, where it says anything definite. A
+        // certificate mismatch or a refused connection is evidence; the network
+        // heuristic below is a guess, and a guess must not outrank evidence.
+        val diagnosis = diagnoseConnectionFailure(
+            lastFailure,
+            lastFailureAddress ?: stored.addresses.firstOrNull().orEmpty(),
+            stored.port,
+        )
+
+        val explanation = diagnosis ?: explainUnreachable(
             // The one it would have tried first from here, which is not the desktop's
             // top-ranked address precisely when the user is away from home — and that
             // is exactly when the hint matters.
             address = Reachability.orderByPlausibility(stored.addresses, localIPv4Addresses())
                 .firstOrNull().orEmpty(),
             knownAddresses = stored.addresses,
-            fallback = lastFailure?.message,
+            attempted = attemptedLabel(stored.addresses, stored.port),
         )
         _connectionHint.value = explanation
         throw lastFailure ?: IllegalStateException(explanation)
@@ -542,7 +554,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 _manualState.value = ManualPairState.Confirming(humanFingerprintOf(fingerprint))
             } catch (e: Exception) {
                 _manualState.value = ManualPairState.Entering
-                _pairingError.value = explainProbeFailure(address, e)
+                _pairingError.value = explainProbeFailure(address, port, e)
             }
         }
     }
@@ -555,8 +567,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * remedies, one indistinguishable symptom. The subnet check is a heuristic and
      * is only ever used to explain a failure that already happened.
      */
-    private fun explainProbeFailure(address: String, error: Exception): String =
-        explainUnreachable(address, listOf(address), error.message)
+    private fun explainProbeFailure(address: String, port: Int, error: Exception): String =
+        // Evidence first here too, and this is the path that matters most: somebody
+        // typing the details by hand has just told the app exactly where to look, so
+        // "wrong certificate" or "nothing listening on that port" is directly
+        // actionable in a way that a subnet guess never is.
+        diagnoseConnectionFailure(error, address, port)
+            ?: explainUnreachable(address, listOf(address), attempted = "$address:$port")
 
     /**
      * Say why a connection could not have worked, when that is knowable.
@@ -565,10 +582,18 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * somebody on mobile data to check their Wi-Fi is worse than saying nothing:
      * it sends them to look at something that was never the problem.
      */
+    /** "10.0.0.153:47800", or "3 addresses on port 47800" when it tried several. */
+    private fun attemptedLabel(addresses: List<String>, port: Int): String =
+        if (addresses.size <= 1) {
+            "${addresses.firstOrNull().orEmpty()}:$port"
+        } else {
+            "${addresses.size} addresses on port $port"
+        }
+
     private fun explainUnreachable(
         address: String,
         knownAddresses: List<String>,
-        fallback: String?,
+        attempted: String,
     ): String {
         // Whether the desktop has a way in from outside decides what to say here.
         // Telling someone on mobile data to "check their Wi-Fi" when the real answer
@@ -610,14 +635,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                         "separate 2.4GHz and 5GHz names, join the one your computer is on."
                 }
 
+            // Both of these mean "nothing came back", which is the genuinely
+            // ambiguous case: asleep, firewalled and wrong-port look identical from
+            // here. Naming what was tried is the most useful thing left to say.
             Reachability.Verdict.SAME_SUBNET, Reachability.Verdict.SAME_MESH ->
-                fallback
-                    ?: "Your computer didn't answer. Check it's awake and that remote access is on."
+                "No answer from $attempted. Check the computer is awake, that remote access is " +
+                    "on in its Settings, and that Windows Firewall is not blocking Anodex."
 
             Reachability.Verdict.UNKNOWN ->
-                fallback
-                    ?: "Nothing answered at that address. Check the computer is awake and that " +
-                    "remote access is still on."
+                "No answer from $attempted. Check the computer is awake and that remote access " +
+                    "is still on."
         }
     }
 
