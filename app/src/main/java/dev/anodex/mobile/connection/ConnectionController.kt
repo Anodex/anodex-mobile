@@ -49,10 +49,23 @@ class ConnectionController(
         startReconnecting(host)
     }
 
-    /** Forget the pairing and stop all activity. */
-    fun unpair() {
+    /**
+     * Stop all activity without changing state.
+     *
+     * The retry loop runs until the desktop answers, which for an unreachable machine is never —
+     * so something has to be able to end it. `viewModelScope` cancellation covers the app, but a
+     * controller that can only be stopped by killing its scope cannot be torn down independently,
+     * and a test cannot finish while one is still spinning. Found by exactly that.
+     */
+    fun stop() {
         reconnectLoop?.cancel()
         reconnectLoop = null
+        cancelGraceTimer()
+    }
+
+    /** Forget the pairing and stop all activity. */
+    fun unpair() {
+        stop()
         dispatch(ConnectionEvent.Unpaired)
     }
 

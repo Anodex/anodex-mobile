@@ -155,7 +155,8 @@ fun parsePairingPayload(
     }
 
     val query = parseQuery(uri.rawQuery)
-    val version = query["v"]
+    // An empty `v=` is an absent version, not a version named "".
+    val version = query["v"]?.takeIf { it.isNotBlank() }
     if (version != PairingPayload.VERSION.toString()) {
         return Result.failure(
             PairingParseException(PairingParseError.UnsupportedVersion(version)),
