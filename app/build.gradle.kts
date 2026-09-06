@@ -36,6 +36,17 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests.all {
+            // A test task that runs zero tests still reports BUILD SUCCESSFUL, which is the exact
+            // shape of a check that silently stopped checking anything. Print each test so the
+            // CI log shows what actually ran.
+            it.testLogging {
+                events("passed", "skipped", "failed")
+            }
+        }
+    }
 }
 
 dependencies {
