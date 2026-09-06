@@ -16,7 +16,7 @@ import org.junit.Test
  */
 class ConnectionReducerTest {
 
-    private val host = HostIdentity(id = "h1", displayName = "MERLIN-PC")
+    private val host = HostIdentity(id = "h1", displayName = "STUDIO-PC")
     private val other = HostIdentity(id = "h2", displayName = "STUDIO-PC")
     private val model = ModelStatus("Qwen3-30B", contextUsedTokens = 100, contextTotalTokens = 8_192)
     private val now = 1_757_000_000_000L
@@ -62,7 +62,7 @@ class ConnectionReducerTest {
     fun `a stale grace timer cannot knock a live connection offline`() {
         // The sequence that produces this: drop, timer scheduled, socket comes back inside the
         // grace period, then the already-scheduled timer fires anyway. Honouring it would replace
-        // a working screen with a full-screen "MERLIN-PC is offline".
+        // a working screen with a full-screen "STUDIO-PC is offline".
         var state: ConnectionState = connected
         state = reduce(state, ConnectionEvent.SocketClosed)
         state = reduce(state, ConnectionEvent.SocketOpened(model))

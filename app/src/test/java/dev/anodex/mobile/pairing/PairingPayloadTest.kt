@@ -27,7 +27,7 @@ class PairingPayloadTest {
     private fun code(
         version: String = "1",
         hostId: String = "host-abc",
-        name: String = "MERLIN-PC",
+        name: String = "STUDIO-PC",
         address: String = "192.168.1.42",
         port: String = "8765",
         fingerprint: String = b64(cert),
@@ -49,7 +49,7 @@ class PairingPayloadTest {
         val payload = parse(code()).getOrThrow()
 
         assertEquals("host-abc", payload.hostId)
-        assertEquals("MERLIN-PC", payload.displayName)
+        assertEquals("STUDIO-PC", payload.displayName)
         assertEquals("192.168.1.42", payload.address)
         assertEquals(8765, payload.port)
         assertTrue(payload.certificateSha256.contentEquals(cert))

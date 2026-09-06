@@ -14,7 +14,7 @@ import org.junit.Test
  */
 class ReachabilityTest {
 
-    private val homeLan = listOf("10.0.0.87")
+    private val homeLan = listOf("192.168.1.87")
     private val cellular = listOf("10.114.22.9")
     private val onTailscale = listOf("100.101.102.103")
 
@@ -22,7 +22,7 @@ class ReachabilityTest {
     fun `a phone on the same LAN is not the reason a connection failed`() {
         assertEquals(
             Verdict.SAME_SUBNET,
-            Reachability.verdictFor("10.0.0.153", homeLan),
+            Reachability.verdictFor("192.168.1.40", homeLan),
         )
     }
 
@@ -32,7 +32,7 @@ class ReachabilityTest {
         // typed was correct and it still cannot work.
         assertEquals(
             Verdict.DIFFERENT_SUBNET,
-            Reachability.verdictFor("10.0.0.153", listOf("192.168.1.44")),
+            Reachability.verdictFor("192.168.1.40", listOf("192.168.2.44")),
         )
     }
 
@@ -67,9 +67,9 @@ class ReachabilityTest {
         assertEquals(
             Verdict.MESH_AVAILABLE_BUT_OFF,
             Reachability.verdictFor(
-                target = "10.0.0.153",
+                target = "192.168.1.40",
                 localAddresses = cellular,
-                knownAddresses = listOf("10.0.0.153", "100.90.80.70"),
+                knownAddresses = listOf("192.168.1.40", "100.90.80.70"),
             ),
         )
     }
@@ -81,9 +81,9 @@ class ReachabilityTest {
         assertEquals(
             Verdict.NO_ROUTE,
             Reachability.verdictFor(
-                target = "10.0.0.153",
+                target = "192.168.1.40",
                 localAddresses = emptyList(),
-                knownAddresses = listOf("10.0.0.153"),
+                knownAddresses = listOf("192.168.1.40"),
             ),
         )
     }
@@ -93,9 +93,9 @@ class ReachabilityTest {
         assertEquals(
             Verdict.SAME_MESH,
             Reachability.verdictFor(
-                target = "10.0.0.153",
+                target = "192.168.1.40",
                 localAddresses = onTailscale,
-                knownAddresses = listOf("10.0.0.153", "100.90.80.70"),
+                knownAddresses = listOf("192.168.1.40", "100.90.80.70"),
             ),
         )
     }

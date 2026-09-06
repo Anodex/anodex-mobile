@@ -596,7 +596,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * somebody on mobile data to check their Wi-Fi is worse than saying nothing:
      * it sends them to look at something that was never the problem.
      */
-    /** "10.0.0.153:47800", or "3 addresses on port 47800" when it tried several. */
+    /** "192.168.1.40:47800", or "3 addresses on port 47800" when it tried several. */
     private fun attemptedLabel(addresses: List<String>, port: Int): String =
         if (addresses.size <= 1) {
             "${addresses.firstOrNull().orEmpty()}:$port"

@@ -166,7 +166,7 @@ internal fun relativeLastSeen(lastSeenEpochMs: Long, nowEpochMs: Long): String {
 
 // --- previews ----------------------------------------------------------------------------------
 
-private val PreviewHost = HostIdentity(id = "h1", displayName = "MERLIN-PC")
+private val PreviewHost = HostIdentity(id = "h1", displayName = "STUDIO-PC")
 private const val PREVIEW_NOW = 1_757_000_000_000L
 
 @Preview(name = "Offline, network changed — dark", showBackground = true, heightDp = 720)

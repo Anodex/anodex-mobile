@@ -243,7 +243,7 @@ private fun ConnectionState.statusColor(): Color {
 
 // --- previews ----------------------------------------------------------------------------------
 
-private val PreviewHost = HostIdentity(id = "h1", displayName = "MERLIN-PC")
+private val PreviewHost = HostIdentity(id = "h1", displayName = "STUDIO-PC")
 
 @Preview(name = "Connected — dark", backgroundColor = 0xFF0C0C0C, showBackground = true)
 @Composable
