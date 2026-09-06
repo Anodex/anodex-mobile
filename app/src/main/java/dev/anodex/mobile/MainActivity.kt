@@ -270,6 +270,7 @@ private fun ConnectedScaffold(
             sending = sending,
             error = error,
             onSend = chat::send,
+            onStop = chat::stop,
             approval = approval,
             approvalSecondsRemaining = secondsLeft,
             onApprove = { chat.respondToApproval(approved = true) },
