@@ -2,11 +2,14 @@ package dev.anodex.mobile.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -145,6 +148,20 @@ fun ScanScreen(
             }
         }
 
+        if (granted && scanError == null && pairingError == null) {
+            // Shown from the start rather than after a timeout. Someone whose camera
+            // is struggling has no way to know whether to keep trying or give up, and
+            // the typed code works identically — it is a genuine alternative, not a
+            // consolation prize.
+            Text(
+                text = "Holding still and filling the frame helps — this code is denser " +
+                    "than most. If it will not read, cancel and enter the code by hand.",
+                style = type.meta,
+                color = colors.textFaint,
+                textAlign = TextAlign.Center,
+            )
+        }
+
         val message = pairingError ?: scanError
         if (message != null) {
             Text(
@@ -197,6 +214,27 @@ private fun CameraPreview(onDecoded: (String) -> Unit) {
                     // Only the newest frame matters: a queue of stale frames adds
                     // latency to a decode the user is waiting on.
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    // CameraX defaults image analysis to 640x480, and that is not
+                    // enough for *this* code. A pairing URI is around 190 characters,
+                    // which QR encodes as a 61x61 module grid — at 480 lines, with the
+                    // code filling maybe half the frame, each module lands on about
+                    // four pixels, which is the very edge of what a decoder can
+                    // resolve through camera blur.
+                    //
+                    // An everyday QR code is a short URL: 25 to 29 modules, three
+                    // times the pixels per module, and it scans instantly at the same
+                    // resolution. That is exactly why this one failed on a phone whose
+                    // camera reads every other code fine.
+                    .setResolutionSelector(
+                        ResolutionSelector.Builder()
+                            .setResolutionStrategy(
+                                ResolutionStrategy(
+                                    Size(1280, 720),
+                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                )
+                            )
+                            .build()
+                    )
                     .build()
                     .also { it.setAnalyzer(executor, QrAnalyzer(onDecoded)) }
 
