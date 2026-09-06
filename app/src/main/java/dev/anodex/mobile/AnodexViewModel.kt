@@ -9,6 +9,8 @@ import dev.anodex.mobile.connection.ConnectionController
 import dev.anodex.mobile.connection.ConnectionService
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
+import dev.anodex.mobile.workspace.FileContent
+import dev.anodex.mobile.workspace.Workspace
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.connection.ConnectionState
@@ -152,6 +154,43 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _threadLoading = MutableStateFlow(false)
     val threadLoading: StateFlow<Boolean> = _threadLoading.asStateFlow()
+
+    private var workspace: Workspace? = null
+
+    private val _openFile = MutableStateFlow<String?>(null)
+
+    /** The file being read, or null when nothing is open. */
+    val openFile: StateFlow<String?> = _openFile.asStateFlow()
+
+    private val _openFileContent = MutableStateFlow<FileContent?>(null)
+    val openFileContent: StateFlow<FileContent?> = _openFileContent.asStateFlow()
+
+    /**
+     * Open one of the project's files, as it is on the computer right now.
+     *
+     * Always a live read. A file the phone showed ten minutes ago may have been
+     * rewritten twice since, and stale source presented as current is worse than
+     * none.
+     */
+    fun openWorkspaceFile(relativePath: String) {
+        _openFile.value = relativePath
+        _openFileContent.value = null
+
+        val client = workspace
+        if (client == null) {
+            _openFileContent.value = FileContent.Failed("Not connected to your computer.")
+            return
+        }
+
+        viewModelScope.launch {
+            _openFileContent.value = client.read(relativePath)
+        }
+    }
+
+    fun closeWorkspaceFile() {
+        _openFile.value = null
+        _openFileContent.value = null
+    }
 
     private val _unreadEmail = MutableStateFlow(0)
 
@@ -397,6 +436,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 projectClient = Projects(candidate)
                 agentClient = Agents(candidate)
                 emailClient = Email(candidate)
+                workspace = Workspace(candidate)
                 _chat.value = ChatSession(candidate, viewModelScope)
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
