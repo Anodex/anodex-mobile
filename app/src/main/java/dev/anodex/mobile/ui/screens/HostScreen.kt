@@ -253,7 +253,7 @@ private fun PreviewHost() {
     AnodexTheme(darkTheme = true) {
         HostScreen(
             state = ConnectionState.Connected(
-                HostIdentity("preview", "MERLIN-PC"),
+                HostIdentity("preview", "STUDIO-PC"),
                 ModelStatus("Qwen3-Coder-30B", contextUsedTokens = 13_400, contextTotalTokens = 32_768),
             ),
             activeProjectName = "Universe Sandbox",

@@ -17,14 +17,14 @@ import org.junit.Test
  */
 class ProcessHoldTest {
 
-    private val host = HostIdentity(id = "h1", displayName = "MERLIN-PC")
+    private val host = HostIdentity(id = "h1", displayName = "STUDIO-PC")
 
     @Test
     fun `a live connection is held, and named`() {
         val hold = processHoldFor(ConnectionState.Connected(host, model = null))
 
         assertNotNull(hold)
-        assertEquals("MERLIN-PC", hold!!.hostName)
+        assertEquals("STUDIO-PC", hold!!.hostName)
         assertEquals(true, hold.connected)
     }
 
@@ -37,7 +37,7 @@ class ProcessHoldTest {
         )
 
         assertNotNull(hold)
-        assertEquals("MERLIN-PC", hold!!.hostName)
+        assertEquals("STUDIO-PC", hold!!.hostName)
     }
 
     @Test
