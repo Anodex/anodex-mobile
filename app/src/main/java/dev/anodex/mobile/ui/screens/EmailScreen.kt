@@ -32,6 +32,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.anodex.mobile.AnodexViewModel
+import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.ui.components.SecondaryButton
@@ -56,9 +57,16 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val openThread by viewModel.openThread.collectAsStateWithLifecycle()
     val threadLoading by viewModel.threadLoading.collectAsStateWithLifecycle()
 
-    // Fetched when the tab is first opened rather than on connect: a user who never
-    // opens Email should not be making the desktop hit their mail provider.
-    LaunchedEffect(Unit) { viewModel.refreshEmail() }
+    // Fetched when the tab is opened rather than on connect: a user who never opens
+    // Email should not be making the desktop hit their mail provider.
+    //
+    // Keyed on the connection as well as on arriving here, because opening this tab
+    // during a reconnect finds no socket to ask and would otherwise sit on an empty
+    // inbox until the user thought to leave the tab and come back.
+    val connected by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(connected is ConnectionState.Connected) {
+        if (connected is ConnectionState.Connected) viewModel.refreshEmail()
+    }
 
     if (openThread != null) {
         BackHandler { viewModel.closeEmailThread() }
@@ -102,6 +110,11 @@ private fun InboxList(
 
         when {
             loading && threads.isEmpty() -> Notice("Reading your mail…")
+
+            // Not yet asked — the socket was down when this tab opened. Saying
+            // "nothing in the inbox" here would be a claim the app has no basis for,
+            // and the user would believe it.
+            configured == null -> Notice("Waiting for your computer…")
 
             // Told apart on purpose: an inbox with nothing in it and an inbox that
             // does not exist look identical in a list and need opposite words.
@@ -342,5 +355,22 @@ private fun PreviewInbox() {
             onOpen = {},
             nowEpochMs = now,
         )
+    }
+}
+
+@Preview(name = "Inbox - not asked yet", showBackground = true, backgroundColor = 0xFF0C0C0C)
+@Composable
+private fun PreviewInboxUnknown() {
+    // The state that used to read "Nothing in the inbox" without having looked.
+    AnodexTheme(darkTheme = true) {
+        InboxList(threads = emptyList(), loading = false, configured = null, onOpen = {})
+    }
+}
+
+@Preview(name = "Inbox - no account", showBackground = true, backgroundColor = 0xFF0C0C0C)
+@Composable
+private fun PreviewInboxUnconfigured() {
+    AnodexTheme(darkTheme = true) {
+        InboxList(threads = emptyList(), loading = false, configured = false, onOpen = {})
     }
 }
