@@ -7,6 +7,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +16,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -39,12 +43,20 @@ import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.chat.ToolApproval
-import dev.anodex.mobile.ui.components.PrimaryButton
-import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.ToolApprovalCard
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
+import dev.anodex.mobile.ui.theme.Touch
 
 /**
  * The conversation.
@@ -67,6 +79,14 @@ fun ChatScreen(
     approvalSecondsRemaining: Int = 0,
     onApprove: () -> Unit = {},
     onDeny: () -> Unit = {},
+    /**
+     * The computer's loaded model, for the context meter above the composer.
+     *
+     * Null when nothing is loaded or the socket is down, and the meter simply is
+     * not drawn — an empty bar would read as "no context used" rather than "not
+     * known", which is the opposite of the truth.
+     */
+    model: ModelStatus? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -136,6 +156,7 @@ fun ChatScreen(
                 draft = ""
             },
             onStop = onStop,
+            model = model,
         )
     }
 }
@@ -225,49 +246,174 @@ private fun Composer(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    model: ModelStatus? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.bgSurface)
-            .padding(Spacing.x3),
-        verticalAlignment = Alignment.Bottom,
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        // Directly above the box you type into, because that is where the decision
+        // is made. A context window filling up is the reason a long conversation
+        // starts forgetting its own beginning, and the desktop shows it in the
+        // header where somebody about to type is not looking.
+        val fraction = model?.contextFraction
+        if (fraction != null) {
+            ContextStrip(model, fraction)
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(Radii.lg)
+                    .background(colors.bgInput)
+                    .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
+            ) {
+                if (draft.isEmpty()) {
+                    Text(
+                        text = if (sending) "Interrupt\u2026" else "Ask Anodex\u2026",
+                        style = type.body,
+                        color = colors.textFaint,
+                    )
+                }
+                BasicTextField(
+                    value = draft,
+                    onValueChange = onDraftChange,
+                    enabled = !sending,
+                    textStyle = type.body.copy(color = colors.text),
+                    cursorBrush = SolidColor(colors.accent),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            // While a turn is running this becomes Stop. A generation on the phone is
+            // a generation on the computer, and one that has gone wrong can burn a
+            // long time before it ends on its own.
+            //
+            // Round and always present, rather than a word-labelled button that
+            // appears and disappears: the old one reflowed the whole composer on the
+            // first keystroke, which moved the text you were typing.
+            SendButton(
+                sending = sending,
+                enabled = sending || draft.isNotBlank(),
+                onClick = if (sending) onStop else onSend,
+            )
+        }
+    }
+}
+
+/** Context used, as a number and a hairline bar. */
+@Composable
+private fun ContextStrip(model: ModelStatus, fraction: Float) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    // Amber past the point where the desktop starts summarising history away, so the
+    // bar changes character before the model appears to forget something rather than
+    // after.
+    val tight = fraction > 0.85f
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
+        Text("Context", style = type.meta, color = colors.textFaint)
+
         Box(
-            modifier = Modifier
+            Modifier
                 .weight(1f)
-                .clip(Radii.md)
-                .background(colors.bgInput)
-                .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
+                .height(2.dp)
+                .clip(Radii.pill)
+                .background(colors.border),
         ) {
-            if (draft.isEmpty()) {
-                Text("Message", style = type.body, color = colors.textFaint)
-            }
-            BasicTextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                enabled = !sending,
-                textStyle = type.body.copy(color = colors.text),
-                cursorBrush = SolidColor(colors.accent),
-                modifier = Modifier.fillMaxWidth(),
+            Box(
+                Modifier
+                    .fillMaxWidth(fraction)
+                    .height(2.dp)
+                    .clip(Radii.pill)
+                    .background(if (tight) colors.warn else colors.accent),
             )
         }
 
-        // While a turn is running the button becomes Stop. A generation on the phone
-        // is a generation on the computer, and one that has gone wrong can burn a
-        // long time before it ends on its own.
-        Box(Modifier.width(if (sending || draft.isNotBlank()) 88.dp else 0.dp)) {
-            when {
-                sending -> SecondaryButton(label = "Stop", onClick = onStop)
-                draft.isNotBlank() -> PrimaryButton(label = "Send", onClick = onSend)
+        Text(
+            text = "${compactTokens(model.contextUsedTokens)} / " +
+                compactTokens(model.contextTotalTokens),
+            style = type.meta,
+            color = if (tight) colors.warn else colors.textFaint,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The one round control in the app.
+ *
+ * A circle rather than the app's usual 6dp radius, and deliberately: it is the only
+ * control that commits work to another machine, and it should not look like the
+ * buttons that merely navigate.
+ */
+@Composable
+private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+
+    val background = when {
+        sending -> colors.dangerSoft
+        enabled -> colors.accent
+        // Present but plainly inert, rather than absent. A control that vanishes
+        // when the field is empty takes the layout with it.
+        else -> colors.bgSurface2
+    }
+    val foreground = when {
+        sending -> colors.danger
+        enabled -> colors.textOnAccent
+        else -> colors.textFaint
+    }
+
+    Box(
+        modifier = Modifier
+            .size(Touch.minTarget)
+            .clip(CircleShape)
+            .background(background)
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics { contentDescription = if (sending) "Stop" else "Send" },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (sending) {
+            // A filled square: the universal stop, and unmistakable at this size in
+            // a way a glyph would not be.
+            Box(Modifier.size(11.dp).clip(Radii.sm).background(foreground))
+        } else {
+            Canvas(Modifier.size(18.dp)) {
+                val stroke = Stroke(width = 2f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                val factor = size.minDimension / 24f
+                scale(factor, pivot = Offset.Zero) {
+                    // The desktop's arrow-up, on the same 24-unit grid as every
+                    // other glyph in the app.
+                    drawPath(
+                        PathParser().parsePathString("M12 19V5M5 12l7-7 7 7").toPath(),
+                        foreground,
+                        style = stroke,
+                    )
+                }
             }
         }
     }
 }
+
+/** Thousands abbreviated: the exact figure changes several times a second mid-turn. */
+private fun compactTokens(tokens: Int): String =
+    if (tokens < 1_000) tokens.toString() else "${"%.1f".format(tokens / 1000f)}K"
+
 
 @Preview(name = "Chat - dark", showBackground = true, heightDp = 700)
 @Composable
