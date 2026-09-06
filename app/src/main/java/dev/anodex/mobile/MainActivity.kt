@@ -91,6 +91,7 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     }
 
     val chat by viewModel.chat.collectAsStateWithLifecycle()
+    val connectionHint by viewModel.connectionHint.collectAsStateWithLifecycle()
 
     // Asked for the first time something arrived that could not be shown, rather
     // than at launch. A permission prompt makes sense when there is a concrete
@@ -156,6 +157,7 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
             state = current,
             onRetry = viewModel::retry,
             onOpenPairing = viewModel::unpair,
+            hint = connectionHint,
         )
 
         else -> ConnectedScaffold(current, chat, viewModel)

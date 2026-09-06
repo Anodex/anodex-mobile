@@ -86,6 +86,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _pairingError = MutableStateFlow<String?>(null)
     val pairingError: StateFlow<String?> = _pairingError.asStateFlow()
 
+    private val _connectionHint = MutableStateFlow<String?>(null)
+
+    /**
+     * Why the last connection attempt could not have worked, when that is knowable.
+     *
+     * Shown on the offline screen. Null while connected, or when the phone has
+     * nothing useful to add beyond "it did not answer".
+     */
+    val connectionHint: StateFlow<String?> = _connectionHint.asStateFlow()
+
     private val _conversations = MutableStateFlow<List<ConversationSummary>>(emptyList())
 
     /** What is on the computer. A live read, never a cache - empty when unreachable. */
@@ -296,6 +306,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
+                _connectionHint.value = null
                 socket = candidate
                 conversationReader = Conversations(candidate)
                 projectClient = Projects(candidate)
@@ -324,7 +335,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        throw lastFailure ?: IllegalStateException("No address is known for that computer.")
+        // Every address failed. Say why, if the phone can work it out - "reconnecting"
+        // forever with no explanation is the worst version of being away from home.
+        val explanation = explainUnreachable(
+            address = stored.addresses.firstOrNull().orEmpty(),
+            knownAddresses = stored.addresses,
+            fallback = lastFailure?.message,
+        )
+        _connectionHint.value = explanation
+        throw lastFailure ?: IllegalStateException(explanation)
     }
 
     /**
@@ -395,19 +414,43 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * remedies, one indistinguishable symptom. The subnet check is a heuristic and
      * is only ever used to explain a failure that already happened.
      */
-    private fun explainProbeFailure(address: String, error: Exception): String {
-        val verdict = Reachability.verdictFor(address, localIPv4Addresses())
-        return when (verdict) {
-            Reachability.Verdict.DIFFERENT_SUBNET ->
-                "This phone is on a different network than $address, so it cannot reach your " +
-                    "computer. If your router has separate 2.4GHz and 5GHz names, join the one " +
-                    "your computer is on."
+    private fun explainProbeFailure(address: String, error: Exception): String =
+        explainUnreachable(address, listOf(address), error.message)
 
-            else ->
-                error.message
-                    ?: "Nothing answered at that address. Check the computer is awake and that " +
-                    "remote access is still on."
-        }
+    /**
+     * Say why a connection could not have worked, when that is knowable.
+     *
+     * Each verdict maps to the one thing that would actually fix it. Telling
+     * somebody on mobile data to check their Wi-Fi is worse than saying nothing:
+     * it sends them to look at something that was never the problem.
+     */
+    private fun explainUnreachable(
+        address: String,
+        knownAddresses: List<String>,
+        fallback: String?,
+    ): String = when (
+        Reachability.verdictFor(address, localIPv4Addresses(), knownAddresses)
+    ) {
+        Reachability.Verdict.MESH_AVAILABLE_BUT_OFF ->
+            "Your computer can be reached from anywhere over your VPN, but this phone isn't on " +
+                "it. Turn on Tailscale (or your VPN) and try again."
+
+        Reachability.Verdict.NO_ROUTE ->
+            "This phone isn't on your home network, and your computer has no VPN address to " +
+                "reach it by. Install Tailscale on both and Anodex will find it automatically."
+
+        Reachability.Verdict.DIFFERENT_SUBNET ->
+            "This phone is on a different network than $address. If your router has separate " +
+                "2.4GHz and 5GHz names, join the one your computer is on."
+
+        Reachability.Verdict.SAME_SUBNET, Reachability.Verdict.SAME_MESH ->
+            fallback
+                ?: "Your computer didn't answer. Check it's awake and that remote access is on."
+
+        Reachability.Verdict.UNKNOWN ->
+            fallback
+                ?: "Nothing answered at that address. Check the computer is awake and that " +
+                "remote access is still on."
     }
 
     /** The user says the fingerprint matches. Only now does anything get sent. */
