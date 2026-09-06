@@ -14,6 +14,17 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      Asked for at the moment the scanner opens, never at launch. It is used to read one QR
+      code off the user's own screen; frames are decoded and discarded, and nothing is stored
+      or sent anywhere.
+
+      android:required="false" so a device without a camera can still install the app - the
+      camera is needed for the convenient path through pairing, not for the app to work.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
