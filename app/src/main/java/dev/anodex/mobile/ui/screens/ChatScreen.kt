@@ -30,7 +30,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.ToolApprovalCard
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -51,6 +53,10 @@ fun ChatScreen(
     error: String?,
     onSend: (String) -> Unit,
     modifier: Modifier = Modifier,
+    approval: ToolApproval? = null,
+    approvalSecondsRemaining: Int = 0,
+    onApprove: () -> Unit = {},
+    onDeny: () -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -83,6 +89,18 @@ fun ChatScreen(
             ) {
                 items(messages, key = { it.id }) { message -> MessageRow(message) }
             }
+        }
+
+        // Above the composer, because it is the thing to answer before anything else
+        // is worth typing - the run is stopped until it is.
+        if (approval != null) {
+            ToolApprovalCard(
+                approval = approval,
+                secondsRemaining = approvalSecondsRemaining,
+                onApprove = onApprove,
+                onDeny = onDeny,
+                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+            )
         }
 
         if (error != null) {
