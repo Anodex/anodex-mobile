@@ -40,7 +40,7 @@
       connected, and it says which machine rather than "Anodex is running".
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
@@ -64,10 +64,31 @@
             </intent-filter>
         </activity>
 
+        <!--
+          specialUse, not connectedDevice or dataSync, and each rejection is for a
+          reason.
+
+          connectedDevice was the first attempt and it crashed the app on launch: from
+          Android 14 it requires one of a set of prerequisite permissions - Bluetooth,
+          NFC, USB, CHANGE_NETWORK_STATE - none of which this app has any business
+          holding just to keep a socket alive.
+
+          dataSync would be permitted, but Android 15 caps it at six hours a day and
+          then stops it. This service exists precisely so a connection survives a long
+          spell in a pocket, so a silent stop after six hours reintroduces the bug it
+          was added to fix.
+
+          What it actually does is hold a long-lived connection to a computer the user
+          owns, which is what specialUse is for.
+        -->
         <service
             android:name=".connection.ConnectionService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the connection to the user's own desktop Anodex alive so approvals and run notifications arrive while the app is in the background." />
+        </service>
     </application>
 
 </manifest>
