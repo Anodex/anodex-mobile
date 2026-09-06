@@ -343,10 +343,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 .getOrDefault(emptyList<ChatMessage>())
             // Carry the real creation time through, so re-saving does not rewrite it
             // to now on a conversation that was started days ago at the computer.
-            val createdAt = _conversations.value
-                .firstOrNull { it.id == conversationId }
-                ?.createdAtEpochMs
-                ?.takeIf { it > 0 }
+            val summary = _conversations.value.firstOrNull { it.id == conversationId }
+            val createdAt = summary?.createdAtEpochMs?.takeIf { it > 0 }
                 ?: System.currentTimeMillis()
 
             _chat.value = ChatSession(
@@ -355,7 +353,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 conversationId,
                 history,
                 createdAt,
-                _projects.value.activeProjectId,
+                // The conversation's own project, not whichever one happens to be
+                // active. Saving with the active one refiles a conversation the user
+                // merely opened — the turn would run in a workspace they did not
+                // choose, and the conversation would move out of the group they
+                // found it in.
+                summary?.projectId ?: _projects.value.activeProjectId,
+                summary?.storedTitle,
             )
         }
     }

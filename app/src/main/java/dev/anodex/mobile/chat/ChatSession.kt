@@ -88,6 +88,17 @@ class ChatSession(
      * of work, which is why it is passed explicitly rather than defaulted.
      */
     var projectId: String? = null,
+    /**
+     * The title this conversation already has on the computer, if it has one.
+     *
+     * Carried for the same reason [createdAt] is: a save writes the whole
+     * conversation back, so anything not carried through is silently replaced. The
+     * desktop generates a real title from the finished turn, asynchronously — and
+     * without this, opening one of those conversations on the phone and sending a
+     * single message renamed it to the first forty characters of the first thing
+     * the user ever typed.
+     */
+    private val existingTitle: String? = null,
 ) {
     private val _messages = MutableStateFlow(initialMessages)
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -336,7 +347,7 @@ class ChatSession(
             // Whatever this turn actually ran against, so the conversation is filed
             // where the work happened rather than somewhere it did not.
             put("projectId", projectId?.let(::JsonPrimitive) ?: JsonNull)
-            put("title", titleFromFirstTurn(turns))
+            put("title", titleToSave(existingTitle, turns))
             put("createdAt", createdAt)
             put("updatedAt", now)
             put(
@@ -363,23 +374,6 @@ class ChatSession(
             .onFailure { _error.value = "Saved on your computer failed: ${it.message}" }
     }
 
-    /**
-     * A first-line title, so the conversation is findable before the desktop
-     * summarises it properly.
-     *
-     * The desktop generates a real title from the finished turn; this is what the
-     * list shows until then, and it beats a row reading "Untitled".
-     */
-    private fun titleFromFirstTurn(turns: List<ChatMessage>): String {
-        val first = turns.firstOrNull { it.role == ChatMessage.Role.USER }?.text ?: return "New chat"
-        val line = first.lineSequence().firstOrNull()?.trim().orEmpty()
-        return when {
-            line.isEmpty() -> "New chat"
-            line.length <= MAX_TITLE -> line
-            else -> line.take(MAX_TITLE).trimEnd() + "…"
-        }
-    }
-
     private fun assistantIdFor(messageId: String) = "$messageId:reply"
 
     private companion object {
@@ -391,6 +385,39 @@ class ChatSession(
         const val CHANNEL_CONFIRM_RESPONSE = "tools:confirm-response"
         const val CHANNEL_SAVE = "conversations:save"
         const val CHANNEL_STOP = "chat:stop"
-        const val MAX_TITLE = 60
     }
 }
+
+/**
+ * The title to write back when saving a conversation.
+ *
+ * A save writes the whole conversation, so this is the only thing standing between
+ * the phone and the computer's own title. The desktop summarises a finished turn
+ * into a real title, asynchronously — and before this existed, opening one of those
+ * conversations on the phone and sending a single message renamed it to the first
+ * forty characters of the first thing the user ever typed.
+ *
+ * @param existing the title the computer already stores, or null if it has none yet.
+ */
+internal fun titleToSave(existing: String?, turns: List<ChatMessage>): String =
+    existing?.takeIf { it.isNotBlank() } ?: titleFromFirstTurn(turns)
+
+/**
+ * A first-line title, so a new conversation is findable before the desktop
+ * summarises it properly.
+ *
+ * Only ever used for a conversation that has no title yet. It beats a row reading
+ * "Untitled" for the minute or two before the real one arrives.
+ */
+internal fun titleFromFirstTurn(turns: List<ChatMessage>): String {
+    val first = turns.firstOrNull { it.role == ChatMessage.Role.USER }?.text ?: return "New chat"
+    val line = first.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+    return when {
+        line.isEmpty() -> "New chat"
+        line.length <= MAX_TITLE_LENGTH -> line
+        else -> line.take(MAX_TITLE_LENGTH).trimEnd() + "…"
+    }
+}
+
+/** Long enough to identify a conversation, short enough for a phone-width row. */
+internal const val MAX_TITLE_LENGTH = 60
