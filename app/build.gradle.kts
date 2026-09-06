@@ -21,8 +21,8 @@ android {
         // the app could not say which build it was and nothing could tell whether an
         // APK was newer than the one already installed. Both are prerequisites for an
         // update check.
-        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 19
-        versionName = (project.findProperty("appVersionName") as String?) ?: "0.19.0"
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 20
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.20.0"
     }
 
     /**
