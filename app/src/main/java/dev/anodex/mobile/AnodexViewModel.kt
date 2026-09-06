@@ -17,6 +17,8 @@ import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.Conversations
+import dev.anodex.mobile.chat.Projects
+import dev.anodex.mobile.chat.ProjectsState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.pairing.PairedHost
@@ -70,6 +72,53 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** Reads the desktop's conversation store. Null until a socket is open. */
     private var conversationReader: Conversations? = null
 
+    private var projectClient: Projects? = null
+
+    private val _projects = MutableStateFlow(ProjectsState(emptyList(), null))
+
+    /** What projects exist on the computer, and which one is open. */
+    val projects: StateFlow<ProjectsState> = _projects.asStateFlow()
+
+    private val _projectBusy = MutableStateFlow(false)
+    val projectBusy: StateFlow<Boolean> = _projectBusy.asStateFlow()
+
+    private val _projectError = MutableStateFlow<String?>(null)
+    val projectError: StateFlow<String?> = _projectError.asStateFlow()
+
+    fun refreshProjects() {
+        val client = projectClient ?: return
+        viewModelScope.launch {
+            _projects.value = runCatching { client.state() }
+                .getOrDefault(ProjectsState(emptyList(), null))
+            _chat.value?.projectId = _projects.value.activeProjectId
+        }
+    }
+
+    /**
+     * Change the project the computer is working in.
+     *
+     * Global, not a phone-local preference: this moves the workspace for whoever is
+     * sitting at the desk too. The desktop refuses while it is mid-generation, and
+     * that refusal is surfaced as "not now" rather than swallowed - the difference
+     * between a wait and a failure is the whole message.
+     */
+    fun setActiveProject(projectId: String?) {
+        val client = projectClient ?: return
+        _projectError.value = null
+        _projectBusy.value = true
+
+        viewModelScope.launch {
+            try {
+                _projects.value = client.setActive(projectId)
+                _chat.value?.projectId = _projects.value.activeProjectId
+            } catch (e: Exception) {
+                _projectError.value = e.message ?: "That didn't work."
+            } finally {
+                _projectBusy.value = false
+            }
+        }
+    }
+
     /** Re-read the conversation list from the computer. */
     fun refreshConversations() {
         val reader = conversationReader ?: return
@@ -101,14 +150,25 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 ?.takeIf { it > 0 }
                 ?: System.currentTimeMillis()
 
-            _chat.value = ChatSession(open, viewModelScope, conversationId, history, createdAt)
+            _chat.value = ChatSession(
+                open,
+                viewModelScope,
+                conversationId,
+                history,
+                createdAt,
+                _projects.value.activeProjectId,
+            )
         }
     }
 
     /** Start a fresh conversation. Nothing is written until the first message is sent. */
     fun newConversation() {
         val open = socket ?: return
-        _chat.value = ChatSession(open, viewModelScope)
+        _chat.value = ChatSession(
+            open,
+            viewModelScope,
+            projectId = _projects.value.activeProjectId,
+        )
     }
 
     private var socket: AnodexSocket? = null
@@ -152,9 +212,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
                 socket = candidate
                 conversationReader = Conversations(candidate)
+                projectClient = Projects(candidate)
                 _chat.value = ChatSession(candidate, viewModelScope)
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
+                refreshProjects()
 
                 // Refreshed every time, so a desktop that gains a VPN after pairing
                 // becomes reachable from away without the user doing anything. The
