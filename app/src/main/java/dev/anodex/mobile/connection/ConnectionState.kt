@@ -72,7 +72,7 @@ sealed interface ConnectionState {
 data class HostIdentity(
     /** Stable id established at pairing; survives every address change. */
     val id: String,
-    /** The machine's own name, e.g. "MERLIN-PC". What the user is shown. */
+    /** The machine's own name, e.g. "STUDIO-PC". What the user is shown. */
     val displayName: String,
 )
 

@@ -24,7 +24,7 @@ import kotlin.time.Duration.Companion.seconds
 class ConnectionControllerTest {
 
     private val host = PairedHostRef(
-        identity = HostIdentity(id = "h1", displayName = "MERLIN-PC"),
+        identity = HostIdentity(id = "h1", displayName = "STUDIO-PC"),
         secret = "secret",
         certificateFingerprint = "fp",
     )
