@@ -7,7 +7,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,17 +39,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.ui.components.ToolApprovalCard
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import dev.anodex.mobile.connection.ModelStatus
@@ -390,25 +384,16 @@ private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) 
             .semantics { contentDescription = if (sending) "Stop" else "Send" },
         contentAlignment = Alignment.Center,
     ) {
-        if (sending) {
-            // A filled square: the universal stop, and unmistakable at this size in
-            // a way a glyph would not be.
-            Box(Modifier.size(11.dp).clip(Radii.sm).background(foreground))
-        } else {
-            Canvas(Modifier.size(18.dp)) {
-                val stroke = Stroke(width = 2f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                val factor = size.minDimension / 24f
-                scale(factor, pivot = Offset.Zero) {
-                    // The desktop's arrow-up, on the same 24-unit grid as every
-                    // other glyph in the app.
-                    drawPath(
-                        PathParser().parsePathString("M12 19V5M5 12l7-7 7 7").toPath(),
-                        foreground,
-                        style = stroke,
-                    )
-                }
-            }
-        }
+        // The desktop's own two glyphs, not lookalikes drawn here. Send is a paper
+        // plane in `Icon.tsx`; this drew an arrow instead, with a comment claiming it
+        // was the desktop's — which it never was, and nothing catches a wrong comment
+        // next to a wrong drawing.
+        AnodexIcon(
+            icon = if (sending) AnodexIcon.STOP else AnodexIcon.SEND,
+            size = if (sending) 15.dp else 18.dp,
+            tint = foreground,
+            contentDescription = null,
+        )
     }
 }
 
