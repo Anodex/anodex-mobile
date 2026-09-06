@@ -55,8 +55,8 @@ import dev.anodex.mobile.ui.theme.Touch
 fun ConnectionHeader(
     state: ConnectionState,
     modifier: Modifier = Modifier,
-    /** Opens the conversation list. Null on screens where there is nothing to open. */
-    onOpenConversations: (() -> Unit)? = null,
+    /** Opens the drawer. Null on screens that have no navigation to reach. */
+    onOpenDrawer: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -69,7 +69,7 @@ fun ConnectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
-        if (onOpenConversations != null) {
+        if (onOpenDrawer != null) {
             // The whole left edge is the target rather than a small glyph: this is a
             // phone, and a 48dp region is the difference between a control that works
             // one-handed and one that does not.
@@ -77,14 +77,14 @@ fun ConnectionHeader(
                 modifier = Modifier
                     .size(Touch.minTarget)
                     .clip(Radii.md)
-                    .clickable(onClick = onOpenConversations),
+                    .clickable(onClick = onOpenDrawer),
                 contentAlignment = Alignment.Center,
             ) {
-                StatusDot(state)
+                Burger()
             }
-        } else {
-            StatusDot(state)
         }
+
+        StatusDot(state)
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -169,6 +169,24 @@ private fun ContextMeter(
  * lasts. Arriving at [ConnectionState.Connected] flares once and settles: a rare, event-driven
  * moment, which is the only category the house rule allows bespoke motion for. It never loops.
  */
+/**
+ * Three strokes, the middle one short.
+ *
+ * The asymmetry is Anodex's, not a stock hamburger — the desktop's own icon set
+ * treats a menu the same way, and three identical bars is the one glyph every app
+ * on the phone already has.
+ */
+@Composable
+private fun Burger() {
+    val colors = AnodexTheme.colors
+
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Box(Modifier.width(18.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
+        Box(Modifier.width(13.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
+        Box(Modifier.width(18.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
+    }
+}
+
 @Composable
 private fun StatusDot(state: ConnectionState) {
     val colors = AnodexTheme.colors
