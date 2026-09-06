@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -59,6 +60,35 @@ class ChatSession(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _approval = MutableStateFlow<ToolApproval?>(null)
+
+    /**
+     * A tool call waiting for an answer, if any.
+     *
+     * The highest-value thing the phone does: a blocked run is stopped until
+     * somebody answers, and answering from wherever you are is the point of
+     * carrying this.
+     */
+    val approval: StateFlow<ToolApproval?> = _approval.asStateFlow()
+
+    /** Answer a pending approval. Whichever screen answers first settles it. */
+    fun respondToApproval(approved: Boolean) {
+        val pending = _approval.value ?: return
+        _approval.value = null
+
+        scope.launch {
+            runCatching {
+                socket.invoke(
+                    CHANNEL_CONFIRM_RESPONSE,
+                    listOf(
+                        JsonPrimitive(pending.id),
+                        buildJsonObject { put("approved", approved) },
+                    ),
+                )
+            }
+        }
+    }
 
     init {
         scope.launch {
@@ -134,12 +164,33 @@ class ChatSession(
     }
 
     private fun onEvent(event: ServerFrame.Event) {
-        if (event.channel != CHANNEL_STREAM) return
-        val payload = event.payload?.jsonObject ?: return
-        if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
+        when (event.channel) {
+            CHANNEL_STREAM -> {
+                val payload = event.payload?.jsonObject ?: return
+                if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
+                appendToken(payload["token"]?.jsonPrimitive?.content ?: return)
+            }
 
-        val token = payload["token"]?.jsonPrimitive?.content ?: return
-        appendToken(token)
+            CHANNEL_CONFIRM_REQUEST -> {
+                val request = parseToolApproval(event.payload) ?: return
+                // Prompts for other conversations belong to whoever opened them.
+                if (request.conversationId.isNotEmpty() &&
+                    request.conversationId != conversationId
+                ) {
+                    return
+                }
+                _approval.value = request
+            }
+
+            CHANNEL_CONFIRM_CANCELLED -> {
+                // Answered on the computer, aborted, or expired. Either way the card
+                // here is dead: its buttons would settle nothing.
+                val cancelledId = (event.payload as? JsonPrimitive)?.content
+                if (cancelledId == null || cancelledId == _approval.value?.id) {
+                    _approval.value = null
+                }
+            }
+        }
     }
 
     private fun appendToken(token: String) {
@@ -163,5 +214,8 @@ class ChatSession(
     private companion object {
         const val CHANNEL_SEND = "chat:send"
         const val CHANNEL_STREAM = "chat:stream"
+        const val CHANNEL_CONFIRM_REQUEST = "tools:confirm-request"
+        const val CHANNEL_CONFIRM_CANCELLED = "tools:confirm-cancelled"
+        const val CHANNEL_CONFIRM_RESPONSE = "tools:confirm-response"
     }
 }
