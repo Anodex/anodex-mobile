@@ -16,20 +16,13 @@ local.properties
 *.keystore
 keystore.properties
 
-# One deliberate exception, and it does not weaken the rule above.
-#
-# The rule protects a key that establishes *authenticity* — one that says an
-# update genuinely came from us. keystore/anodex-preview.jks makes no such claim.
-# It exists so that two preview builds share a signature and can therefore install
-# over each other, and its password is the published Android debug convention.
-#
-# Without it Gradle generates a key per machine, so every CI run produced an APK
-# that Android refused to install over the previous one. The only way to update
-# was to uninstall, and uninstalling wipes the pairing with the desktop.
-#
-# A real release key stays covered by the rule above: generated fresh, kept out of
-# the repository, held in CI secrets. See keystore/README.md.
-!keystore/anodex-preview.jks
+# No exceptions any more. A preview key was committed for a while, deliberately, so
+# that consecutive CI builds would install over each other while the repository was
+# private and APKs were handed over one at a time. Publishing the repository ended
+# that trade: a signing key anyone can read is a signing key anyone can sign with,
+# and Android's refusal to install a differently-signed update is the only thing
+# standing between a user and a hostile APK. The release key now lives in CI secrets
+# and is written to keystore/ at build time. See keystore/README.md.
 
 # IDE
 .idea/
