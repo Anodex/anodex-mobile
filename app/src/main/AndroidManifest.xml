@@ -29,6 +29,19 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Keeps the app's process alive while it is connected, so a long run's "this needs
+      your answer" notification can arrive with the phone in a pocket. Android kills
+      backgrounded processes without warning, and nothing here is cached to disk, so a
+      kill loses the whole session rather than pausing it.
+
+      The cost is an ongoing notification the user cannot dismiss, which is the point of
+      the trade Android is offering. It is therefore only running while actually
+      connected, and it says which machine rather than "Anodex is running".
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
@@ -50,6 +63,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".connection.ConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 
 </manifest>
