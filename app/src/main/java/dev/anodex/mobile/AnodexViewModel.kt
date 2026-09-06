@@ -94,11 +94,29 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         return runCatching { readModelState(next) }.getOrNull()
     }
 
+    /**
+     * Read the desktop's EngineState for the connection header.
+     *
+     * Field names come from the generated contract, not from memory: the first
+     * version looked for `modelName`, which does not exist, so the header would
+     * have stayed blank however well everything else worked.
+     */
     private suspend fun readModelState(open: AnodexSocket): ModelStatus? {
-        val fields = open.invoke("models:get-state") as? JsonObject ?: return null
-        val name = (fields["modelName"] as? JsonPrimitive)?.content ?: return null
-        return ModelStatus(name = name, contextUsedTokens = 0, contextTotalTokens = 0)
+        val state = open.invoke("models:get-state") as? JsonObject ?: return null
+        val name = (state["model"] as? JsonObject)
+            ?.get("name")
+            ?.let { (it as? JsonPrimitive)?.content }
+            ?: return null
+
+        return ModelStatus(
+            name = name,
+            contextUsedTokens = state.intOrZero("contextTokensUsed"),
+            contextTotalTokens = state.intOrZero("contextSize"),
+        )
     }
+
+    private fun JsonObject.intOrZero(key: String): Int =
+        (this[key] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: 0
 
     private val _manualState = MutableStateFlow<ManualPairState>(ManualPairState.Entering)
     val manualState: StateFlow<ManualPairState> = _manualState.asStateFlow()
