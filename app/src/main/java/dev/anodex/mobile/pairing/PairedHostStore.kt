@@ -51,7 +51,11 @@ internal class PairedHostStore(
             certificateFingerprint = fingerprint,
             pairedNetworkId = prefs[KEY_NETWORK_ID],
             lastSeenEpochMs = prefs[KEY_LAST_SEEN]?.toLongOrNull(),
-            address = prefs[KEY_ADDRESS] ?: return@map null,
+            addresses = prefs[KEY_ADDRESS]
+                ?.split(ADDRESS_SEPARATOR)
+                ?.filter { it.isNotBlank() }
+                ?.takeIf { it.isNotEmpty() }
+                ?: return@map null,
             port = prefs[KEY_PORT]?.toIntOrNull() ?: return@map null,
         )
     }
@@ -64,10 +68,23 @@ internal class PairedHostStore(
             prefs[KEY_HOST_NAME] = host.identity.displayName
             prefs[KEY_SECRET] = encrypted
             prefs[KEY_FINGERPRINT] = host.certificateFingerprint
-            prefs[KEY_ADDRESS] = host.address
+            prefs[KEY_ADDRESS] = host.addresses.joinToString(ADDRESS_SEPARATOR)
             prefs[KEY_PORT] = host.port.toString()
             host.pairedNetworkId?.let { prefs[KEY_NETWORK_ID] = it }
             host.lastSeenEpochMs?.let { prefs[KEY_LAST_SEEN] = it.toString() }
+        }
+    }
+
+    /**
+     * Remember where the desktop said it can be reached.
+     *
+     * Called after every successful connection, so a machine that gains a mesh VPN later
+     * becomes reachable from away without the user re-pairing.
+     */
+    suspend fun recordAddresses(addresses: List<String>) {
+        if (addresses.isEmpty()) return
+        context.pairingDataStore.edit { prefs ->
+            prefs[KEY_ADDRESS] = addresses.joinToString(ADDRESS_SEPARATOR)
         }
     }
 
@@ -94,6 +111,9 @@ internal class PairedHostStore(
         val KEY_FINGERPRINT = stringPreferencesKey("fingerprint")
         val KEY_NETWORK_ID = stringPreferencesKey("paired_network_id")
         val KEY_ADDRESS = stringPreferencesKey("address")
+
+        /** Addresses live in one string: DataStore has no list-of-strings key. */
+        const val ADDRESS_SEPARATOR = ","
         val KEY_PORT = stringPreferencesKey("port")
 
         // Stored as a string: DataStore has no Long key type and a lossy Double round-trip on an

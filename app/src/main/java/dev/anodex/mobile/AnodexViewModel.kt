@@ -77,21 +77,47 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun openSocket(host: PairedHostRef): ModelStatus? {
         socket?.close()
         val stored = _paired.value ?: error("Nothing is paired.")
+        val fingerprint = hexToBytes(host.certificateFingerprint)
 
-        val next = AnodexSocket(
-            address = stored.address,
-            port = stored.port,
-            certificateSha256 = hexToBytes(host.certificateFingerprint),
-            deviceName = deviceName,
-        )
-        next.connect(AnodexSocket.Credential.DeviceKey(host.secret))
+        // Try every address the desktop has told us about, best first. At home that
+        // is the LAN address and the first attempt wins; away from home the LAN
+        // address fails fast and a mesh VPN address answers. This is what makes
+        // working off the home network possible without Anodex running a relay.
+        var lastFailure: Exception? = null
 
-        socket = next
-        _chat.value = ChatSession(next, viewModelScope)
-        store.recordSeen(System.currentTimeMillis())
+        for (address in stored.addresses) {
+            val candidate = AnodexSocket(
+                address = address,
+                port = stored.port,
+                certificateSha256 = fingerprint,
+                deviceName = deviceName,
+            )
+            try {
+                val handshake = candidate.connect(AnodexSocket.Credential.DeviceKey(host.secret))
 
-        // Model state is a nicety for the header, never a reason to fail a working connection.
-        return runCatching { readModelState(next) }.getOrNull()
+                socket = candidate
+                _chat.value = ChatSession(candidate, viewModelScope)
+                store.recordSeen(System.currentTimeMillis())
+
+                // Refreshed every time, so a desktop that gains a VPN after pairing
+                // becomes reachable from away without the user doing anything. The
+                // address that just worked is moved to the front, so the next
+                // reconnect starts where this one succeeded.
+                val reported = handshake.addresses.ifEmpty { stored.addresses }
+                val ordered = listOf(address) + reported.filterNot { it == address }
+                store.recordAddresses(ordered)
+                _paired.value = stored.copy(addresses = ordered)
+
+                // Model state is a nicety for the header, never a reason to fail a
+                // connection that is otherwise working.
+                return runCatching { readModelState(candidate) }.getOrNull()
+            } catch (e: Exception) {
+                candidate.close()
+                lastFailure = e
+            }
+        }
+
+        throw lastFailure ?: IllegalStateException("No address is known for that computer.")
     }
 
     /**
@@ -247,13 +273,18 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 val issued = handshake.issuedDeviceKey
                     ?: error("That computer did not issue a device key.")
 
+                // Keep the address that actually worked first, then everything else the
+                // desktop reports - so a phone paired at home already knows the mesh
+                // address before it first leaves the house.
+                val known = listOf(address) + handshake.addresses.filterNot { it == address }
+
                 val host = PairedHost(
                     identity = HostIdentity(id = hostId, displayName = displayName),
                     secret = issued,
                     certificateFingerprint = bytesToHex(certificateSha256),
                     pairedNetworkId = networkMonitor.currentNetworkId(),
                     lastSeenEpochMs = System.currentTimeMillis(),
-                    address = address,
+                    addresses = known,
                     port = port,
                 )
                 store.save(host)

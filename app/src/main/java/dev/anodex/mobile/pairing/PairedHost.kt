@@ -48,12 +48,18 @@ data class PairedHost(
     val lastSeenEpochMs: Long?,
 
     /**
-     * Where the desktop was last known to be.
+     * Every address the desktop said it could be reached at, best first.
      *
-     * A hint, not an identity: pairing binds to [identity], and this is expected to go stale
-     * when the user changes network. Kept so a reconnect has somewhere to try first rather
-     * than needing a fresh QR every time.
+     * Hints, not identity: pairing binds to [identity], and any of these can go stale. The
+     * phone tries each in turn, which is what makes working away from home possible - a LAN
+     * address at home, a mesh VPN address anywhere else - without Anodex running a relay.
+     *
+     * Refreshed on every successful connection, so a desktop that gains a VPN after pairing
+     * becomes reachable from away without the user doing anything.
      */
-    val address: String,
+    val addresses: List<String>,
     val port: Int,
-)
+) {
+    /** The address to try first. */
+    val address: String get() = addresses.firstOrNull() ?: ""
+}
