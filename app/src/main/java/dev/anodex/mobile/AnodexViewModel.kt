@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.anodex.mobile.connection.ConnectionController
+import dev.anodex.mobile.connection.ConnectionService
+import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
@@ -691,7 +693,37 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 controller.onNetworkChanged(relation)
             }
         }
+
+        viewModelScope.launch { holdProcessWhileConnected() }
     }
+
+    /**
+     * Keep the process alive for as long as there is a live link worth keeping.
+     *
+     * Android kills backgrounded processes without warning, and nothing the phone
+     * knows is cached to disk - the socket, the open conversation, an unanswered
+     * approval. A kill is therefore not a pause, it is the session gone, and the user
+     * discovers it by opening the app to be told it is reconnecting. That is exactly
+     * the moment this app exists for: the phone in a pocket while a long run works.
+     *
+     * The price is a notification the user cannot dismiss, so it runs while connected
+     * or actively reconnecting and stops the moment the connection is given up. An
+     * ongoing notification for a link that is *offline* is a lie the user has to look
+     * at all day.
+     */
+    private suspend fun holdProcessWhileConnected() {
+        val context = getApplication<Application>()
+
+        state.collect { current ->
+            val hold = processHoldFor(current)
+            if (hold == null) {
+                ConnectionService.stop(context)
+            } else {
+                ConnectionService.start(context, hold.hostName, hold.connected)
+            }
+        }
+    }
+
 
     /** Retry from the offline screen. */
     fun retry() {
@@ -722,6 +754,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         // viewModelScope cancellation would stop the loop anyway; saying so explicitly means the
         // controller's lifecycle does not depend on knowing that.
         controller.stop()
+        // The app is going away for good, so the ongoing notification would be
+        // describing a connection nothing is using.
+        ConnectionService.stop(getApplication())
         super.onCleared()
     }
 
