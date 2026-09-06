@@ -273,13 +273,17 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val stored = _paired.value ?: error("Nothing is paired.")
         val fingerprint = hexToBytes(host.certificateFingerprint)
 
-        // Try every address the desktop has told us about, best first. At home that
-        // is the LAN address and the first attempt wins; away from home the LAN
-        // address fails fast and a mesh VPN address answers. This is what makes
-        // working off the home network possible without Anodex running a relay.
+        // Try every address the desktop has told us about, in the order that makes
+        // sense from where this phone is standing. At home the LAN address is first
+        // and the first attempt wins; on mobile data it is moved behind the
+        // forwarded public address, because a LAN address cannot work from there and
+        // trying it first spends the whole connect timeout finding that out.
+        //
+        // This is what makes working off the home network possible without Anodex
+        // running a relay or anyone else's service sitting in between.
         var lastFailure: Exception? = null
 
-        for (address in stored.addresses) {
+        for (address in Reachability.orderByPlausibility(stored.addresses, localIPv4Addresses())) {
             val candidate = AnodexSocket(
                 address = address,
                 port = stored.port,
@@ -317,14 +321,20 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 refreshProjects()
                 refreshAgentRuns()
 
-                // Refreshed every time, so a desktop that gains a VPN after pairing
-                // becomes reachable from away without the user doing anything. The
-                // address that just worked is moved to the front, so the next
-                // reconnect starts where this one succeeded.
+                // Refreshed every time, so a desktop that gains a VPN — or has its
+                // port forwarded — after pairing becomes reachable from away without
+                // the user doing anything.
+                //
+                // Stored in the desktop's own ranking rather than with whichever
+                // address just worked hoisted to the front. Hoisting looks like a
+                // free optimisation and is not: succeeding once on the public
+                // address away from home would leave it ahead of the LAN address
+                // forever, so every reconnect back at home would go out to the
+                // router and back. Ordering is decided per attempt instead, by
+                // where the phone actually is.
                 val reported = handshake.addresses.ifEmpty { stored.addresses }
-                val ordered = listOf(address) + reported.filterNot { it == address }
-                store.recordAddresses(ordered)
-                _paired.value = stored.copy(addresses = ordered)
+                store.recordAddresses(reported)
+                _paired.value = stored.copy(addresses = reported)
 
                 // Model state is a nicety for the header, never a reason to fail a
                 // connection that is otherwise working.
@@ -338,7 +348,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         // Every address failed. Say why, if the phone can work it out - "reconnecting"
         // forever with no explanation is the worst version of being away from home.
         val explanation = explainUnreachable(
-            address = stored.addresses.firstOrNull().orEmpty(),
+            // The one it would have tried first from here, which is not the desktop's
+            // top-ranked address precisely when the user is away from home — and that
+            // is exactly when the hint matters.
+            address = Reachability.orderByPlausibility(stored.addresses, localIPv4Addresses())
+                .firstOrNull().orEmpty(),
             knownAddresses = stored.addresses,
             fallback = lastFailure?.message,
         )
@@ -428,29 +442,56 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         address: String,
         knownAddresses: List<String>,
         fallback: String?,
-    ): String = when (
-        Reachability.verdictFor(address, localIPv4Addresses(), knownAddresses)
-    ) {
-        Reachability.Verdict.MESH_AVAILABLE_BUT_OFF ->
-            "Your computer can be reached from anywhere over your VPN, but this phone isn't on " +
-                "it. Turn on Tailscale (or your VPN) and try again."
+    ): String {
+        // Whether the desktop has a way in from outside decides what to say here.
+        // Telling someone on mobile data to "check their Wi-Fi" when the real answer
+        // is a port that was never forwarded is the kind of hint that wastes an hour.
+        val hasPublicRoute = knownAddresses.any { !Reachability.isLocalRoute(it) }
 
-        Reachability.Verdict.NO_ROUTE ->
-            "This phone isn't on your home network, and your computer has no VPN address to " +
-                "reach it by. Install Tailscale on both and Anodex will find it automatically."
+        // There is a route in from outside and it did not answer, so the far end is
+        // the problem — not this phone's network, which is what the user would
+        // otherwise be sent off to check.
+        val publicRouteFailed =
+            "This phone isn't on your home network, and the way in from outside didn't answer. " +
+                "Check the computer is awake, and that the port is still forwarded on your router."
 
-        Reachability.Verdict.DIFFERENT_SUBNET ->
-            "This phone is on a different network than $address. If your router has separate " +
-                "2.4GHz and 5GHz names, join the one your computer is on."
+        // The actionable case, and the one worth being specific about: nothing this
+        // phone does on its own can reach a computer with no way in.
+        val noWayIn =
+            "This phone isn't on your home network, and your computer has no way in from " +
+                "outside. On the computer, open Settings → Remote and turn on " +
+                "\"Reach this computer from anywhere\"."
 
-        Reachability.Verdict.SAME_SUBNET, Reachability.Verdict.SAME_MESH ->
-            fallback
-                ?: "Your computer didn't answer. Check it's awake and that remote access is on."
+        return when (
+            Reachability.verdictFor(address, localIPv4Addresses(), knownAddresses)
+        ) {
+            Reachability.Verdict.MESH_AVAILABLE_BUT_OFF ->
+                "Your computer can be reached over your VPN, but this phone isn't on it. Turn " +
+                    "the VPN on and try again."
 
-        Reachability.Verdict.UNKNOWN ->
-            fallback
-                ?: "Nothing answered at that address. Check the computer is awake and that " +
-                "remote access is still on."
+            // Both mean "this phone is not where the computer is". What to do about
+            // that depends entirely on whether a way in from outside exists at all,
+            // so that is what splits them rather than the verdict.
+            Reachability.Verdict.NO_ROUTE ->
+                if (hasPublicRoute) publicRouteFailed else noWayIn
+
+            Reachability.Verdict.DIFFERENT_SUBNET ->
+                if (hasPublicRoute) {
+                    publicRouteFailed
+                } else {
+                    "This phone is on a different network than $address. If your router has " +
+                        "separate 2.4GHz and 5GHz names, join the one your computer is on."
+                }
+
+            Reachability.Verdict.SAME_SUBNET, Reachability.Verdict.SAME_MESH ->
+                fallback
+                    ?: "Your computer didn't answer. Check it's awake and that remote access is on."
+
+            Reachability.Verdict.UNKNOWN ->
+                fallback
+                    ?: "Nothing answered at that address. Check the computer is awake and that " +
+                    "remote access is still on."
+        }
     }
 
     /** The user says the fingerprint matches. Only now does anything get sent. */
