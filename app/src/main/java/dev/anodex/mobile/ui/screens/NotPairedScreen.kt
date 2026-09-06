@@ -31,14 +31,14 @@ import dev.anodex.mobile.ui.theme.Spacing
  * the computer is unreachable the app does nothing. Someone who understands that on day one will
  * not read a later offline screen as the app being broken.
  *
- * Scanning is not built yet — the pairing QR needs the desktop bridge to exist before there is
- * anything to scan. Saying so beats a button that does nothing.
+ * The scan button is the only way forward, so it is the only primary action on the screen.
  */
 @Composable
 fun NotPairedScreen(
     onScan: (() -> Unit)?,
     onPreviewDesign: () -> Unit,
     modifier: Modifier = Modifier,
+    error: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -79,6 +79,21 @@ fun NotPairedScreen(
             modifier = Modifier.padding(top = Spacing.x5),
         )
 
+        if (error != null) {
+            Text(
+                text = error,
+                style = type.body,
+                color = colors.danger,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .padding(top = Spacing.x5)
+                    .fillMaxWidth()
+                    .clip(Radii.lg)
+                    .background(colors.dangerSoft)
+                    .padding(Spacing.x4),
+            )
+        }
+
         if (onScan != null) {
             PrimaryButton(
                 label = "Scan the code",
@@ -87,8 +102,7 @@ fun NotPairedScreen(
             )
         } else {
             Text(
-                text = "Scanning isn't built yet — the desktop side has to exist before there is a " +
-                    "code to scan.",
+                text = "This device has no camera, so the code cannot be scanned here.",
                 style = type.meta,
                 color = colors.warn,
                 textAlign = TextAlign.Center,
@@ -113,7 +127,7 @@ fun NotPairedScreen(
 @Composable
 private fun PreviewNotPairedDark() {
     AnodexTheme(darkTheme = true) {
-        NotPairedScreen(onScan = null, onPreviewDesign = {})
+        NotPairedScreen(onScan = {}, onPreviewDesign = {})
     }
 }
 
@@ -121,6 +135,6 @@ private fun PreviewNotPairedDark() {
 @Composable
 private fun PreviewNotPairedLight() {
     AnodexTheme(darkTheme = false) {
-        NotPairedScreen(onScan = null, onPreviewDesign = {})
+        NotPairedScreen(onScan = {}, onPreviewDesign = {})
     }
 }
