@@ -114,6 +114,18 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     var typing by remember { mutableStateOf(false) }
     val manualState by viewModel.manualState.collectAsStateWithLifecycle()
 
+    // Pairing succeeds on a background coroutine, so the screen that started it has
+    // to stand down when it does. Without this the app sat on the pairing screen
+    // after a *successful* pair — connected, working, and looking like nothing had
+    // happened, until it was force-closed and reopened.
+    val paired by viewModel.paired.collectAsStateWithLifecycle()
+    LaunchedEffect(paired) {
+        if (paired != null) {
+            typing = false
+            scanning = false
+        }
+    }
+
     if (typing) {
         BackHandler {
             typing = false
