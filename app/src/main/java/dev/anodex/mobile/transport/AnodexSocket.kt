@@ -77,6 +77,8 @@ class AnodexSocket(
         val issuedDeviceKey: String?,
         /** Where else this machine can be reached. Stored so a later reconnect can try them. */
         val addresses: List<String> = emptyList(),
+        /** What the desktop says the current phone build is. Empty if it did not say. */
+        val mobileVersion: String = "",
     )
 
     /**
@@ -159,11 +161,16 @@ class AnodexSocket(
         override fun onMessage(webSocket: WebSocket, text: String) {
             when (val frame = parseServerFrame(text)) {
                 is ServerFrame.Welcome -> completeHandshake(frame.protocolVersion) {
-                    Handshake(frame.deviceId, null, frame.addresses)
+                    Handshake(frame.deviceId, null, frame.addresses, frame.mobileVersion)
                 }
 
                 is ServerFrame.Paired -> completeHandshake(frame.protocolVersion) {
-                    Handshake(frame.deviceId, frame.deviceKey, frame.addresses)
+                    Handshake(
+                        frame.deviceId,
+                        frame.deviceKey,
+                        frame.addresses,
+                        frame.mobileVersion,
+                    )
                 }
 
                 is ServerFrame.CallResult -> {
