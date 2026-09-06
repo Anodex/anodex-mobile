@@ -26,12 +26,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -68,10 +70,12 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
         return
     }
 
+    val chat by viewModel.chat.collectAsStateWithLifecycle()
+
     when (val current = state) {
         ConnectionState.Unpaired -> NotPairedScreen(
-            // Scanning arrives with the desktop bridge; until then the screen says so rather than
-            // offering a button that cannot work.
+            // Scanning needs a camera and a barcode reader, which is the last piece of the
+            // pairing flow. Until then the screen says so rather than offering a dead button.
             onScan = null,
             onPreviewDesign = { showingDesignPreview = true },
         )
@@ -82,13 +86,13 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
             onOpenPairing = viewModel::unpair,
         )
 
-        else -> ConnectedScaffold(current)
+        else -> ConnectedScaffold(current, chat)
     }
 }
 
 /** The normal app: connection header, then whichever surface is open beneath it. */
 @Composable
-private fun ConnectedScaffold(state: ConnectionState) {
+private fun ConnectedScaffold(state: ConnectionState, chat: ChatSession?) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
@@ -96,25 +100,29 @@ private fun ConnectedScaffold(state: ConnectionState) {
         ConnectionHeader(state)
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
 
-        Column(
-            modifier = Modifier.fillMaxSize().padding(Spacing.x6),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "Chat lands here",
-                style = type.heading,
-                color = colors.text,
-            )
-            Text(
-                text = "The transport comes first: the protocol contract, then the desktop bridge. " +
-                    "Everything above this line is already real.",
-                style = type.body,
-                color = colors.textMuted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = Spacing.x3),
-            )
+        if (chat == null) {
+            // Reconnecting: the header already says so, and replacing the transcript with a
+            // spinner would throw away what the user was reading over a two-second blip.
+            Column(
+                modifier = Modifier.fillMaxSize().padding(Spacing.x6),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("Reconnecting…", style = type.body, color = colors.textMuted)
+            }
+            return@Column
         }
+
+        val messages by chat.messages.collectAsStateWithLifecycle()
+        val sending by chat.sending.collectAsStateWithLifecycle()
+        val error by chat.error.collectAsStateWithLifecycle()
+
+        ChatScreen(
+            messages = messages,
+            sending = sending,
+            error = error,
+            onSend = chat::send,
+        )
     }
 }
 

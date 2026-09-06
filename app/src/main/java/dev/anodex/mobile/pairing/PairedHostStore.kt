@@ -51,6 +51,8 @@ internal class PairedHostStore(
             certificateFingerprint = fingerprint,
             pairedNetworkId = prefs[KEY_NETWORK_ID],
             lastSeenEpochMs = prefs[KEY_LAST_SEEN]?.toLongOrNull(),
+            address = prefs[KEY_ADDRESS] ?: return@map null,
+            port = prefs[KEY_PORT]?.toIntOrNull() ?: return@map null,
         )
     }
 
@@ -62,6 +64,8 @@ internal class PairedHostStore(
             prefs[KEY_HOST_NAME] = host.identity.displayName
             prefs[KEY_SECRET] = encrypted
             prefs[KEY_FINGERPRINT] = host.certificateFingerprint
+            prefs[KEY_ADDRESS] = host.address
+            prefs[KEY_PORT] = host.port.toString()
             host.pairedNetworkId?.let { prefs[KEY_NETWORK_ID] = it }
             host.lastSeenEpochMs?.let { prefs[KEY_LAST_SEEN] = it.toString() }
         }
@@ -89,6 +93,8 @@ internal class PairedHostStore(
         val KEY_SECRET = stringPreferencesKey("secret")
         val KEY_FINGERPRINT = stringPreferencesKey("fingerprint")
         val KEY_NETWORK_ID = stringPreferencesKey("paired_network_id")
+        val KEY_ADDRESS = stringPreferencesKey("address")
+        val KEY_PORT = stringPreferencesKey("port")
 
         // Stored as a string: DataStore has no Long key type and a lossy Double round-trip on an
         // epoch millisecond is a bug waiting to be blamed on the clock.
