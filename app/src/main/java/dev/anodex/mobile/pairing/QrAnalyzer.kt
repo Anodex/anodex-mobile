@@ -78,8 +78,24 @@ class QrAnalyzer(private val onDecoded: (String) -> Unit) : ImageAnalysis.Analyz
             false,
         )
 
-        return runCatching {
+        // Tried the normal way up first, then inverted.
+        //
+        // A QR decoder finds a code by its three finder patterns and looks for *dark*
+        // squares on a light field; ZXing does not try the image the other way round.
+        // Anodex used to draw its pairing code pale-on-dark so it sat nicely in a dark
+        // settings panel, which made it invisible to this decoder while every other QR
+        // code in the world scanned fine.
+        //
+        // The desktop draws it the right way up now. This stays so a phone can still
+        // pair with a computer that has not been updated yet — the retry costs one
+        // decode attempt on a frame that had already failed.
+        val upright = runCatching {
             reader.decodeWithState(BinaryBitmap(HybridBinarizer(source))).text
+        }.getOrNull()
+        if (upright != null) return upright
+
+        return runCatching {
+            reader.decodeWithState(BinaryBitmap(HybridBinarizer(source.invert()))).text
         }.getOrNull()
     }
 }
