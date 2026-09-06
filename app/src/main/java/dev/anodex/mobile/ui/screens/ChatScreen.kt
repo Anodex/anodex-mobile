@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.ToolApprovalCard
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -52,6 +53,7 @@ fun ChatScreen(
     sending: Boolean,
     error: String?,
     onSend: (String) -> Unit,
+    onStop: () -> Unit = {},
     modifier: Modifier = Modifier,
     approval: ToolApproval? = null,
     approvalSecondsRemaining: Int = 0,
@@ -119,12 +121,13 @@ fun ChatScreen(
 
         Composer(
             draft = draft,
-            enabled = !sending,
+            sending = sending,
             onDraftChange = { draft = it },
             onSend = {
                 onSend(draft)
                 draft = ""
             },
+            onStop = onStop,
         )
     }
 }
@@ -169,9 +172,10 @@ private fun MessageRow(message: ChatMessage) {
 @Composable
 private fun Composer(
     draft: String,
-    enabled: Boolean,
+    sending: Boolean,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
+    onStop: () -> Unit,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -197,16 +201,20 @@ private fun Composer(
             BasicTextField(
                 value = draft,
                 onValueChange = onDraftChange,
-                enabled = enabled,
+                enabled = !sending,
                 textStyle = type.body.copy(color = colors.text),
                 cursorBrush = SolidColor(colors.accent),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
 
-        Box(Modifier.width(if (draft.isBlank()) 0.dp else 88.dp)) {
-            if (draft.isNotBlank()) {
-                PrimaryButton(label = if (enabled) "Send" else "…", onClick = onSend)
+        // While a turn is running the button becomes Stop. A generation on the phone
+        // is a generation on the computer, and one that has gone wrong can burn a
+        // long time before it ends on its own.
+        Box(Modifier.width(if (sending || draft.isNotBlank()) 88.dp else 0.dp)) {
+            when {
+                sending -> SecondaryButton(label = "Stop", onClick = onStop)
+                draft.isNotBlank() -> PrimaryButton(label = "Send", onClick = onSend)
             }
         }
     }
