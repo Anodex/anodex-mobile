@@ -28,8 +28,27 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Written to disk only inside the runner, and gitignored so it can never be
+      # committed by accident. Absent on a pull request from a fork, where secrets
+      # are withheld — the build falls back to Gradle's debug key and still compiles
+      # and tests, which is the point of making the signing config conditional.
+      - name: Restore the signing key
+        run: |
+          if [ -z "$ANODEX_KEYSTORE_BASE64" ]; then
+            echo "No signing key available; falling back to Gradle's debug key."
+            exit 0
+          fi
+          mkdir -p keystore
+          echo "$ANODEX_KEYSTORE_BASE64" | base64 -d > keystore/anodex-release.jks
+          echo "Signing key restored."
+        env:
+          ANODEX_KEYSTORE_BASE64: ${{ secrets.ANODEX_KEYSTORE_BASE64 }}
+
       - name: Assemble debug
         run: ./gradlew --no-daemon assembleDebug
+        env:
+          ANODEX_KEYSTORE_PASSWORD: ${{ secrets.ANODEX_KEYSTORE_PASSWORD }}
+          ANODEX_KEY_ALIAS: ${{ secrets.ANODEX_KEY_ALIAS }}
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
