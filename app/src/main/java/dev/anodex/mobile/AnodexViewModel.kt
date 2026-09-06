@@ -13,7 +13,10 @@ import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.PairedHostRef
 import android.os.Build
 import android.util.Base64
+import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.ConversationSummary
+import dev.anodex.mobile.chat.Conversations
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.pairing.PairedHost
@@ -56,6 +59,50 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _pairingError = MutableStateFlow<String?>(null)
     val pairingError: StateFlow<String?> = _pairingError.asStateFlow()
 
+    private val _conversations = MutableStateFlow<List<ConversationSummary>>(emptyList())
+
+    /** What is on the computer. A live read, never a cache - empty when unreachable. */
+    val conversations: StateFlow<List<ConversationSummary>> = _conversations.asStateFlow()
+
+    private val _loadingConversations = MutableStateFlow(false)
+    val loadingConversations: StateFlow<Boolean> = _loadingConversations.asStateFlow()
+
+    /** Reads the desktop's conversation store. Null until a socket is open. */
+    private var conversationReader: Conversations? = null
+
+    /** Re-read the conversation list from the computer. */
+    fun refreshConversations() {
+        val reader = conversationReader ?: return
+        viewModelScope.launch {
+            _loadingConversations.value = true
+            _conversations.value = runCatching { reader.list() }.getOrDefault(emptyList())
+            _loadingConversations.value = false
+        }
+    }
+
+    /**
+     * Open a conversation that already exists on the computer.
+     *
+     * Its turns are fetched rather than remembered, because the phone keeps none -
+     * so this is a network call, and it is empty rather than stale when the desktop
+     * cannot be reached.
+     */
+    fun openConversation(conversationId: String) {
+        val reader = conversationReader ?: return
+        val open = socket ?: return
+        viewModelScope.launch {
+            val history = runCatching { reader.messagesOf(conversationId) }
+                .getOrDefault(emptyList<ChatMessage>())
+            _chat.value = ChatSession(open, viewModelScope, conversationId, history)
+        }
+    }
+
+    /** Start a fresh conversation. Nothing is written until the first message is sent. */
+    fun newConversation() {
+        val open = socket ?: return
+        _chat.value = ChatSession(open, viewModelScope)
+    }
+
     private var socket: AnodexSocket? = null
 
     private val controller = ConnectionController(
@@ -96,8 +143,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 val handshake = candidate.connect(AnodexSocket.Credential.DeviceKey(host.secret))
 
                 socket = candidate
+                conversationReader = Conversations(candidate)
                 _chat.value = ChatSession(candidate, viewModelScope)
                 store.recordSeen(System.currentTimeMillis())
+                refreshConversations()
 
                 // Refreshed every time, so a desktop that gains a VPN after pairing
                 // becomes reachable from away without the user doing anything. The
