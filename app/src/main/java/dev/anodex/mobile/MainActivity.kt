@@ -35,6 +35,7 @@ import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
+import dev.anodex.mobile.ui.screens.ManualPairScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -74,6 +75,26 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val pairingError by viewModel.pairingError.collectAsStateWithLifecycle()
     var scanning by remember { mutableStateOf(false) }
+    var typing by remember { mutableStateOf(false) }
+    val manualState by viewModel.manualState.collectAsStateWithLifecycle()
+
+    if (typing) {
+        BackHandler {
+            typing = false
+            viewModel.cancelManualPairing()
+        }
+        ManualPairScreen(
+            state = manualState,
+            error = pairingError,
+            onProbe = viewModel::probeManualHost,
+            onConfirm = viewModel::confirmManualFingerprint,
+            onCancel = {
+                typing = false
+                viewModel.cancelManualPairing()
+            },
+        )
+        return
+    }
 
     if (scanning) {
         BackHandler { scanning = false }
@@ -91,6 +112,7 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     when (val current = state) {
         ConnectionState.Unpaired -> NotPairedScreen(
             onScan = { scanning = true },
+            onEnterManually = { typing = true },
             onPreviewDesign = { showingDesignPreview = true },
             error = pairingError,
         )
