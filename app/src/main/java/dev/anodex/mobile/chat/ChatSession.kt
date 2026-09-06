@@ -59,6 +59,15 @@ class ChatSession(
      * the real creation time of a conversation started days ago on the computer.
      */
     private val createdAt: Long = System.currentTimeMillis(),
+    /**
+     * The project this turn runs against, or null for plain chat.
+     *
+     * This is what turns Anodex from a conversation into a coding agent: with a
+     * project it reads and writes real files; without one it is just talking. A
+     * turn sent with the wrong value does not fail, it quietly does the wrong kind
+     * of work, which is why it is passed explicitly rather than defaulted.
+     */
+    var projectId: String? = null,
 ) {
     private val _messages = MutableStateFlow(initialMessages)
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -150,6 +159,7 @@ class ChatSession(
         put("messageId", messageId)
         put("prompt", text)
         put("history", historyForRequest())
+        projectId?.let { put("projectId", it) }
     }
 
     /**
@@ -236,10 +246,9 @@ class ChatSession(
         val now = System.currentTimeMillis()
         val conversation = buildJsonObject {
             put("id", conversationId)
-            // Null rather than guessed. The active project is desktop state, and
-            // claiming one the user has not opened would file the conversation
-            // somewhere they never put it.
-            put("projectId", JsonNull)
+            // Whatever this turn actually ran against, so the conversation is filed
+            // where the work happened rather than somewhere it did not.
+            put("projectId", projectId?.let(::JsonPrimitive) ?: JsonNull)
             put("title", titleFromFirstTurn(turns))
             put("createdAt", createdAt)
             put("updatedAt", now)
