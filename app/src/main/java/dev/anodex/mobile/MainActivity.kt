@@ -515,7 +515,7 @@ private fun ChatPane(
 private fun DesignStateHarness(onExit: () -> Unit) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
-    val host = HostIdentity(id = "preview", displayName = "MERLIN-PC")
+    val host = HostIdentity(id = "preview", displayName = "STUDIO-PC")
 
     val states = remember {
         listOf(

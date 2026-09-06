@@ -9,7 +9,7 @@ import dev.anodex.mobile.connection.HostIdentity
  * preferences and nothing else — no conversation cache, no local database (handoff §2, §10.1).
  * Caching transcripts would buy instant scrollback and readable history while the PC sleeps, at
  * the cost of the user's conversations living on a second device, which softens the promise the
- * whole product rests on. A phone that says "MERLIN-PC is asleep" is honest in a way one showing
+ * whole product rests on. A phone that says "STUDIO-PC is asleep" is honest in a way one showing
  * stale transcripts is not.
  *
  * **Do not add fields here casually.** Anything persisted alongside the key inherits its
