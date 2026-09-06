@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.chat.ToolApproval
@@ -192,12 +193,11 @@ private fun MessageRow(message: ChatMessage) {
                 }
 
                 if (message.text.isNotEmpty()) {
-                    Text(
-                        text = message.text,
-                        style = type.body,
-                        color = colors.text,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    // Rendered, not printed. Anodex is usually answering a question
+                    // about code, so a reply is mostly fenced blocks and inline
+                    // code — as plain text that is backticks and asterisks, with
+                    // shell commands run together into a paragraph.
+                    MarkdownText(message.text)
                 } else if (message.streaming && message.tools.isEmpty()) {
                     // Nothing has arrived yet and nothing is being reported. Without
                     // this the screen is simply blank, which reads as the app having
