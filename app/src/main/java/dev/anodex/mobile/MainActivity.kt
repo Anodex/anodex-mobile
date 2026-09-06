@@ -39,6 +39,7 @@ import dev.anodex.mobile.ui.screens.ConversationsScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.ManualPairScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
+import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
@@ -148,9 +149,28 @@ private fun ConnectedScaffold(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     var showingConversations by remember { mutableStateOf(false) }
+    var choosingProject by remember { mutableStateOf(false) }
+
+    val projects by viewModel.projects.collectAsStateWithLifecycle()
+    val projectBusy by viewModel.projectBusy.collectAsStateWithLifecycle()
+    val projectError by viewModel.projectError.collectAsStateWithLifecycle()
 
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val loadingConversations by viewModel.loadingConversations.collectAsStateWithLifecycle()
+
+    if (choosingProject) {
+        BackHandler { choosingProject = false }
+        ProjectPickerScreen(
+            projects = projects.projects,
+            activeProjectId = projects.activeProjectId,
+            busy = projectBusy,
+            error = projectError,
+            onSelect = viewModel::setActiveProject,
+            onClose = { choosingProject = false },
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
 
     if (showingConversations) {
         BackHandler { showingConversations = false }
@@ -167,6 +187,11 @@ private fun ConnectedScaffold(
                 showingConversations = false
             },
             modifier = Modifier.safeDrawingPadding(),
+            activeProjectName = projects.active?.name,
+            onChooseProject = {
+                viewModel.refreshProjects()
+                choosingProject = true
+            },
         )
         return
     }

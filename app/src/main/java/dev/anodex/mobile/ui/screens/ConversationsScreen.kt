@@ -42,6 +42,9 @@ fun ConversationsScreen(
     onNewChat: () -> Unit,
     modifier: Modifier = Modifier,
     nowEpochMs: Long = System.currentTimeMillis(),
+    /** The project every new turn will run in. Null means plain chat. */
+    activeProjectName: String? = null,
+    onChooseProject: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -56,6 +59,30 @@ fun ConversationsScreen(
         ) {
             Text("Conversations", style = type.heading, color = colors.text)
             PrimaryButton(label = "New", onClick = onNewChat)
+        }
+
+        // What a turn will actually run against, stated before it does. Without a
+        // project Anodex is talking; with one it is editing real files, and that is
+        // too large a difference to leave implicit.
+        if (onChooseProject != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.minTarget)
+                    .clickable(onClick = onChooseProject)
+                    .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                Text("Working in", style = type.meta, color = colors.textFaint)
+                Text(
+                    text = activeProjectName ?: "no project",
+                    style = type.label,
+                    color = if (activeProjectName != null) colors.accent else colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         when {
