@@ -46,4 +46,14 @@ data class PairedHost(
 
     /** When the desktop was last reached, for the offline screen. */
     val lastSeenEpochMs: Long?,
+
+    /**
+     * Where the desktop was last known to be.
+     *
+     * A hint, not an identity: pairing binds to [identity], and this is expected to go stale
+     * when the user changes network. Kept so a reconnect has somewhere to try first rather
+     * than needing a fresh QR every time.
+     */
+    val address: String,
+    val port: Int,
 )
