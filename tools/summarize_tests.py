@@ -5,8 +5,8 @@ without running anything, for a task with no tests to run, and for a task whose 
 skipped. Those are indistinguishable from a real pass in the log, which makes a suite that quietly
 stopped checking anything invisible.
 
-This reads the JUnit XML the task leaves behind — accurate whether the task executed or was
-restored from the cache — prints the totals, and exits non-zero on zero tests or any failure.
+This reads the JUnit XML the task leaves behind - accurate whether the task executed or was
+restored from the cache - prints the totals, and exits non-zero on zero tests or any failure.
 
 Usage, from the repo root:
 
@@ -31,7 +31,7 @@ def main() -> int:
 
     files = sorted(glob.glob(os.path.join(args.results_dir, "*.xml")))
     if not files:
-        print("No test result XML in %s — the suite did not run." % args.results_dir)
+        print("No test result XML in %s - the suite did not run." % args.results_dir)
         return 1
 
     total = failures = errors = skipped = 0
@@ -61,11 +61,12 @@ def main() -> int:
             note = "  (%d skipped)" % skip
         print("  %-*s  %3d tests%s" % (width, name, tests, note))
 
-    print("\n%d tests across %d suites: %d failed, %d errored, %d skipped"
-          % (total, len(rows), failures, errors, skipped))
+    print("\n%d tests across %d %s: %d failed, %d errored, %d skipped"
+          % (total, len(rows), "suite" if len(rows) == 1 else "suites",
+             failures, errors, skipped))
 
     if total == 0:
-        print("\nZero tests ran. Treating that as a failure — a suite that checks nothing "
+        print("\nZero tests ran. Treating that as a failure - a suite that checks nothing "
               "should not report success.")
         return 1
     if failures or errors:
