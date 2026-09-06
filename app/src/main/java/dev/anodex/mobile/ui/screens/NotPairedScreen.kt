@@ -36,6 +36,7 @@ import dev.anodex.mobile.ui.theme.Spacing
 @Composable
 fun NotPairedScreen(
     onScan: (() -> Unit)?,
+    onEnterManually: () -> Unit,
     onPreviewDesign: () -> Unit,
     modifier: Modifier = Modifier,
     error: String? = null,
@@ -116,9 +117,15 @@ fun NotPairedScreen(
         }
 
         SecondaryButton(
+            label = "Enter the code instead",
+            onClick = onEnterManually,
+            modifier = Modifier.padding(top = Spacing.x3),
+        )
+
+        SecondaryButton(
             label = "Preview design states",
             onClick = onPreviewDesign,
-            modifier = Modifier.padding(top = Spacing.x4),
+            modifier = Modifier.padding(top = Spacing.x3),
         )
     }
 }
@@ -127,7 +134,7 @@ fun NotPairedScreen(
 @Composable
 private fun PreviewNotPairedDark() {
     AnodexTheme(darkTheme = true) {
-        NotPairedScreen(onScan = {}, onPreviewDesign = {})
+        NotPairedScreen(onScan = {}, onEnterManually = {}, onPreviewDesign = {})
     }
 }
 
@@ -135,6 +142,6 @@ private fun PreviewNotPairedDark() {
 @Composable
 private fun PreviewNotPairedLight() {
     AnodexTheme(darkTheme = false) {
-        NotPairedScreen(onScan = {}, onPreviewDesign = {})
+        NotPairedScreen(onScan = {}, onEnterManually = {}, onPreviewDesign = {})
     }
 }
