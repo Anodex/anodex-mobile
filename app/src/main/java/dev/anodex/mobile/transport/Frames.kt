@@ -39,6 +39,14 @@ sealed interface ServerFrame {
          * pairing becomes reachable from away without the user re-pairing.
          */
         val addresses: List<String> = emptyList(),
+        /**
+         * The phone build this desktop was released alongside.
+         *
+         * Defaulted to empty so an older desktop, which does not send it, is treated
+         * as "nothing to say" rather than as a malformed frame that fails the whole
+         * handshake. An update notice is not worth breaking a connection over.
+         */
+        val mobileVersion: String = "",
     ) : ServerFrame
 
     /** Pairing completed. [deviceKey] is the long-lived credential — store it, never log it. */
@@ -49,6 +57,7 @@ sealed interface ServerFrame {
         val deviceId: String,
         val protocolVersion: String,
         val addresses: List<String> = emptyList(),
+        val mobileVersion: String = "",
     ) : ServerFrame
 
     /** A reply to one invoke. */
