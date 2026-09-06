@@ -47,6 +47,14 @@ fun OfflineScreen(
     onOpenPairing: () -> Unit,
     modifier: Modifier = Modifier,
     nowEpochMs: Long = System.currentTimeMillis(),
+    /**
+     * Why the last attempt could not have worked, when the phone can tell.
+     *
+     * Replaces the generic wrong-network line when present, because it is more
+     * specific: "turn your VPN on" beats "you're on a different network" for
+     * somebody sitting on a train.
+     */
+    hint: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -86,7 +94,20 @@ fun OfflineScreen(
             )
         }
 
-        if (state.networkChanged) {
+        if (hint != null) {
+            Text(
+                text = hint,
+                style = type.body,
+                color = colors.warn,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .padding(top = Spacing.x5)
+                    .fillMaxWidth()
+                    .clip(Radii.lg)
+                    .background(colors.warnSoft)
+                    .padding(Spacing.x4),
+            )
+        } else if (state.networkChanged) {
             Text(
                 text = "You're on a different network than the one you paired on. " +
                     "Anodex only connects over your local network.",
