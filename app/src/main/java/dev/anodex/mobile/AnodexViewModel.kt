@@ -93,7 +93,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val history = runCatching { reader.messagesOf(conversationId) }
                 .getOrDefault(emptyList<ChatMessage>())
-            _chat.value = ChatSession(open, viewModelScope, conversationId, history)
+            // Carry the real creation time through, so re-saving does not rewrite it
+            // to now on a conversation that was started days ago at the computer.
+            val createdAt = _conversations.value
+                .firstOrNull { it.id == conversationId }
+                ?.createdAtEpochMs
+                ?.takeIf { it > 0 }
+                ?: System.currentTimeMillis()
+
+            _chat.value = ChatSession(open, viewModelScope, conversationId, history, createdAt)
         }
     }
 

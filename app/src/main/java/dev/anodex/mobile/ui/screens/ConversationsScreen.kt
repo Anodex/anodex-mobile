@@ -141,9 +141,9 @@ private fun PreviewConversations() {
     AnodexTheme(darkTheme = true) {
         ConversationsScreen(
             conversations = listOf(
-                ConversationSummary("1", "Scheduler monthly recurrence bug", PREVIEW_NOW - 120_000, 14),
-                ConversationSummary("2", "Port the message bubble to Compose", PREVIEW_NOW - 3_600_000, 6),
-                ConversationSummary("3", "Untitled", PREVIEW_NOW - 86_400_000, 1),
+                ConversationSummary("1", "Scheduler monthly recurrence bug", PREVIEW_NOW - 200_000_000, PREVIEW_NOW - 120_000, 14),
+                ConversationSummary("2", "Port the message bubble to Compose", PREVIEW_NOW - 200_000_000, PREVIEW_NOW - 3_600_000, 6),
+                ConversationSummary("3", "Untitled", PREVIEW_NOW - 200_000_000, PREVIEW_NOW - 86_400_000, 1),
             ),
             loading = false,
             activeId = "1",

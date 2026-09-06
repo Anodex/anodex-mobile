@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 data class ConversationSummary(
     val id: String,
     val title: String,
+    val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
     val messageCount: Int,
 )
@@ -70,6 +71,8 @@ class Conversations(private val socket: AnodexSocket) {
             // which is normal for a turn or two rather than an error.
             title = fields["title"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() }
                 ?: "Untitled",
+            createdAtEpochMs = fields["createdAt"]?.jsonPrimitive?.contentOrNull()
+                ?.toDoubleOrNull()?.toLong() ?: 0L,
             updatedAtEpochMs = fields["updatedAt"]?.jsonPrimitive?.contentOrNull()
                 ?.toDoubleOrNull()?.toLong() ?: 0L,
             messageCount = messages,

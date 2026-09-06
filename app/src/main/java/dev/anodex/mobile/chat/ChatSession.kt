@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -51,6 +52,13 @@ class ChatSession(
      */
     val conversationId: String = UUID.randomUUID().toString(),
     initialMessages: List<ChatMessage> = emptyList(),
+    /**
+     * When this conversation began, for an existing one.
+     *
+     * Passed in rather than stamped on open: re-saving with "now" would overwrite
+     * the real creation time of a conversation started days ago on the computer.
+     */
+    private val createdAt: Long = System.currentTimeMillis(),
 ) {
     private val _messages = MutableStateFlow(initialMessages)
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -120,6 +128,7 @@ class ChatSession(
             } finally {
                 _sending.value = false
                 finishStreaming()
+                persist()
             }
         }
     }
@@ -209,6 +218,72 @@ class ChatSession(
         }
     }
 
+    /**
+     * Write the turn back to the computer.
+     *
+     * `chat:send` generates a reply; it does not save one. The desktop's own
+     * renderer persists separately, through `conversations:save` - so a
+     * conversation started on the phone was generated, streamed, and then lost the
+     * moment the socket closed, never appearing in the list on either device.
+     *
+     * Best-effort on purpose: a failed save is worth reporting but must not throw
+     * away a reply the user is already reading.
+     */
+    private suspend fun persist() {
+        val turns = _messages.value.filter { it.text.isNotBlank() }
+        if (turns.isEmpty()) return
+
+        val now = System.currentTimeMillis()
+        val conversation = buildJsonObject {
+            put("id", conversationId)
+            // Null rather than guessed. The active project is desktop state, and
+            // claiming one the user has not opened would file the conversation
+            // somewhere they never put it.
+            put("projectId", JsonNull)
+            put("title", titleFromFirstTurn(turns))
+            put("createdAt", createdAt)
+            put("updatedAt", now)
+            put(
+                "messages",
+                buildJsonArray {
+                    for (turn in turns) {
+                        add(
+                            buildJsonObject {
+                                put("id", turn.id)
+                                put(
+                                    "role",
+                                    if (turn.role == ChatMessage.Role.USER) "user" else "assistant",
+                                )
+                                put("content", turn.text)
+                                put("createdAt", now)
+                            },
+                        )
+                    }
+                },
+            )
+        }
+
+        runCatching { socket.invoke(CHANNEL_SAVE, listOf(conversation)) }
+            .onFailure { _error.value = "Saved on your computer failed: ${it.message}" }
+    }
+
+    /**
+     * A first-line title, so the conversation is findable before the desktop
+     * summarises it properly.
+     *
+     * The desktop generates a real title from the finished turn; this is what the
+     * list shows until then, and it beats a row reading "Untitled".
+     */
+    private fun titleFromFirstTurn(turns: List<ChatMessage>): String {
+        val first = turns.firstOrNull { it.role == ChatMessage.Role.USER }?.text ?: return "New chat"
+        val line = first.lineSequence().firstOrNull()?.trim().orEmpty()
+        return when {
+            line.isEmpty() -> "New chat"
+            line.length <= MAX_TITLE -> line
+            else -> line.take(MAX_TITLE).trimEnd() + "…"
+        }
+    }
+
     private fun assistantIdFor(messageId: String) = "$messageId:reply"
 
     private companion object {
@@ -217,5 +292,7 @@ class ChatSession(
         const val CHANNEL_CONFIRM_REQUEST = "tools:confirm-request"
         const val CHANNEL_CONFIRM_CANCELLED = "tools:confirm-cancelled"
         const val CHANNEL_CONFIRM_RESPONSE = "tools:confirm-response"
+        const val CHANNEL_SAVE = "conversations:save"
+        const val MAX_TITLE = 60
     }
 }
