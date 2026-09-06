@@ -149,13 +149,25 @@ private fun ProjectRow(
         )
         if (detail.isNotBlank()) {
             Text(
-                text = detail,
+                // The tail of a path is what identifies a folder. "C:\Users\Owner\Desktop"
+                // is the same prefix on every row, so truncating the front loses nothing
+                // and truncating the end loses the only distinguishing part.
+                text = tailOf(detail),
                 style = type.meta,
                 color = colors.textFaint,
                 maxLines = 1,
-                overflow = TextOverflow.MiddleEllipsis,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/** The last two segments of a path — enough to tell two projects apart. */
+private fun tailOf(path: String): String {
+    val segments = path.split('\', '/').filter { it.isNotBlank() }
+    return when {
+        segments.size <= 2 -> path
+        else -> "…" + segments.takeLast(2).joinToString("/", prefix = "/")
     }
 }
 
