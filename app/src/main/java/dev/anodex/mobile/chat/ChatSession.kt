@@ -143,6 +143,28 @@ class ChatSession(
     }
 
     /**
+     * Stop the turn that is running.
+     *
+     * A generation on the phone is a generation on the computer, and one that has
+     * gone wrong can burn a long time and a lot of tokens before it stops on its
+     * own. Being able to end it from wherever you are is most of why the stop
+     * button matters more here than on the desktop, where the machine is in front
+     * of you anyway.
+     *
+     * Deliberately not awaited for a result: the desktop aborts and the stream ends,
+     * and blocking the UI on the acknowledgement would be slower than the thing it
+     * is acknowledging.
+     */
+    fun stop() {
+        if (!_sending.value) return
+        scope.launch {
+            runCatching { socket.invoke(CHANNEL_STOP, listOf(JsonPrimitive(conversationId))) }
+            _sending.value = false
+            finishStreaming()
+        }
+    }
+
+    /**
      * A ChatRequest, shaped from `protocol/anodex-protocol.json` rather than from memory.
      *
      * The first version of this sent `content` and no `history`, which the desktop
@@ -302,6 +324,7 @@ class ChatSession(
         const val CHANNEL_CONFIRM_CANCELLED = "tools:confirm-cancelled"
         const val CHANNEL_CONFIRM_RESPONSE = "tools:confirm-response"
         const val CHANNEL_SAVE = "conversations:save"
+        const val CHANNEL_STOP = "chat:stop"
         const val MAX_TITLE = 60
     }
 }
