@@ -1,8 +1,12 @@
 package dev.anodex.mobile
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -85,6 +89,23 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     }
 
     val chat by viewModel.chat.collectAsStateWithLifecycle()
+
+    // Asked for the first time something arrived that could not be shown, rather
+    // than at launch. A permission prompt makes sense when there is a concrete
+    // thing it would have told you about, and reads as arbitrary before that.
+    val needsNotificationPermission by
+        viewModel.needsNotificationPermission.collectAsStateWithLifecycle()
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { viewModel.notificationPermissionHandled() }
+
+    LaunchedEffect(needsNotificationPermission) {
+        if (needsNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else if (needsNotificationPermission) {
+            viewModel.notificationPermissionHandled()
+        }
+    }
     val pairingError by viewModel.pairingError.collectAsStateWithLifecycle()
     var scanning by remember { mutableStateOf(false) }
     var typing by remember { mutableStateOf(false) }
@@ -223,6 +244,13 @@ private fun ConnectedScaffold(
         val sending by chat.sending.collectAsStateWithLifecycle()
         val error by chat.error.collectAsStateWithLifecycle()
         val approval by chat.approval.collectAsStateWithLifecycle()
+
+        // The notification and the card represent the same pending question. When
+        // the card goes - answered here, answered at the computer, or expired - the
+        // notification must go too, or it taps into nothing.
+        LaunchedEffect(approval) {
+            if (approval == null) viewModel.clearApprovalNotification()
+        }
 
         // The desktop declines an unanswered prompt after five minutes so a phone
         // that loses signal cannot wedge a generation. Counting down locally is an
