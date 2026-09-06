@@ -4,8 +4,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -136,27 +134,4 @@ fun versionsCompatible(a: String, b: String): Boolean {
     val left = majorOf(a) ?: return false
     val right = majorOf(b) ?: return false
     return left == right
-}
-
-/** Convenience for the common single-string argument. */
-fun stringArg(value: String): JsonElement = JsonPrimitive(value)
-
-/** Convenience for an object argument, e.g. a ChatRequest. */
-fun objectArg(build: JsonObjectBuilderScope.() -> Unit): JsonObject =
-    buildJsonObject { JsonObjectBuilderScope(this).build() }
-
-/** Thin wrapper so call sites read as `objectArg { put("x", 1) }` without importing the builder. */
-@JvmInline
-value class JsonObjectBuilderScope(private val builder: kotlinx.serialization.json.JsonObjectBuilder) {
-    fun put(key: String, value: String) {
-        builder.put(key, value)
-    }
-
-    fun put(key: String, value: Int) {
-        builder.put(key, value)
-    }
-
-    fun put(key: String, value: Boolean) {
-        builder.put(key, value)
-    }
 }
