@@ -65,3 +65,31 @@ fun SecondaryButton(
         Text(label, style = AnodexTheme.type.bodyEmphasis, color = colors.text)
     }
 }
+
+/**
+ * For the one action that cannot be taken back.
+ *
+ * Outlined in the danger colour rather than filled with it. A solid red block reads
+ * as the primary thing to do on the screen, which is the opposite of true here — and
+ * unpairing is a button you should have to mean.
+ */
+@Composable
+fun DangerButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AnodexTheme.colors
+    Box(
+        modifier = modifier
+            .heightIn(min = Touch.minTarget)
+            .clip(Radii.md)
+            .background(colors.dangerSoft)
+            .border(1.dp, colors.danger, Radii.md)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x6),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = AnodexTheme.type.bodyEmphasis, color = colors.danger)
+    }
+}
