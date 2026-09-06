@@ -15,6 +15,15 @@ data class ConversationSummary(
     val updatedAtEpochMs: Long,
     val messageCount: Int,
     /**
+     * The title as the computer actually stores it — null when it has none yet.
+     *
+     * Kept alongside [title], which is the display value and falls back to
+     * "Untitled". Saving that fallback back to the computer would turn a
+     * conversation the desktop had not titled *yet* into one permanently called
+     * Untitled, so the two cannot be the same field.
+     */
+    val storedTitle: String? = null,
+    /**
      * The workspace this conversation belongs to, or null for plain chat.
      *
      * Carried so the list can be grouped by it. Which project a conversation runs
@@ -73,13 +82,17 @@ class Conversations(private val socket: AnodexSocket) {
 
         val id = fields["id"]?.jsonPrimitive?.contentOrNull() ?: return null
         val messages = (fields["messages"] as? JsonArray)?.size ?: 0
+        // An untitled conversation is one the desktop has not summarised yet, which
+        // is normal for a turn or two rather than an error.
+        val storedTitle = fields["title"]?.jsonPrimitive?.contentOrNull()
+            ?.takeIf { it.isNotBlank() }
 
         return ConversationSummary(
             id = id,
             // An untitled conversation is one the desktop has not summarised yet,
             // which is normal for a turn or two rather than an error.
-            title = fields["title"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() }
-                ?: "Untitled",
+            title = storedTitle ?: "Untitled",
+            storedTitle = storedTitle,
             createdAtEpochMs = fields["createdAt"]?.jsonPrimitive?.contentOrNull()
                 ?.toDoubleOrNull()?.toLong() ?: 0L,
             updatedAtEpochMs = fields["updatedAt"]?.jsonPrimitive?.contentOrNull()
