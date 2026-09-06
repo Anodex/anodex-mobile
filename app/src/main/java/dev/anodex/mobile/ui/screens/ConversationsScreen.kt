@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -45,6 +46,9 @@ fun ConversationsScreen(
     /** The project every new turn will run in. Null means plain chat. */
     activeProjectName: String? = null,
     onChooseProject: (() -> Unit)? = null,
+    onOpenAgents: (() -> Unit)? = null,
+    /** How many agent runs are stopped waiting for a human. */
+    waitingAgentCount: Int = 0,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -58,7 +62,18 @@ fun ConversationsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Conversations", style = type.heading, color = colors.text)
-            PrimaryButton(label = "New", onClick = onNewChat)
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+                if (onOpenAgents != null) {
+                    // Labelled with the count when something is blocked: a run waiting
+                    // on a human is doing nothing at all, and that is worth showing
+                    // before the user has to go looking for it.
+                    SecondaryButton(
+                        label = if (waitingAgentCount > 0) "Agents ($waitingAgentCount)" else "Agents",
+                        onClick = onOpenAgents,
+                    )
+                }
+                PrimaryButton(label = "New", onClick = onNewChat)
+            }
         }
 
         // What a turn will actually run against, stated before it does. Without a
