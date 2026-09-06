@@ -86,6 +86,15 @@ class AnodexSocket(
      */
     suspend fun connect(credential: Credential, timeout: Duration = 15.seconds): Handshake {
         val client = OkHttpClient.Builder()
+            // Short on purpose. Away from home the phone tries the home LAN address
+            // first and it is not there; OkHttp's ten-second default would spend ten
+            // seconds failing before the VPN address is even attempted, on every
+            // single reconnect. An address that is reachable answers in well under a
+            // second on any network worth using.
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            // Keeps a half-open socket - a phone that walked out of range - from
+            // looking alive indefinitely.
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .pingInterval(20, TimeUnit.SECONDS)
             .sslSocketFactory(pinnedContext().socketFactory, PinnedTrustManager(certificateSha256))
             // See the class comment: the certificate asserts no hostname, so a name
@@ -234,6 +243,14 @@ class AnodexSocket(
 
     private companion object {
         const val NORMAL_CLOSURE = 1000
+        const val CONNECT_TIMEOUT_SECONDS = 4L
+
+        /**
+         * Longer than the ping interval, so an idle-but-healthy connection is never
+         * mistaken for a dead one - a socket with nothing to say is the normal state
+         * between turns.
+         */
+        const val READ_TIMEOUT_SECONDS = 60L
         private val random = SecureRandom()
 
         fun newCallId(): String = java.math.BigInteger(64, random).toString(36)
