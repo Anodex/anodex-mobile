@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import dev.anodex.mobile.connection.ConnectionController
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.NetworkMonitor
+import dev.anodex.mobile.notify.NotificationKind
+import dev.anodex.mobile.notify.Notifications
 import dev.anodex.mobile.connection.Reachability
 import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.PairedHostRef
@@ -28,6 +30,7 @@ import dev.anodex.mobile.pairing.PairingPayload
 import dev.anodex.mobile.pairing.humanFingerprintOf
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.transport.AnodexSocket
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,10 +46,30 @@ import kotlinx.coroutines.launch
  * `ConnectionController` (when to act) precisely so that they can be unit-tested without Android;
  * pulling logic up into here would put it back out of reach. This class wires, it does not decide.
  */
+private const val CHANNEL_NOTIFICATION = "remote:notification"
+
 class AnodexViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = PairedHostStore(application)
     private val networkMonitor = NetworkMonitor(application)
+    private val notifications = Notifications(application).apply { ensureChannels() }
+
+    private val _needsNotificationPermission = MutableStateFlow(false)
+
+    /**
+     * True when something arrived that the user should have been told about, and
+     * the phone could not.
+     *
+     * Asked for at that moment rather than at launch: a permission prompt makes
+     * sense when there is a concrete thing it would have shown, and reads as
+     * arbitrary before that.
+     */
+    val needsNotificationPermission: StateFlow<Boolean> =
+        _needsNotificationPermission.asStateFlow()
+
+    fun notificationPermissionHandled() {
+        _needsNotificationPermission.value = false
+    }
 
     private val _paired = MutableStateFlow<PairedHost?>(null)
 
@@ -209,6 +232,14 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             )
             try {
                 val handshake = candidate.connect(AnodexSocket.Credential.DeviceKey(host.secret))
+
+                // Everything the desktop pushes that is not a chat token: run
+                // finished, task failed, something waiting on a human.
+                viewModelScope.launch {
+                    candidate.events.collect { event ->
+                        if (event.channel == CHANNEL_NOTIFICATION) onNotification(event.payload)
+                    }
+                }
 
                 // Tell the controller when this connection dies, rather than waiting
                 // for the user to discover it by typing into a dead socket.
@@ -479,6 +510,40 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         // controller's lifecycle does not depend on knowing that.
         controller.stop()
         super.onCleared()
+    }
+
+    /**
+     * Put a desktop notification on the phone's shade.
+     *
+     * An approval keeps a stable id so answering it at the computer replaces or
+     * clears this one, rather than leaving a dead notification that taps into
+     * nothing. Everything else gets its own id so a run finishing does not
+     * overwrite a task that failed.
+     */
+    private fun onNotification(payload: JsonElement?) {
+        val fields = payload as? JsonObject ?: return
+        val kind = NotificationKind.parse((fields["kind"] as? JsonPrimitive)?.content)
+        val title = (fields["title"] as? JsonPrimitive)?.content ?: return
+        val body = (fields["body"] as? JsonPrimitive)?.content.orEmpty()
+
+        val id = if (kind == NotificationKind.NEEDS_APPROVAL) {
+            Notifications.ID_APPROVAL
+        } else {
+            nextNotificationId++
+        }
+
+        if (!notifications.show(id, kind, title, body)) {
+            // Could not be shown - almost always an ungranted permission. Ask now,
+            // when there is a concrete thing it would have told them about.
+            _needsNotificationPermission.value = true
+        }
+    }
+
+    private var nextNotificationId = 100
+
+    /** Take the approval notification down once the prompt is gone. */
+    fun clearApprovalNotification() {
+        notifications.cancel(Notifications.ID_APPROVAL)
     }
 
     private fun hexToBytes(hex: String): ByteArray =

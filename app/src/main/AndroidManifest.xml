@@ -22,6 +22,13 @@
       android:required="false" so a device without a camera can still install the app - the
       camera is needed for the convenient path through pairing, not for the app to work.
     -->
+    <!--
+      Asked for the first time a notification would be shown, not at launch. It is a
+      convenience: the app works fully without it, and a phone that never grants it
+      simply has to be opened to see what happened.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
