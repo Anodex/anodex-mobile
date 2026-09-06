@@ -16,13 +16,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.ui.components.PrimaryButton
-import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 
@@ -46,9 +48,8 @@ fun ConversationsScreen(
     /** The project every new turn will run in. Null means plain chat. */
     activeProjectName: String? = null,
     onChooseProject: (() -> Unit)? = null,
-    onOpenAgents: (() -> Unit)? = null,
-    /** How many agent runs are stopped waiting for a human. */
-    waitingAgentCount: Int = 0,
+    /** Project id to name, for the group headings and the row tags. */
+    projectNames: Map<String, String> = emptyMap(),
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -62,18 +63,7 @@ fun ConversationsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Conversations", style = type.heading, color = colors.text)
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-                if (onOpenAgents != null) {
-                    // Labelled with the count when something is blocked: a run waiting
-                    // on a human is doing nothing at all, and that is worth showing
-                    // before the user has to go looking for it.
-                    SecondaryButton(
-                        label = if (waitingAgentCount > 0) "Agents ($waitingAgentCount)" else "Agents",
-                        onClick = onOpenAgents,
-                    )
-                }
-                PrimaryButton(label = "New", onClick = onNewChat)
-            }
+            PrimaryButton(label = "New", onClick = onNewChat)
         }
 
         // What a turn will actually run against, stated before it does. Without a
@@ -108,13 +98,24 @@ fun ConversationsScreen(
                 Centred("No conversations yet. Start one.", colors.textFaint)
 
             else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(conversations, key = { it.id }) { conversation ->
-                    ConversationRow(
-                        conversation = conversation,
-                        active = conversation.id == activeId,
-                        nowEpochMs = nowEpochMs,
-                        onClick = { onOpen(conversation.id) },
-                    )
+                for (group in groupConversations(conversations, activeId, projectNames)) {
+                    item(key = "group-${group.label}") { GroupLabel(group.label) }
+
+                    items(group.conversations, key = { it.id }) { conversation ->
+                        ConversationRow(
+                            conversation = conversation,
+                            active = conversation.id == activeId,
+                            nowEpochMs = nowEpochMs,
+                            // Only inside a project's own group is the tag
+                            // redundant, and there the heading already says it.
+                            projectTag = if (group.isProject) {
+                                null
+                            } else {
+                                conversation.projectId?.let { projectNames[it] }
+                            },
+                            onClick = { onOpen(conversation.id) },
+                        )
+                    }
                 }
             }
         }
@@ -127,6 +128,7 @@ private fun ConversationRow(
     active: Boolean,
     nowEpochMs: Long,
     onClick: () -> Unit,
+    projectTag: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -140,13 +142,21 @@ private fun ConversationRow(
             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
         verticalArrangement = Arrangement.spacedBy(Spacing.x1),
     ) {
-        Text(
-            text = conversation.title,
-            style = if (active) type.bodyEmphasis else type.body,
-            color = colors.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            if (projectTag != null) ProjectTag(projectTag)
+
+            Text(
+                text = conversation.title,
+                style = if (active) type.bodyEmphasis else type.body,
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
         Text(
             text = buildString {
                 append(relativeLastSeen(conversation.updatedAtEpochMs, nowEpochMs))
@@ -160,6 +170,110 @@ private fun ConversationRow(
             color = colors.textFaint,
         )
     }
+}
+
+/**
+ * One heading in the list.
+ *
+ * Sticky would be the fashionable choice; these groups are short enough that a
+ * heading pinned to the top would spend most of its life covering the row under it.
+ */
+@Composable
+private fun GroupLabel(label: String) {
+    val colors = AnodexTheme.colors
+    Text(
+        text = label.uppercase(),
+        style = AnodexTheme.type.badge,
+        color = colors.textFaint,
+        modifier = Modifier.padding(
+            start = Spacing.x4,
+            end = Spacing.x4,
+            top = Spacing.x4,
+            bottom = Spacing.x1,
+        ),
+    )
+}
+
+/** Which workspace a conversation belongs to, when the heading does not already say. */
+@Composable
+private fun ProjectTag(name: String) {
+    val colors = AnodexTheme.colors
+    Text(
+        text = name,
+        style = AnodexTheme.type.badge,
+        color = colors.accent,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .clip(Radii.sm)
+            .background(colors.accentSoft)
+            .padding(horizontal = Spacing.x2, vertical = 1.dp),
+    )
+}
+
+/** A heading and the conversations under it. */
+internal data class ConversationGroup(
+    val label: String,
+    val conversations: List<ConversationSummary>,
+    /** True when the heading is a project name, so its rows need no tag. */
+    val isProject: Boolean,
+)
+
+/**
+ * The list, in the order and shape the design sample calls for.
+ *
+ * A flat list sorted by time is technically correct and useless in practice: it puts
+ * a conversation that is editing real files next to one that is not, with nothing to
+ * tell them apart. Three kinds of group, in this order:
+ *
+ * 1. **Active now** — the one open on the computer, if there is one. It is the thing
+ *    the user came back to and it should not have to be found.
+ * 2. **One per project**, most recently touched first. These are the conversations
+ *    that can change files.
+ * 3. **Chats** — everything with no project. Talking, not working.
+ *
+ * Empty groups are never emitted: a heading with nothing under it reads as something
+ * having failed to load.
+ */
+internal fun groupConversations(
+    conversations: List<ConversationSummary>,
+    activeId: String?,
+    projectNames: Map<String, String>,
+): List<ConversationGroup> {
+    val groups = mutableListOf<ConversationGroup>()
+
+    val active = conversations.firstOrNull { it.id == activeId }
+    if (active != null) {
+        groups += ConversationGroup("Active now", listOf(active), isProject = false)
+    }
+
+    val rest = conversations.filter { it.id != activeId }
+
+    // Grouped by id, labelled by name. A project the phone has not heard of yet -
+    // one added on the computer since this list was fetched - still gets its own
+    // group rather than being dropped in with plain chats, which would be a lie.
+    val byProject = rest.filter { it.projectId != null }.groupBy { it.projectId!! }
+
+    for ((projectId, items) in byProject.entries.sortedByDescending { entry ->
+        entry.value.maxOf { it.updatedAtEpochMs }
+    }) {
+        groups += ConversationGroup(
+            label = projectNames[projectId] ?: "Project",
+            conversations = items.sortedByDescending { it.updatedAtEpochMs },
+            isProject = true,
+        )
+    }
+
+    val plain = rest.filter { it.projectId == null }
+    if (plain.isNotEmpty()) {
+        groups += ConversationGroup(
+            label = "Chats",
+            conversations = plain.sortedByDescending { it.updatedAtEpochMs },
+            isProject = false,
+        )
+    }
+
+    return groups
 }
 
 @Composable

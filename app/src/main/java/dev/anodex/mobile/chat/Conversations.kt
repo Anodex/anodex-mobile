@@ -14,6 +14,15 @@ data class ConversationSummary(
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
     val messageCount: Int,
+    /**
+     * The workspace this conversation belongs to, or null for plain chat.
+     *
+     * Carried so the list can be grouped by it. Which project a conversation runs
+     * against decides whether a turn edits real files, so a flat list sorted only by
+     * time puts "rewrite the save format" next to "weekend reading" with nothing to
+     * tell them apart.
+     */
+    val projectId: String? = null,
 )
 
 /**
@@ -76,6 +85,7 @@ class Conversations(private val socket: AnodexSocket) {
             updatedAtEpochMs = fields["updatedAt"]?.jsonPrimitive?.contentOrNull()
                 ?.toDoubleOrNull()?.toLong() ?: 0L,
             messageCount = messages,
+            projectId = fields["projectId"]?.jsonPrimitive?.contentOrNull(),
         )
     }
 
