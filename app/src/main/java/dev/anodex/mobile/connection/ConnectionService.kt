@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.app.Service
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.anodex.mobile.MainActivity
@@ -55,16 +56,41 @@ class ConnectionService : Service() {
         val connected = intent?.getBooleanExtra(EXTRA_CONNECTED, true) ?: true
 
         ensureChannel()
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            buildNotification(hostName, connected),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            } else {
-                0
-            },
-        )
+
+        // Never allowed to take the app down with it.
+        //
+        // `startForeground` throws for a whole family of reasons that depend on the
+        // Android version, the declared service type, which permissions happen to be
+        // granted, and whether the app was in the foreground at the moment it was
+        // called. This crashed the app on launch once already: the service was
+        // declared `connectedDevice`, which on Android 14 and later requires one of a
+        // set of prerequisite permissions this app has no business holding — so it
+        // threw `SecurityException`, the process died, and the next launch
+        // reconnected and did it again.
+        //
+        // This service is an optimisation. Losing it costs the process some
+        // resilience when backgrounded; letting it throw costs the whole app.
+        try {
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                buildNotification(hostName, connected),
+                // The constant only exists from API 34. Below that the type is
+                // taken from the manifest and this argument is ignored anyway.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                } else {
+                    0
+                },
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "could not go to the foreground; carrying on without it", e)
+            // A started service that never reaches the foreground is killed by the
+            // system anyway, and an ongoing notification for something not running
+            // would be a lie. Stand down cleanly instead.
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // Not restarted with a null intent if the system kills us: without the host
         // name there is nothing truthful to put in the notification, and the app will
@@ -119,6 +145,7 @@ class ConnectionService : Service() {
     }
 
     companion object {
+        private const val TAG = "ConnectionService"
         private const val CHANNEL_ID = "connection"
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_HOST = "host"
@@ -147,7 +174,7 @@ class ConnectionService : Service() {
                 } else {
                     context.startService(intent)
                 }
-            }
+            }.onFailure { Log.w(TAG, "could not start the connection service", it) }
             // Swallowed on purpose. A refused start means the app is backgrounded and
             // the process may be killed later — which is the situation this improves,
             // not one it is required for. Crashing the app over it would be worse

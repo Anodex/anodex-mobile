@@ -10,9 +10,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +35,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +51,7 @@ import dev.anodex.mobile.ui.components.AppTab
 import dev.anodex.mobile.ui.components.BottomTabs
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
@@ -57,6 +65,7 @@ import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
 
@@ -71,11 +80,82 @@ private const val APPROVAL_WINDOW_SECONDS = 5 * 60
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Installed before anything else runs, so a crash during start-up is caught
+        // too. Start-up is exactly when the crashes that matter happen: a phone that
+        // closes itself the moment it is opened cannot be debugged any other way.
+        CrashLog.install(this)
         enableEdgeToEdge()
+
+        val crash = CrashLog.read(this)
+
         setContent {
             AnodexTheme {
-                AnodexApp()
+                if (crash != null) {
+                    CrashReportScreen(
+                        report = crash,
+                        onDismiss = {
+                            CrashLog.clear(this)
+                            recreate()
+                        },
+                    )
+                } else {
+                    AnodexApp()
+                }
             }
+        }
+    }
+}
+
+/**
+ * What happened last time, in front of the person who can tell somebody.
+ *
+ * Shown once, then cleared. It is deliberately the first thing after a crash rather
+ * than something buried in a settings page: a crash loop gives the user no path to a
+ * settings page, and the report is worthless if it is never read.
+ */
+@Composable
+private fun CrashReportScreen(report: String, onDismiss: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val clipboard = LocalClipboardManager.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.bgApp)
+            .safeDrawingPadding()
+            .padding(Spacing.x4),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        Text("Anodex closed unexpectedly", style = type.heading, color = colors.text)
+        Text(
+            text = "This is what went wrong. Copy it and send it on \u2014 it is the only " +
+                "record of the crash.",
+            style = type.body,
+            color = colors.textMuted,
+        )
+
+        Text(
+            text = report,
+            style = type.mono,
+            color = colors.text,
+            softWrap = false,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(Radii.md)
+                .background(colors.bgSurface2)
+                .verticalScroll(rememberScrollState())
+                .horizontalScroll(rememberScrollState())
+                .padding(Spacing.x3),
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x3)) {
+            PrimaryButton(
+                label = "Copy",
+                onClick = { clipboard.setText(AnnotatedString(report)) },
+            )
+            SecondaryButton(label = "Continue", onClick = onDismiss)
         }
     }
 }
