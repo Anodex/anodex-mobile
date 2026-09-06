@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import dev.anodex.mobile.connection.ConnectionController
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.NetworkMonitor
+import dev.anodex.mobile.connection.Reachability
+import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.PairedHostRef
 import android.os.Build
 import android.util.Base64
@@ -129,9 +131,31 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 _manualState.value = ManualPairState.Confirming(humanFingerprintOf(fingerprint))
             } catch (e: Exception) {
                 _manualState.value = ManualPairState.Entering
-                _pairingError.value =
-                    e.message ?: "Nothing answered at that address. Check it and try again."
+                _pairingError.value = explainProbeFailure(address, e)
             }
+        }
+    }
+
+    /**
+     * Say why a connection attempt could not have worked, when that is knowable.
+     *
+     * "Nothing answered" is true whether the computer is asleep, the port is wrong,
+     * or the phone is on a different network — three problems, three different
+     * remedies, one indistinguishable symptom. The subnet check is a heuristic and
+     * is only ever used to explain a failure that already happened.
+     */
+    private fun explainProbeFailure(address: String, error: Exception): String {
+        val verdict = Reachability.verdictFor(address, localIPv4Addresses())
+        return when (verdict) {
+            Reachability.Verdict.DIFFERENT_SUBNET ->
+                "This phone is on a different network than $address, so it cannot reach your " +
+                    "computer. If your router has separate 2.4GHz and 5GHz names, join the one " +
+                    "your computer is on."
+
+            else ->
+                error.message
+                    ?: "Nothing answered at that address. Check the computer is awake and that " +
+                    "remote access is still on."
         }
     }
 
