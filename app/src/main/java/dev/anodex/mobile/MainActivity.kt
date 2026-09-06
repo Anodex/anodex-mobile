@@ -36,6 +36,7 @@ import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
+import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
 
@@ -71,13 +72,27 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     }
 
     val chat by viewModel.chat.collectAsStateWithLifecycle()
+    val pairingError by viewModel.pairingError.collectAsStateWithLifecycle()
+    var scanning by remember { mutableStateOf(false) }
+
+    if (scanning) {
+        BackHandler { scanning = false }
+        ScanScreen(
+            onScanned = { payload ->
+                scanning = false
+                viewModel.completePairing(payload)
+            },
+            onCancel = { scanning = false },
+            pairingError = pairingError,
+        )
+        return
+    }
 
     when (val current = state) {
         ConnectionState.Unpaired -> NotPairedScreen(
-            // Scanning needs a camera and a barcode reader, which is the last piece of the
-            // pairing flow. Until then the screen says so rather than offering a dead button.
-            onScan = null,
+            onScan = { scanning = true },
             onPreviewDesign = { showingDesignPreview = true },
+            error = pairingError,
         )
 
         is ConnectionState.Offline -> OfflineScreen(
