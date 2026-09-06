@@ -26,7 +26,7 @@ import org.junit.Test
  */
 class TransportDiagnosisTest {
 
-    private val address = "10.0.0.153"
+    private val address = "192.168.1.40"
     private val port = 47800
 
     private fun diagnose(error: Throwable?) = diagnoseConnectionFailure(error, address, port)
