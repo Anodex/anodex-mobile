@@ -64,8 +64,24 @@ android {
             if (hasKeystore) signingConfig = signingConfigs.getByName("release")
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Minification is off, and that is a decision rather than an oversight.
+            //
+            // `proguard-rules.pro` is empty. kotlinx.serialization resolves serializers
+            // reflectively, so shrinking without keep rules strips them and the app fails
+            // at runtime — parsing every frame off the socket — which is precisely the
+            // kind of break that compiles, passes unit tests, and only shows up on a
+            // phone. There is no Android device here to catch it.
+            //
+            // The reason to build release at all is that debug builds are *debuggable*:
+            // anyone with USB access and developer mode can attach to the process and read
+            // its memory, including the device key after it is decrypted. That is the real
+            // security difference between the two variants, and it costs nothing to fix.
+            //
+            // Turning minification on is worth doing later, with real keep rules and a
+            // device to test on. Shipping it blind would trade a small hardening for a
+            // good chance of a broken app.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (hasKeystore) signingConfig = signingConfigs.getByName("release")
         }
