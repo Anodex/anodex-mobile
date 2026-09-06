@@ -34,6 +34,11 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # Gradle prints BUILD SUCCESSFUL for a test task served FROM-CACHE without running anything,
+      # and for one with no tests at all. Read the report instead of trusting the exit code.
+      - name: Report what the tests covered
+        run: python3 tools/summarize_tests.py
+
       # The APK every run produces, kept so it can be sideloaded without a local Android
       # toolchain. This is the only way to see the app on a real screen until someone on the
       # project has Android Studio; GitHub keeps it for 90 days.
@@ -44,8 +49,8 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Upload test report on failure
-        if: failure()
+      - name: Upload test report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-report
