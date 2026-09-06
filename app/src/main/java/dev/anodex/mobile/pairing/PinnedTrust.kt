@@ -98,6 +98,11 @@ fun pinnedSocketFactory(pinnedSha256: ByteArray): SSLSocketFactory {
  */
 fun humanFingerprintOf(sha256: ByteArray): String = sha256
     .take(PairingPayload.FINGERPRINT_BYTES)
-    .joinToString(" ") { "%02X".format(it) }
-    .chunked(15)
-    .joinToString("  ")
+    // Group the bytes, not the rendered string. Chunking the string splits mid-byte and puts a
+    // leading space inside a group, which reads as a different fingerprint to anyone comparing
+    // two screens character by character — which is the entire job of this string.
+    .chunked(BYTES_PER_GROUP)
+    .joinToString("  ") { group -> group.joinToString(" ") { "%02X".format(it) } }
+
+/** Bytes per visual group in a displayed fingerprint. */
+private const val BYTES_PER_GROUP = 5

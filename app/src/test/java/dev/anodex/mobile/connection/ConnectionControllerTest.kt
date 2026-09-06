@@ -45,6 +45,8 @@ class ConnectionControllerTest {
 
         assertEquals(ConnectionState.Connected(host.identity, model), controller.state.value)
         assertTrue(seen.none { it is ConnectionState.Offline })
+
+        controller.stop()
     }
 
     @Test
@@ -67,6 +69,8 @@ class ConnectionControllerTest {
             "offline once grace elapses, was ${controller.state.value}",
             controller.state.value is ConnectionState.Offline,
         )
+
+        controller.stop()
     }
 
     @Test
@@ -91,6 +95,8 @@ class ConnectionControllerTest {
 
         assertEquals(ConnectionState.Connected(host.identity, model), controller.state.value)
         assertTrue("never went offline, saw $seen", seen.none { it is ConnectionState.Offline })
+
+        controller.stop()
     }
 
     @Test
@@ -121,6 +127,8 @@ class ConnectionControllerTest {
         advanceUntilIdle()
 
         assertEquals(ConnectionState.Connected(host.identity, model), controller.state.value)
+
+        controller.stop()
     }
 
     @Test
@@ -149,6 +157,8 @@ class ConnectionControllerTest {
             ConnectionState.Connected(host.identity, model),
             controller.state.value,
         )
+
+        controller.stop()
     }
 
     @Test
@@ -170,6 +180,8 @@ class ConnectionControllerTest {
 
         assertEquals(ConnectionState.Unpaired, controller.state.value)
         assertEquals("no attempts after unpairing", afterUnpair, attempts)
+
+        controller.stop()
     }
 
     @Test
@@ -196,6 +208,8 @@ class ConnectionControllerTest {
 
         assertTrue("retried after the drop", attempts > beforeDrop)
         assertTrue(controller.state.value is ConnectionState.Offline)
+
+        controller.stop()
     }
 
     @Test
@@ -210,5 +224,7 @@ class ConnectionControllerTest {
 
         val offline = controller.state.value as ConnectionState.Offline
         assertTrue("the wrong-network explanation is shown", offline.networkChanged)
+
+        controller.stop()
     }
 }
