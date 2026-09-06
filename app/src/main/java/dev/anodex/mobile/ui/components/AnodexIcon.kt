@@ -58,7 +58,12 @@ fun AnodexIcon(
             join = StrokeJoin.Round,
         )
         scale(factor, pivot = Offset.Zero) {
-            for (path in paths) drawPath(path, tint, style = stroke)
+            for (path in paths) {
+                // A couple of the desktop's glyphs are solid rather than drawn —
+                // stop is a filled square, because at 15dp an outlined one reads as
+                // a button border rather than a symbol.
+                if (icon.filled) drawPath(path, tint) else drawPath(path, tint, style = stroke)
+            }
         }
     }
 }
@@ -72,7 +77,7 @@ private const val STROKE_WIDTH = 2f
  * Split into separate strings exactly as the desktop splits them into separate
  * `<path>` elements, so a diff against `Icon.tsx` is line-for-line.
  */
-enum class AnodexIcon(val strokes: List<String>) {
+enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
     /** Speech bubble with the Anodex corner cut. Chats. */
     CHAT(listOf("M3 5a2 2 0 0 1 2-2h11l5 5v7a2 2 0 0 1-2 2H7l-4 4V5z")),
 
@@ -92,6 +97,31 @@ enum class AnodexIcon(val strokes: List<String>) {
             "M2 7a2 2 0 0 1 2-2h11.5L22 10.5v6.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7z",
             "m3 6.4 9 6.4 5.2-5.2",
         )
+    ),
+
+    /**
+     * The paper plane, tail stroke and all, exactly as the desktop draws it.
+     *
+     * Every other provider uses an arrow here and Anodex does not, on either end.
+     * Copying the desktop's path rather than reaching for an arrow is the whole
+     * point of this file.
+     */
+    SEND(
+        listOf(
+            "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 " +
+                "6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z",
+            "m21.854 2.147-10.94 10.939",
+        )
+    ),
+
+    /**
+     * A filled rounded square. `Icon.tsx` draws it as `<rect rx="2">` with an
+     * explicit fill and no stroke, written out here as arcs because a path parser
+     * has no rectangle primitive.
+     */
+    STOP(
+        listOf("M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"),
+        filled = true,
     ),
 
     /** A screen on a stand — the computer this phone is driving. */
