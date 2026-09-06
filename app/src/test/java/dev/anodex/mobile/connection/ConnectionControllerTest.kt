@@ -1,6 +1,7 @@
 package dev.anodex.mobile.connection
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -79,7 +80,9 @@ class ConnectionControllerTest {
         )
 
         val seen = mutableListOf<ConnectionState>()
-        val watcher = kotlinx.coroutines.launch { controller.state.collect { seen += it } }
+        // backgroundScope is cancelled by runTest when the test body finishes, so a collector
+        // started here cannot outlive the test or stall it.
+        backgroundScope.launch { controller.state.collect { seen += it } }
 
         controller.pair(host)
         advanceTimeBy(2.seconds)
@@ -88,7 +91,6 @@ class ConnectionControllerTest {
 
         assertEquals(ConnectionState.Connected(host.identity, model), controller.state.value)
         assertTrue("never went offline, saw $seen", seen.none { it is ConnectionState.Offline })
-        watcher.cancel()
     }
 
     @Test
