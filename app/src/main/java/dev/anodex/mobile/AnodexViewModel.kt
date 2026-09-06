@@ -15,6 +15,8 @@ import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.PairedHostRef
 import android.os.Build
 import android.util.Base64
+import dev.anodex.mobile.agents.AgentRun
+import dev.anodex.mobile.agents.Agents
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.chat.ConversationSummary
@@ -96,6 +98,50 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private var conversationReader: Conversations? = null
 
     private var projectClient: Projects? = null
+    private var agentClient: Agents? = null
+
+    private val _agentRuns = MutableStateFlow<List<AgentRun>>(emptyList())
+
+    /** Agent runs on the computer, anything waiting on a human first. */
+    val agentRuns: StateFlow<List<AgentRun>> = _agentRuns.asStateFlow()
+
+    private val _agentsLoading = MutableStateFlow(false)
+    val agentsLoading: StateFlow<Boolean> = _agentsLoading.asStateFlow()
+
+    private val _busyRunId = MutableStateFlow<String?>(null)
+    val busyRunId: StateFlow<String?> = _busyRunId.asStateFlow()
+
+    fun refreshAgentRuns() {
+        val client = agentClient ?: return
+        viewModelScope.launch {
+            _agentsLoading.value = true
+            _agentRuns.value = runCatching { client.list() }.getOrDefault(emptyList())
+            _agentsLoading.value = false
+        }
+    }
+
+    /**
+     * Answer or end a run.
+     *
+     * Re-reads the list afterwards rather than guessing the new state: approving a
+     * plan makes the desktop start work, and what the run becomes is its business
+     * to report, not the phone's to predict.
+     */
+    private fun actOnRun(runId: String, action: suspend (Agents) -> Unit) {
+        val client = agentClient ?: return
+        _busyRunId.value = runId
+        viewModelScope.launch {
+            runCatching { action(client) }
+            _busyRunId.value = null
+            refreshAgentRuns()
+        }
+    }
+
+    fun approvePlan(runId: String) = actOnRun(runId) { it.approvePlan(runId) }
+
+    fun rejectPlan(runId: String) = actOnRun(runId) { it.rejectPlan(runId) }
+
+    fun stopAgentRun(runId: String) = actOnRun(runId) { it.stop(runId) }
 
     private val _projects = MutableStateFlow(ProjectsState(emptyList(), null))
 
@@ -253,10 +299,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 socket = candidate
                 conversationReader = Conversations(candidate)
                 projectClient = Projects(candidate)
+                agentClient = Agents(candidate)
                 _chat.value = ChatSession(candidate, viewModelScope)
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
                 refreshProjects()
+                refreshAgentRuns()
 
                 // Refreshed every time, so a desktop that gains a VPN after pairing
                 // becomes reachable from away without the user doing anything. The

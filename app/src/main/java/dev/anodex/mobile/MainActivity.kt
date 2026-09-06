@@ -38,6 +38,8 @@ import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.agents.AgentRun
+import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.ConversationsScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
@@ -171,6 +173,11 @@ private fun ConnectedScaffold(
     val type = AnodexTheme.type
     var showingConversations by remember { mutableStateOf(false) }
     var choosingProject by remember { mutableStateOf(false) }
+    var showingAgents by remember { mutableStateOf(false) }
+
+    val agentRuns by viewModel.agentRuns.collectAsStateWithLifecycle()
+    val agentsLoading by viewModel.agentsLoading.collectAsStateWithLifecycle()
+    val busyRunId by viewModel.busyRunId.collectAsStateWithLifecycle()
 
     val projects by viewModel.projects.collectAsStateWithLifecycle()
     val projectBusy by viewModel.projectBusy.collectAsStateWithLifecycle()
@@ -178,6 +185,26 @@ private fun ConnectedScaffold(
 
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val loadingConversations by viewModel.loadingConversations.collectAsStateWithLifecycle()
+
+    if (showingAgents) {
+        BackHandler { showingAgents = false }
+        AgentsScreen(
+            runs = agentRuns,
+            loading = agentsLoading,
+            busyRunId = busyRunId,
+            onApprove = viewModel::approvePlan,
+            onReject = viewModel::rejectPlan,
+            onStop = viewModel::stopAgentRun,
+            onOpenConversation = {
+                viewModel.openConversation(it)
+                showingAgents = false
+                showingConversations = false
+            },
+            onClose = { showingAgents = false },
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
 
     if (choosingProject) {
         BackHandler { choosingProject = false }
@@ -207,6 +234,11 @@ private fun ConnectedScaffold(
                 viewModel.newConversation()
                 showingConversations = false
             },
+            onOpenAgents = {
+                viewModel.refreshAgentRuns()
+                showingAgents = true
+            },
+            waitingAgentCount = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW },
             modifier = Modifier.safeDrawingPadding(),
             activeProjectName = projects.active?.name,
             onChooseProject = {
