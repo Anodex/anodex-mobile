@@ -1,5 +1,11 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +36,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.ui.components.ToolRow
+import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
@@ -155,18 +163,59 @@ private fun MessageRow(message: ChatMessage) {
         } else {
             // Assistant turns are unbubbled and full width, as on the desktop: the
             // reply is the page, not a card sitting on it.
-            Text(
-                text = message.text.ifEmpty { if (message.streaming) "…" else "" },
-                style = type.body,
-                color = if (message.streaming && message.text.isEmpty()) {
-                    colors.textFaint
-                } else {
-                    colors.text
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column(Modifier.fillMaxWidth()) {
+                // Tools first, in the order they ran — the reply is the conclusion,
+                // and the work that produced it reads better above it than after.
+                for (tool in message.tools) {
+                    ToolRow(tool)
+                }
+
+                if (message.text.isNotEmpty()) {
+                    Text(
+                        text = message.text,
+                        style = type.body,
+                        color = colors.text,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else if (message.streaming && message.tools.isEmpty()) {
+                    // Nothing has arrived yet and nothing is being reported. Without
+                    // this the screen is simply blank, which reads as the app having
+                    // frozen rather than the model having started.
+                    ThinkingLine()
+                }
+            }
         }
     }
+}
+
+/**
+ * The gap between sending and the first token.
+ *
+ * A shimmer rather than a spinner: it is the same "something is happening, nothing
+ * is wrong" signal the desktop uses for live activity, and it stops the moment a
+ * token lands.
+ */
+@Composable
+private fun ThinkingLine() {
+    val colors = AnodexTheme.colors
+    val reducedMotion = LocalReducedMotion.current
+
+    val transition = rememberInfiniteTransition(label = "thinking")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "thinkingAlpha",
+    )
+
+    Text(
+        text = "Thinking…",
+        style = AnodexTheme.type.body,
+        color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),
+    )
 }
 
 @Composable

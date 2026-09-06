@@ -18,6 +18,24 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.UUID
 
+/**
+ * One tool the model ran, collapsed to a line.
+ *
+ * On a phone the fact that a file was read matters; its 318 lines do not. The
+ * desktop shows the full card and this shows the fact — which is also why a
+ * finished call keeps its place in the transcript rather than disappearing: the
+ * shape of a turn is most of what makes it readable later.
+ */
+data class ToolActivity(
+    val id: String,
+    val name: String,
+    val title: String,
+    val detail: String?,
+    val status: Status,
+) {
+    enum class Status { RUNNING, DONE, FAILED }
+}
+
 /** One turn in the transcript. */
 data class ChatMessage(
     val id: String,
@@ -25,6 +43,8 @@ data class ChatMessage(
     val text: String,
     /** True while tokens are still arriving for this message. */
     val streaming: Boolean = false,
+    /** Tools this turn ran, in the order they were called. */
+    val tools: List<ToolActivity> = emptyList(),
 ) {
     enum class Role { USER, ASSISTANT }
 }
@@ -212,6 +232,13 @@ class ChatSession(
                 appendToken(payload["token"]?.jsonPrimitive?.content ?: return)
             }
 
+            CHANNEL_ACTIVITY -> {
+                val payload = event.payload?.jsonObject ?: return
+                if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
+                val call = payload["call"]?.jsonObject ?: return
+                onToolCall(call)
+            }
+
             CHANNEL_CONFIRM_REQUEST -> {
                 val request = parseToolApproval(event.payload) ?: return
                 // Prompts for other conversations belong to whoever opened them.
@@ -230,6 +257,44 @@ class ChatSession(
                 if (cancelledId == null || cancelledId == _approval.value?.id) {
                     _approval.value = null
                 }
+            }
+        }
+    }
+
+    /**
+     * Fold a tool call into the turn being streamed.
+     *
+     * Matched by id and replaced in place, because the desktop sends the same call
+     * again as it progresses - running, then done. Appending each update instead
+     * would turn one file read into three identical-looking lines.
+     */
+    private fun onToolCall(call: kotlinx.serialization.json.JsonObject) {
+        fun field(key: String) = (call[key] as? JsonPrimitive)?.content
+
+        val id = field("id") ?: return
+        val activity = ToolActivity(
+            id = id,
+            name = field("name") ?: "tool",
+            title = field("title") ?: field("name") ?: "Ran a tool",
+            detail = field("detail")?.takeIf { it.isNotBlank() },
+            status = when (field("status")) {
+                "running", "pending" -> ToolActivity.Status.RUNNING
+                "error", "failed", "denied" -> ToolActivity.Status.FAILED
+                else -> ToolActivity.Status.DONE
+            },
+        )
+
+        _messages.value = _messages.value.map { message ->
+            if (message.role == ChatMessage.Role.ASSISTANT && message.streaming) {
+                val existing = message.tools.indexOfFirst { it.id == id }
+                val tools = if (existing >= 0) {
+                    message.tools.toMutableList().apply { this[existing] = activity }
+                } else {
+                    message.tools + activity
+                }
+                message.copy(tools = tools)
+            } else {
+                message
             }
         }
     }
@@ -320,6 +385,7 @@ class ChatSession(
     private companion object {
         const val CHANNEL_SEND = "chat:send"
         const val CHANNEL_STREAM = "chat:stream"
+        const val CHANNEL_ACTIVITY = "tools:activity"
         const val CHANNEL_CONFIRM_REQUEST = "tools:confirm-request"
         const val CHANNEL_CONFIRM_CANCELLED = "tools:confirm-cancelled"
         const val CHANNEL_CONFIRM_RESPONSE = "tools:confirm-response"
