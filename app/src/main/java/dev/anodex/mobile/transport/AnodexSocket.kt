@@ -43,6 +43,20 @@ class AnodexSocket(
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Result<JsonElement?>>>()
     private var socket: WebSocket? = null
 
+    /**
+     * Called once when this connection ends for any reason other than [close].
+     *
+     * Without it a dropped socket is invisible: the app goes on showing a healthy
+     * connection until the user types something, and only then discovers the
+     * computer has been unreachable for the last ten minutes. The controller owns
+     * what to do about it - this only reports that it happened.
+     */
+    var onDropped: (() -> Unit)? = null
+
+    /** Set by [close] so a deliberate teardown is not reported as a drop. */
+    @Volatile
+    private var closing = false
+
     private val _events = MutableSharedFlow<ServerFrame.Event>(
         replay = 0,
         extraBufferCapacity = 256,
@@ -114,6 +128,7 @@ class AnodexSocket(
     }
 
     fun close() {
+        closing = true
         socket?.close(NORMAL_CLOSURE, null)
         socket = null
         failPending(IllegalStateException("The connection closed."))
@@ -170,11 +185,25 @@ class AnodexSocket(
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (!handshake.isCompleted) handshake.complete(Result.failure(t))
             failPending(t)
+            reportDropped()
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             failPending(IllegalStateException("The connection closed: $reason"))
+            reportDropped()
         }
+    }
+
+    /**
+     * Report a drop exactly once, and never for a teardown we asked for.
+     *
+     * OkHttp can deliver both onFailure and onClosed for one dying socket, and a
+     * second report would restart a reconnect loop that is already running.
+     */
+    private fun reportDropped() {
+        if (closing) return
+        closing = true
+        onDropped?.invoke()
     }
 
     private fun completeHandshake(serverVersion: String, build: () -> Handshake) {

@@ -210,6 +210,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val handshake = candidate.connect(AnodexSocket.Credential.DeviceKey(host.secret))
 
+                // Tell the controller when this connection dies, rather than waiting
+                // for the user to discover it by typing into a dead socket.
+                candidate.onDropped = {
+                    if (socket === candidate) {
+                        _chat.value = null
+                        controller.onDisconnected(host)
+                    }
+                }
+
                 socket = candidate
                 conversationReader = Conversations(candidate)
                 projectClient = Projects(candidate)
