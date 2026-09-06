@@ -52,8 +52,14 @@ fun AgentsScreen(
     onReject: (String) -> Unit,
     onStop: (String) -> Unit,
     onOpenConversation: (String) -> Unit,
-    onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Dismiss, when this is shown over something rather than as its own tab.
+     *
+     * Null in the app, where the tab bar is how you leave and a Close button
+     * would be a second, worse answer to the same question.
+     */
+    onClose: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -83,7 +89,9 @@ fun AgentsScreen(
             }
         }
 
-        SecondaryButton(label = "Close", onClick = onClose, modifier = Modifier.padding(Spacing.x4))
+        if (onClose != null) {
+            SecondaryButton(label = "Close", onClick = onClose, modifier = Modifier.padding(Spacing.x4))
+        }
     }
 }
 
@@ -272,7 +280,6 @@ private fun PreviewAgents() {
             onReject = {},
             onStop = {},
             onOpenConversation = {},
-            onClose = {},
         )
     }
 }
