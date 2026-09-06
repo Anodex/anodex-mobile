@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -72,7 +73,7 @@ private fun ConnectionStateHarness() {
                 host = host,
                 model = ModelStatus("Qwen3-30B", contextUsedTokens = 7_600, contextTotalTokens = 8_192),
             ),
-            ConnectionState.Reconnecting(host, attempt = 2),
+            ConnectionState.Reconnecting(host, attempt = 2, lastSeenEpochMs = null),
             ConnectionState.Offline(
                 host = host,
                 lastSeenEpochMs = System.currentTimeMillis() - 14 * 60 * 1000,
@@ -110,10 +111,12 @@ private fun ConnectionStateHarness() {
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    AnodexMark(size = 64.dp)
                     Text(
                         text = "Design system harness",
                         style = type.heading,
                         color = colors.text,
+                        modifier = Modifier.padding(top = Spacing.x4),
                     )
                     Text(
                         text = "Tap to step through the four connection states. " +

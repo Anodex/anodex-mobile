@@ -1,6 +1,17 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+  The launcher icon: Anodex's own mark on the near-black field it uses everywhere.
+
+  The art is not redrawn here. It is the desktop app's `src/renderer/assets/title-logo.png` — the
+  same "A" AnodexLogo shows on the app's chrome — trimmed, scaled to 60% of the 108dp canvas so
+  launcher masks cannot crop it, and exported per density. Regenerate rather than edit by hand if
+  the brand mark ever changes.
+
+  The monochrome layer is a flat silhouette taken from the mark's alpha, because themed icons are
+  tinted from the user's wallpaper and a violet-to-blue gradient survives that badly. Keeping the
+  alpha keeps the cut-out counter of the A, which is what makes it recognisable at a glance.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
 </adaptive-icon>
