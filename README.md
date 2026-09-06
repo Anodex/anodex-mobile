@@ -28,19 +28,33 @@ are likely to have, including several that look open and are not.
 | 4     | Chat + tool confirmations                                  | not started     |
 | 5–8   | Agent, Critical Thinking, Workspace, Email                 | not started     |
 
-What is here now, all of Phase 3's groundwork:
+What is here now — Phase 3 groundwork, with no transport yet:
 
-- `ui/theme/` — Anodex's design tokens ported from the desktop's `styles/theme.css` and
-  `styles/themes/`. Colours are exact; typography is deliberately **re-stepped** for a phone
-  rather than copied, and `Typography.kt` explains why at length.
-- `connection/ConnectionState.kt` — the four connection states. Not two: the `Reconnecting` grace
-  period is what stops a Wi-Fi handoff from slamming the user between a full-screen offline
-  takeover and the normal UI.
-- `ui/components/ConnectionHeader.kt` — which machine, which model, how full its context is.
-- `ui/screens/OfflineScreen.kt` — because the phone caches nothing, this is the screen users see
-  most often after the chat itself, so it is designed rather than defaulted.
-- `MainActivity.kt` — a temporary harness that steps through the states so the tokens can be
-  checked on a real screen. Delete it when the real state holder lands.
+**The design system** (`ui/theme/`) ported from the desktop's `styles/theme.css` and
+`styles/themes/`. Colours are exact. Typography is deliberately **re-stepped** for a phone rather
+than copied, and `Typography.kt` explains why at length. The launcher icon is Anodex's real mark,
+regenerated from the desktop's own asset by `tools/generate_icons.py` — never redrawn by hand.
+
+**The connection model**, which is the app's top-level state because the phone caches nothing:
+
+- `connection/ConnectionReducer.kt` — a pure function over `(state, event, now)`. What a fact
+  *means*.
+- `connection/ConnectionController.kt` — the grace timer and the reconnect backoff. When to *act*.
+  Split from the reducer so the timing is testable in virtual time instead of by standing in a lift
+  with a phone.
+- `connection/NetworkMonitor.kt` — whether the phone is on the network it paired on, derived from
+  routing properties so it costs no location permission.
+
+**Pairing storage** (`pairing/`) — the paired secret encrypted under a non-exportable Android
+Keystore key. This is the entire local persistence story; see the note in `PairedHost.kt` before
+adding a field to it.
+
+**Screens** — `NotPairedScreen`, `OfflineScreen`, `ConnectionHeader`. The offline screen gets real
+design attention because a phone that caches nothing shows it more than anything except the chat.
+
+A design harness lives behind a tap on the unpaired screen, since there is no transport and
+therefore no way to reach the connected states on a device. It is scaffolding; delete it when
+pairing and the transport are real.
 
 ## Building
 
