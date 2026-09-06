@@ -26,37 +26,48 @@ android {
     }
 
     /**
-     * One fixed key for every preview build, on every machine and every CI runner.
+     * The release key, supplied by CI and never committed.
      *
-     * Without this, Gradle signs debug builds with an auto-generated keystore, and a
-     * fresh CI runner generates a fresh one every single run. Android refuses to
-     * install an APK over one signed by a different key, so every update meant
-     * uninstalling first - and uninstalling wipes the app's storage, which is where
-     * the pairing lives. Every single update was silently costing a re-pair.
+     * Android identifies an app by its signing key: it refuses to install a build
+     * signed by a different one, which is the only thing standing between a user and
+     * a hostile APK claiming to be an update. That protection is worth exactly as
+     * much as the key's secrecy, so with the repository public the key cannot live
+     * in it. CI decodes it from `ANODEX_KEYSTORE_BASE64` into `keystore/` at build
+     * time; `.gitignore` keeps it out.
      *
-     * The password is the Android debug convention and is deliberately not a secret:
-     * this key exists to make preview builds installable over each other, not to
-     * establish authenticity. A real release key would live in CI secrets and would
-     * never be committed - see keystore/README.md.
+     * An earlier preview key *was* committed, deliberately, to stop every CI build
+     * producing an APK that would not install over the last one. That was the right
+     * trade while the repository was private and builds were handed over one at a
+     * time. It stops being the right trade the moment anyone can read the key, which
+     * is why this replaced it before the repository was published.
      */
+    val keystoreFile = rootProject.file("keystore/anodex-release.jks")
+    val hasKeystore = keystoreFile.exists()
+
     signingConfigs {
-        create("preview") {
-            storeFile = rootProject.file("keystore/anodex-preview.jks")
-            storePassword = "android"
-            keyAlias = "anodex-preview"
-            keyPassword = "android"
+        if (hasKeystore) {
+            create("release") {
+                storeFile = keystoreFile
+                storePassword = System.getenv("ANODEX_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANODEX_KEY_ALIAS") ?: "anodex"
+                keyPassword = System.getenv("ANODEX_KEYSTORE_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("preview")
+            // Falls back to Gradle's own debug key when the release key is absent,
+            // so a checkout with no secrets still builds and tests. Such a build is
+            // not installable over a released one, which is correct: it was not
+            // signed by us.
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("preview")
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
         }
     }
 
