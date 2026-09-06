@@ -58,7 +58,12 @@ class AnodexSocket(
     private val handshake = CompletableDeferred<Result<Handshake>>()
 
     /** What the desktop said when the connection was accepted. */
-    data class Handshake(val deviceId: String, val issuedDeviceKey: String?)
+    data class Handshake(
+        val deviceId: String,
+        val issuedDeviceKey: String?,
+        /** Where else this machine can be reached. Stored so a later reconnect can try them. */
+        val addresses: List<String> = emptyList(),
+    )
 
     /**
      * Open the socket and complete the handshake.
@@ -130,11 +135,11 @@ class AnodexSocket(
         override fun onMessage(webSocket: WebSocket, text: String) {
             when (val frame = parseServerFrame(text)) {
                 is ServerFrame.Welcome -> completeHandshake(frame.protocolVersion) {
-                    Handshake(frame.deviceId, issuedDeviceKey = null)
+                    Handshake(frame.deviceId, null, frame.addresses)
                 }
 
                 is ServerFrame.Paired -> completeHandshake(frame.protocolVersion) {
-                    Handshake(frame.deviceId, issuedDeviceKey = frame.deviceKey)
+                    Handshake(frame.deviceId, frame.deviceKey, frame.addresses)
                 }
 
                 is ServerFrame.CallResult -> {

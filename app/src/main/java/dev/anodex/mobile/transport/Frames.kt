@@ -29,7 +29,17 @@ sealed interface ServerFrame {
     /** Authenticated with an existing pairing. */
     @Serializable
     @SerialName("welcome")
-    data class Welcome(val deviceId: String, val protocolVersion: String) : ServerFrame
+    data class Welcome(
+        val deviceId: String,
+        val protocolVersion: String,
+        /**
+         * Every address the desktop can be reached at, best first.
+         *
+         * Refreshed on every connection, so a machine that gains a mesh VPN after
+         * pairing becomes reachable from away without the user re-pairing.
+         */
+        val addresses: List<String> = emptyList(),
+    ) : ServerFrame
 
     /** Pairing completed. [deviceKey] is the long-lived credential — store it, never log it. */
     @Serializable
@@ -38,6 +48,7 @@ sealed interface ServerFrame {
         val deviceKey: String,
         val deviceId: String,
         val protocolVersion: String,
+        val addresses: List<String> = emptyList(),
     ) : ServerFrame
 
     /** A reply to one invoke. */
