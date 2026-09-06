@@ -44,8 +44,12 @@ jobs:
         env:
           ANODEX_KEYSTORE_BASE64: ${{ secrets.ANODEX_KEYSTORE_BASE64 }}
 
-      - name: Assemble debug
-        run: ./gradlew --no-daemon assembleDebug
+      # Release, not debug. A debug build sets `android:debuggable="true"`, which lets
+      # anyone with USB access and developer mode attach to the running process and read
+      # its memory — including the paired device key once it has been decrypted. The APK
+      # from here gets sideloaded onto real phones, so it should not be that build.
+      - name: Assemble release
+        run: ./gradlew --no-daemon assembleRelease
         env:
           ANODEX_KEYSTORE_PASSWORD: ${{ secrets.ANODEX_KEYSTORE_PASSWORD }}
           ANODEX_KEY_ALIAS: ${{ secrets.ANODEX_KEY_ALIAS }}
@@ -61,11 +65,11 @@ jobs:
       # The APK every run produces, kept so it can be sideloaded without a local Android
       # toolchain. This is the only way to see the app on a real screen until someone on the
       # project has Android Studio; GitHub keeps it for 90 days.
-      - name: Upload debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: anodex-mobile-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: anodex-mobile-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Upload test report
