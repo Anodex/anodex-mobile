@@ -42,8 +42,16 @@ data class ChatMessage(
 class ChatSession(
     private val socket: AnodexSocket,
     private val scope: CoroutineScope,
+    /**
+     * Which conversation this is.
+     *
+     * A new id starts a new conversation on the computer; an existing one continues
+     * it, and the desktop appends to the same stored transcript the user sees there.
+     */
+    val conversationId: String = UUID.randomUUID().toString(),
+    initialMessages: List<ChatMessage> = emptyList(),
 ) {
-    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    private val _messages = MutableStateFlow(initialMessages)
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
     private val _sending = MutableStateFlow(false)
@@ -51,8 +59,6 @@ class ChatSession(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
-
-    private val conversationId = UUID.randomUUID().toString()
 
     init {
         scope.launch {

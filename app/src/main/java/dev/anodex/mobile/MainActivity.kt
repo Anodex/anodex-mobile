@@ -34,6 +34,7 @@ import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.screens.ChatScreen
+import dev.anodex.mobile.ui.screens.ConversationsScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.ManualPairScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
@@ -123,18 +124,51 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
             onOpenPairing = viewModel::unpair,
         )
 
-        else -> ConnectedScaffold(current, chat)
+        else -> ConnectedScaffold(current, chat, viewModel)
     }
 }
 
 /** The normal app: connection header, then whichever surface is open beneath it. */
 @Composable
-private fun ConnectedScaffold(state: ConnectionState, chat: ChatSession?) {
+private fun ConnectedScaffold(
+    state: ConnectionState,
+    chat: ChatSession?,
+    viewModel: AnodexViewModel,
+) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    var showingConversations by remember { mutableStateOf(false) }
+
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val loadingConversations by viewModel.loadingConversations.collectAsStateWithLifecycle()
+
+    if (showingConversations) {
+        BackHandler { showingConversations = false }
+        ConversationsScreen(
+            conversations = conversations,
+            loading = loadingConversations,
+            activeId = chat?.conversationId,
+            onOpen = {
+                viewModel.openConversation(it)
+                showingConversations = false
+            },
+            onNewChat = {
+                viewModel.newConversation()
+                showingConversations = false
+            },
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
-        ConnectionHeader(state)
+        ConnectionHeader(
+            state = state,
+            onOpenConversations = {
+                viewModel.refreshConversations()
+                showingConversations = true
+            },
+        )
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
 
         if (chat == null) {
