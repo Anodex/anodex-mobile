@@ -35,6 +35,8 @@ sealed interface ConnectionState {
     data class Reconnecting(
         val host: HostIdentity,
         val attempt: Int,
+        /** Carried through so [Offline] can report it without the machine keeping side state. */
+        val lastSeenEpochMs: Long?,
     ) : ConnectionState
 
     /**

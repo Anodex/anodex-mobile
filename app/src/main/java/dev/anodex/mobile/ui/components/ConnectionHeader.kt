@@ -243,7 +243,9 @@ private fun PreviewConnected() {
 @Composable
 private fun PreviewReconnecting() {
     AnodexTheme(darkTheme = true) {
-        ConnectionHeader(ConnectionState.Reconnecting(PreviewHost, attempt = 2))
+        ConnectionHeader(
+            ConnectionState.Reconnecting(PreviewHost, attempt = 2, lastSeenEpochMs = null)
+        )
     }
 }
 
