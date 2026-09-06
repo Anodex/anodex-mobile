@@ -3,6 +3,7 @@ package dev.anodex.mobile.chat
 import dev.anodex.mobile.transport.AnodexSocket
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -50,25 +51,30 @@ data class ConversationSummary(
 class Conversations(private val socket: AnodexSocket) {
 
     suspend fun list(): List<ConversationSummary> {
-        val result = socket.invoke(CHANNEL_LIST) as? JsonArray ?: return emptyList()
+        val result = socket.invoke(CHANNEL_SUMMARIES) as? JsonArray ?: return emptyList()
         return result.mapNotNull { it.asSummary() }
             .sortedByDescending { it.updatedAtEpochMs }
     }
 
     /**
-     * Load one conversation's turns.
+     * Load one conversation's most recent turns.
      *
-     * Re-lists rather than fetching by id, because the desktop exposes no read-one
-     * channel. Wasteful in principle; in practice a conversation list is small and
-     * this keeps the phone from needing a channel that does not exist.
+     * This used to re-list *every* conversation and filter, because the desktop had
+     * no read-one channel. That was described as "wasteful in principle; in practice
+     * a conversation list is small" — and it was wrong. A real store is over a
+     * hundred megabytes, a WebSocket message is buffered whole before it can be
+     * read, and the phone died with `OutOfMemoryError` inside OkHttp's reader thread
+     * where nothing can catch it. Opening a conversation downloaded the entire store
+     * twice.
+     *
+     * Capped at [RECENT_MESSAGES] because the end of a transcript is what a reader
+     * wants and a single conversation can itself be tens of megabytes.
      */
     suspend fun messagesOf(conversationId: String): List<ChatMessage> {
-        val result = socket.invoke(CHANNEL_LIST) as? JsonArray ?: return emptyList()
-
-        val conversation = result
-            .filterIsInstance<JsonObject>()
-            .firstOrNull { it["id"]?.jsonPrimitive?.contentOrNull() == conversationId }
-            ?: return emptyList()
+        val conversation = socket.invoke(
+            CHANNEL_GET,
+            listOf(JsonPrimitive(conversationId), JsonPrimitive(RECENT_MESSAGES)),
+        ) as? JsonObject ?: return emptyList()
 
         return (conversation["messages"] as? JsonArray)
             ?.filterIsInstance<JsonObject>()
@@ -81,7 +87,10 @@ class Conversations(private val socket: AnodexSocket) {
         if (fields["archived"]?.jsonPrimitive?.contentOrNull() == "true") return null
 
         val id = fields["id"]?.jsonPrimitive?.contentOrNull() ?: return null
-        val messages = (fields["messages"] as? JsonArray)?.size ?: 0
+        // Counted by the desktop now. The summary deliberately carries no messages —
+        // they are the entire reason the full list could not be sent.
+        val messages = fields["messageCount"]?.jsonPrimitive?.contentOrNull()
+            ?.toDoubleOrNull()?.toInt() ?: 0
         // An untitled conversation is one the desktop has not summarised yet, which
         // is normal for a turn or two rather than an error.
         val storedTitle = fields["title"]?.jsonPrimitive?.contentOrNull()
@@ -119,7 +128,17 @@ class Conversations(private val socket: AnodexSocket) {
     }
 
     private companion object {
-        const val CHANNEL_LIST = "conversations:list"
+        const val CHANNEL_SUMMARIES = "conversations:list-summaries"
+        const val CHANNEL_GET = "conversations:get"
+
+        /**
+         * How much of a transcript to pull when opening one.
+         *
+         * Enough to scroll back through a long session, small enough that a
+         * conversation with thousands of turns and embedded tool output cannot
+         * become a frame the phone chokes on.
+         */
+        const val RECENT_MESSAGES = 200
     }
 }
 
