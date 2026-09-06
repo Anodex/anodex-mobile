@@ -13,15 +13,50 @@ android {
         applicationId = "dev.anodex.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+
+        // Overridable from CI so a tagged build stamps its own tag:
+        //   ./gradlew assembleDebug -PappVersionCode=16 -PappVersionName=0.16.0
+        //
+        // These were left at 1 and "0.1.0" through twenty-one releases, which meant
+        // the app could not say which build it was and nothing could tell whether an
+        // APK was newer than the one already installed. Both are prerequisites for an
+        // update check.
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 16
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.16.0"
+    }
+
+    /**
+     * One fixed key for every preview build, on every machine and every CI runner.
+     *
+     * Without this, Gradle signs debug builds with an auto-generated keystore, and a
+     * fresh CI runner generates a fresh one every single run. Android refuses to
+     * install an APK over one signed by a different key, so every update meant
+     * uninstalling first - and uninstalling wipes the app's storage, which is where
+     * the pairing lives. Every single update was silently costing a re-pair.
+     *
+     * The password is the Android debug convention and is deliberately not a secret:
+     * this key exists to make preview builds installable over each other, not to
+     * establish authenticity. A real release key would live in CI secrets and would
+     * never be committed - see keystore/README.md.
+     */
+    signingConfigs {
+        create("preview") {
+            storeFile = rootProject.file("keystore/anodex-preview.jks")
+            storePassword = "android"
+            keyAlias = "anodex-preview"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("preview")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("preview")
         }
     }
 
@@ -36,6 +71,9 @@ android {
 
     buildFeatures {
         compose = true
+        // So the app can say which build it is. An update check needs a version to
+        // compare, and a bug report needs one to be worth reading.
+        buildConfig = true
     }
 
     testOptions {
