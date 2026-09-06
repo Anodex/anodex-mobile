@@ -49,6 +49,7 @@ import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.ConversationsScreen
 import dev.anodex.mobile.ui.screens.EmailPane
+import dev.anodex.mobile.ui.screens.FileScreen
 import dev.anodex.mobile.ui.screens.HostScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.ManualPairScreen
@@ -221,6 +222,8 @@ private fun ConnectedScaffold(
 
     val waitingAgents = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW }
     val model = (state as? ConnectionState.Connected)?.model
+    val openFile by viewModel.openFile.collectAsStateWithLifecycle()
+    val openFileContent by viewModel.openFileContent.collectAsStateWithLifecycle()
     val projectNames = remember(projects) {
         projects.projects.associate { it.id to it.name }
     }
@@ -245,6 +248,21 @@ private fun ConnectedScaffold(
             tab != AppTab.CHATS -> tab = AppTab.CHATS
             else -> readingChat = true
         }
+    }
+
+    // Above the tabs rather than inside one: a file is reached from a tool row in
+    // the transcript, and returning to that transcript is the only thing anybody
+    // wants to do next.
+    if (openFile != null) {
+        BackHandler { viewModel.closeWorkspaceFile() }
+        FileScreen(
+            path = openFile.orEmpty(),
+            content = openFileContent,
+            loading = openFileContent == null,
+            onClose = viewModel::closeWorkspaceFile,
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
     }
 
     if (choosingProject) {
@@ -398,6 +416,7 @@ private fun ChatPane(
         onApprove = { chat.respondToApproval(approved = true) },
         onDeny = { chat.respondToApproval(approved = false) },
         model = model,
+        onOpenFile = viewModel::openWorkspaceFile,
     )
 }
 

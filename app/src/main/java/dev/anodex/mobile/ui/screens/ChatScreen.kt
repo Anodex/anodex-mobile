@@ -88,6 +88,8 @@ fun ChatScreen(
      * known", which is the opposite of the truth.
      */
     model: ModelStatus? = null,
+    /** Opens a file a tool touched. Null in previews and where there is no socket. */
+    onOpenFile: ((String) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -118,7 +120,7 @@ fun ChatScreen(
                     vertical = Spacing.x4
                 ),
             ) {
-                items(messages, key = { it.id }) { message -> MessageRow(message) }
+                items(messages, key = { it.id }) { message -> MessageRow(message, onOpenFile) }
             }
         }
 
@@ -163,7 +165,7 @@ fun ChatScreen(
 }
 
 @Composable
-private fun MessageRow(message: ChatMessage) {
+private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = null) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val isUser = message.role == ChatMessage.Role.USER
@@ -189,7 +191,7 @@ private fun MessageRow(message: ChatMessage) {
                 // Tools first, in the order they ran — the reply is the conclusion,
                 // and the work that produced it reads better above it than after.
                 for (tool in message.tools) {
-                    ToolRow(tool)
+                    ToolRow(tool, onOpenFile = onOpenFile)
                 }
 
                 if (message.text.isNotEmpty()) {
