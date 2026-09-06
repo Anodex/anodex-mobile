@@ -21,9 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,8 +44,9 @@ import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.ui.components.AnodexMark
-import dev.anodex.mobile.ui.components.AppTab
-import dev.anodex.mobile.ui.components.BottomTabs
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.AppDestination
+import dev.anodex.mobile.ui.components.AppDrawer
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
@@ -56,6 +54,7 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.ConversationsScreen
+import dev.anodex.mobile.ui.screens.ComingSoonScreen
 import dev.anodex.mobile.ui.screens.EmailPane
 import dev.anodex.mobile.ui.screens.FileScreen
 import dev.anodex.mobile.ui.screens.HostScreen
@@ -64,6 +63,7 @@ import dev.anodex.mobile.ui.screens.ManualPairScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
+import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -266,15 +266,15 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
 }
 
 /**
- * The normal app: the host bar, the open surface, and the tab bar under it.
+ * The normal app: a host bar, whatever surface is open, and a drawer behind it.
  *
- * Every surface used to be a full-screen takeover reached from a button on some
- * other screen and left with the back gesture, so "where am I" was something the
- * user had to hold in their head, and agent runs sat two taps deep behind the
- * conversation list. The four destinations are fixed and always visible now,
- * which is what the design sample asks for and what a phone app is expected to do.
+ * This replaced a bottom tab bar. Every assistant worth measuring against has
+ * abandoned one — a permanent strip spends a fixed slice of a small screen on
+ * navigation nobody does often, and it competed with the composer for the single
+ * edge a thumb actually rests on. A drawer costs one tap and gives all of that back,
+ * and it has room for the conversation list, which is what people are usually
+ * looking for when they navigate at all.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ConnectedScaffold(
     state: ConnectionState,
@@ -282,12 +282,15 @@ private fun ConnectedScaffold(
     viewModel: AnodexViewModel,
 ) {
     val colors = AnodexTheme.colors
-    var tab by rememberSaveable { mutableStateOf(AppTab.CHATS) }
+    var destination by rememberSaveable { mutableStateOf(AppDestination.CHAT) }
+    var drawerOpen by rememberSaveable { mutableStateOf(false) }
 
-    // Within Chats: the list is the root and a conversation is a drill-down, so
-    // back goes list-wards rather than straight out of the app.
-    var readingChat by rememberSaveable { mutableStateOf(true) }
+    // Within Chat: the conversation is the root and the list is reached from the
+    // drawer, so there is no list/detail stack to unwind here any more.
     var choosingProject by rememberSaveable { mutableStateOf(false) }
+    var showingHost by rememberSaveable { mutableStateOf(false) }
+    var showingAllConversations by rememberSaveable { mutableStateOf(false) }
+    var showingSettings by rememberSaveable { mutableStateOf(false) }
 
     val agentRuns by viewModel.agentRuns.collectAsStateWithLifecycle()
     val agentsLoading by viewModel.agentsLoading.collectAsStateWithLifecycle()
@@ -298,42 +301,40 @@ private fun ConnectedScaffold(
     val projectError by viewModel.projectError.collectAsStateWithLifecycle()
 
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
-    val loadingConversations by viewModel.loadingConversations.collectAsStateWithLifecycle()
 
     val waitingAgents = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW }
     val model = (state as? ConnectionState.Connected)?.model
     val newerVersion by viewModel.newerVersion.collectAsStateWithLifecycle()
     val openFile by viewModel.openFile.collectAsStateWithLifecycle()
     val openFileContent by viewModel.openFileContent.collectAsStateWithLifecycle()
-    val projectNames = remember(projects) {
-        projects.projects.associate { it.id to it.name }
-    }
     val unreadEmail by viewModel.unreadEmail.collectAsStateWithLifecycle()
 
-    // Fetched when its tab is opened rather than on every connect: a phone that
-    // never opens Agents should not be polling the desktop for them.
-    LaunchedEffect(tab) {
-        when (tab) {
-            AppTab.CHATS -> viewModel.refreshConversations()
-            AppTab.AGENTS -> viewModel.refreshAgentRuns()
-            else -> Unit
-        }
+    // Fetched when its destination is opened rather than on every connect: a phone
+    // that never opens Agents should not be polling the computer for them. The
+    // conversation list is refreshed whenever the drawer opens, since that is the
+    // only place it is shown.
+    LaunchedEffect(destination) {
+        if (destination == AppDestination.AGENTS) viewModel.refreshAgentRuns()
+    }
+    LaunchedEffect(drawerOpen) {
+        if (drawerOpen) viewModel.refreshConversations()
     }
 
-    // Back unwinds one step at a time, in the order the user got here: out of the
-    // project sheet, out of a conversation, then back to Chats from another tab.
-    // Only then does it leave the app.
-    BackHandler(enabled = choosingProject || tab != AppTab.CHATS || !readingChat) {
+    // Back unwinds one step at a time, in the order the user got here.
+    BackHandler(
+        enabled = drawerOpen || choosingProject || showingHost || showingSettings ||
+            showingAllConversations || destination != AppDestination.CHAT
+    ) {
         when {
+            drawerOpen -> drawerOpen = false
+            showingSettings -> showingSettings = false
+            showingHost -> showingHost = false
+            showingAllConversations -> showingAllConversations = false
             choosingProject -> choosingProject = false
-            tab != AppTab.CHATS -> tab = AppTab.CHATS
-            else -> readingChat = true
+            else -> destination = AppDestination.CHAT
         }
     }
 
-    // Above the tabs rather than inside one: a file is reached from a tool row in
-    // the transcript, and returning to that transcript is the only thing anybody
-    // wants to do next.
     if (openFile != null) {
         BackHandler { viewModel.closeWorkspaceFile() }
         FileScreen(
@@ -359,38 +360,106 @@ private fun ConnectedScaffold(
         return
     }
 
+    if (showingHost) {
+        HostScreen(
+            state = state,
+            newerVersion = newerVersion,
+            installedVersion = BuildConfig.VERSION_NAME,
+            activeProjectName = projects.active?.name,
+            onChooseProject = {
+                viewModel.refreshProjects()
+                choosingProject = true
+            },
+            onUnpair = viewModel::unpair,
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
+
+    if (showingAllConversations) {
+        ConversationsScreen(
+            conversations = conversations,
+            loading = false,
+            activeId = chat?.conversationId,
+            onOpen = {
+                viewModel.openConversation(it)
+                showingAllConversations = false
+                destination = AppDestination.CHAT
+            },
+            onNewChat = {
+                viewModel.newConversation()
+                showingAllConversations = false
+                destination = AppDestination.CHAT
+            },
+            projectNames = remember(projects) { projects.projects.associate { it.id to it.name } },
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
+
+    if (showingSettings) {
+        SettingsScreen(
+            installedVersion = BuildConfig.VERSION_NAME,
+            onClose = { showingSettings = false },
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
+
+    if (drawerOpen) {
+        AppDrawer(
+            destination = destination,
+            onSelect = {
+                destination = it
+                drawerOpen = false
+            },
+            conversations = conversations,
+            activeConversationId = chat?.conversationId,
+            onOpenConversation = {
+                viewModel.openConversation(it)
+                destination = AppDestination.CHAT
+                drawerOpen = false
+            },
+            onNewChat = {
+                viewModel.newConversation()
+                destination = AppDestination.CHAT
+                drawerOpen = false
+            },
+            onOpenAllConversations = {
+                drawerOpen = false
+                showingAllConversations = true
+            },
+            onClose = { drawerOpen = false },
+            hostName = hostNameOf(state) ?: "Not paired",
+            hostDetail = hostDetailOf(state, projects.active?.name),
+            connected = state is ConnectionState.Connected,
+            onOpenHost = {
+                drawerOpen = false
+                showingHost = true
+            },
+            onOpenSettings = {
+                drawerOpen = false
+                showingSettings = true
+            },
+            agentBadge = waitingAgents,
+            emailBadge = unreadEmail,
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
-        ConnectionHeader(state = state)
+        ConnectionHeader(
+            state = state,
+            onOpenDrawer = { drawerOpen = true },
+        )
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
 
         Box(Modifier.weight(1f)) {
-            when (tab) {
-                AppTab.CHATS ->
-                    if (readingChat) {
-                        ChatPane(chat, viewModel, model)
-                    } else {
-                        ConversationsScreen(
-                            conversations = conversations,
-                            loading = loadingConversations,
-                            activeId = chat?.conversationId,
-                            onOpen = {
-                                viewModel.openConversation(it)
-                                readingChat = true
-                            },
-                            onNewChat = {
-                                viewModel.newConversation()
-                                readingChat = true
-                            },
-                            activeProjectName = projects.active?.name,
-                            onChooseProject = {
-                                viewModel.refreshProjects()
-                                choosingProject = true
-                            },
-                            projectNames = projectNames,
-                        )
-                    }
+            when (destination) {
+                AppDestination.CHAT -> ChatPane(chat, viewModel, model)
 
-                AppTab.AGENTS -> AgentsScreen(
+                AppDestination.AGENTS -> AgentsScreen(
                     runs = agentRuns,
                     loading = agentsLoading,
                     busyRunId = busyRunId,
@@ -399,44 +468,46 @@ private fun ConnectedScaffold(
                     onStop = viewModel::stopAgentRun,
                     onOpenConversation = {
                         viewModel.openConversation(it)
-                        tab = AppTab.CHATS
-                        readingChat = true
+                        destination = AppDestination.CHAT
                     },
                 )
 
-                AppTab.EMAIL -> EmailPane(viewModel)
+                AppDestination.EMAIL -> EmailPane(viewModel)
 
-                AppTab.HOST -> HostScreen(
-                    state = state,
-                    newerVersion = newerVersion,
-                    installedVersion = BuildConfig.VERSION_NAME,
-                    activeProjectName = projects.active?.name,
-                    onChooseProject = {
-                        viewModel.refreshProjects()
-                        choosingProject = true
-                    },
-                    onUnpair = viewModel::unpair,
+                AppDestination.WORKSPACE -> ComingSoonScreen(
+                    title = "Workspace",
+                    icon = AnodexIcon.FOLDER,
+                    description = "The files in the project your computer has open — to read " +
+                        "from here, and to hand to a turn.",
+                )
+
+                AppDestination.SCHEDULER -> ComingSoonScreen(
+                    title = "Scheduler",
+                    icon = AnodexIcon.CLOCK,
+                    description = "What your computer is set to do on its own, and when it " +
+                        "last did it.",
                 )
             }
         }
-
-        // Hidden while the keyboard is up. Four destinations stacked on top of a
-        // software keyboard is most of a small phone's remaining height spent on
-        // navigation the user is demonstrably not doing right now.
-        if (!WindowInsets.isImeVisible) {
-            BottomTabs(
-                selected = tab,
-                onSelect = { next ->
-                    // Tapping Chats while already reading one goes back to the list,
-                    // which is the standard "tap the active tab to go up" gesture.
-                    if (next == tab && next == AppTab.CHATS) readingChat = false
-                    tab = next
-                },
-                agentBadge = waitingAgents,
-                emailBadge = unreadEmail,
-            )
-        }
     }
+}
+
+private fun hostNameOf(state: ConnectionState): String? = when (state) {
+    is ConnectionState.Connected -> state.host.displayName
+    is ConnectionState.Reconnecting -> state.host.displayName
+    is ConnectionState.Offline -> state.host.displayName
+    ConnectionState.Unpaired -> null
+}
+
+/** "Connected · Bench" — what the computer is, and what it is pointed at. */
+private fun hostDetailOf(state: ConnectionState, projectName: String?): String {
+    val status = when (state) {
+        is ConnectionState.Connected -> "Connected"
+        is ConnectionState.Reconnecting -> "Reconnecting"
+        is ConnectionState.Offline -> "Offline"
+        ConnectionState.Unpaired -> "Not paired"
+    }
+    return if (projectName != null) "$status · $projectName" else status
 }
 
 /** The open conversation, or an honest placeholder while the socket is down. */
