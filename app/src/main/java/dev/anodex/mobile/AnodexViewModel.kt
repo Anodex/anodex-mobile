@@ -16,7 +16,10 @@ import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.pairing.PairedHost
 import dev.anodex.mobile.pairing.PairedHostStore
+import dev.anodex.mobile.pairing.CertificateProbe
 import dev.anodex.mobile.pairing.PairingPayload
+import dev.anodex.mobile.pairing.humanFingerprintOf
+import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.transport.AnodexSocket
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -95,6 +98,64 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         return ModelStatus(name = name, contextUsedTokens = 0, contextTotalTokens = 0)
     }
 
+    private val _manualState = MutableStateFlow<ManualPairState>(ManualPairState.Entering)
+    val manualState: StateFlow<ManualPairState> = _manualState.asStateFlow()
+
+    /** Details typed in, held between the probe and the user's confirmation. */
+    private var pendingManual: PendingManual? = null
+
+    private data class PendingManual(
+        val address: String,
+        val port: Int,
+        val code: String,
+        val fingerprint: ByteArray,
+    )
+
+    /**
+     * Look at what is answering, without trusting it.
+     *
+     * A typed code carries no fingerprint, so there is nothing to pin yet. This
+     * fetches the certificate the host presents and shows it - nothing is sent to
+     * that host until the user confirms it is their computer.
+     */
+    fun probeManualHost(address: String, port: Int, code: String) {
+        _pairingError.value = null
+        _manualState.value = ManualPairState.Probing
+
+        viewModelScope.launch {
+            try {
+                val fingerprint = CertificateProbe.fingerprintOf(address, port)
+                pendingManual = PendingManual(address, port, code, fingerprint)
+                _manualState.value = ManualPairState.Confirming(humanFingerprintOf(fingerprint))
+            } catch (e: Exception) {
+                _manualState.value = ManualPairState.Entering
+                _pairingError.value =
+                    e.message ?: "Nothing answered at that address. Check it and try again."
+            }
+        }
+    }
+
+    /** The user says the fingerprint matches. Only now does anything get sent. */
+    fun confirmManualFingerprint() {
+        val pending = pendingManual ?: return
+        _manualState.value = ManualPairState.Pairing
+        pairWith(
+            address = pending.address,
+            port = pending.port,
+            certificateSha256 = pending.fingerprint,
+            credential = AnodexSocket.Credential.PairingSecret(pending.code),
+            hostId = bytesToHex(pending.fingerprint).take(16),
+            displayName = pending.address,
+        )
+    }
+
+    /** Leave the manual flow, forgetting anything typed. */
+    fun cancelManualPairing() {
+        pendingManual = null
+        _manualState.value = ManualPairState.Entering
+        _pairingError.value = null
+    }
+
     /**
      * Finish pairing with a scanned code.
      *
@@ -102,37 +163,65 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * at the same moment, so the offline screen can later say whether the phone has moved.
      */
     fun completePairing(payload: PairingPayload) {
+        val secret = Base64.encodeToString(
+            payload.secret,
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
+        )
+        pairWith(
+            address = payload.address,
+            port = payload.port,
+            certificateSha256 = payload.certificateSha256,
+            credential = AnodexSocket.Credential.PairingSecret(secret),
+            hostId = payload.hostId,
+            displayName = payload.displayName,
+        )
+    }
+
+    /**
+     * The one place a pairing is completed, whether the code was scanned or typed.
+     *
+     * Both paths arrive here with a certificate they have already decided to trust
+     * - the scanned one from the QR, the typed one from the user's confirmation -
+     * so from this point the two are identical, and there is no second
+     * implementation to drift.
+     */
+    private fun pairWith(
+        address: String,
+        port: Int,
+        certificateSha256: ByteArray,
+        credential: AnodexSocket.Credential,
+        hostId: String,
+        displayName: String,
+    ) {
         viewModelScope.launch {
             val pairingSocket = AnodexSocket(
-                address = payload.address,
-                port = payload.port,
-                certificateSha256 = payload.certificateSha256,
+                address = address,
+                port = port,
+                certificateSha256 = certificateSha256,
                 deviceName = deviceName,
             )
             try {
-                val secret = Base64.encodeToString(
-                    payload.secret,
-                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
-                )
-                val handshake =
-                    pairingSocket.connect(AnodexSocket.Credential.PairingSecret(secret))
+                val handshake = pairingSocket.connect(credential)
                 val issued = handshake.issuedDeviceKey
                     ?: error("That computer did not issue a device key.")
 
                 val host = PairedHost(
-                    identity = HostIdentity(id = payload.hostId, displayName = payload.displayName),
+                    identity = HostIdentity(id = hostId, displayName = displayName),
                     secret = issued,
-                    certificateFingerprint = bytesToHex(payload.certificateSha256),
+                    certificateFingerprint = bytesToHex(certificateSha256),
                     pairedNetworkId = networkMonitor.currentNetworkId(),
                     lastSeenEpochMs = System.currentTimeMillis(),
-                    address = payload.address,
-                    port = payload.port,
+                    address = address,
+                    port = port,
                 )
                 store.save(host)
                 _paired.value = host
                 _pairingError.value = null
+                pendingManual = null
+                _manualState.value = ManualPairState.Entering
                 controller.pair(host.toRef())
             } catch (e: Exception) {
+                _manualState.value = ManualPairState.Entering
                 _pairingError.value = e.message ?: "That didn't work. Show a new code and retry."
             } finally {
                 pairingSocket.close()
