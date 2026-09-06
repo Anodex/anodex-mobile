@@ -302,6 +302,7 @@ private fun ConnectedScaffold(
 
     val waitingAgents = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW }
     val model = (state as? ConnectionState.Connected)?.model
+    val newerVersion by viewModel.newerVersion.collectAsStateWithLifecycle()
     val openFile by viewModel.openFile.collectAsStateWithLifecycle()
     val openFileContent by viewModel.openFileContent.collectAsStateWithLifecycle()
     val projectNames = remember(projects) {
@@ -407,6 +408,8 @@ private fun ConnectedScaffold(
 
                 AppTab.HOST -> HostScreen(
                     state = state,
+                    newerVersion = newerVersion,
+                    installedVersion = BuildConfig.VERSION_NAME,
                     activeProjectName = projects.active?.name,
                     onChooseProject = {
                         viewModel.refreshProjects()

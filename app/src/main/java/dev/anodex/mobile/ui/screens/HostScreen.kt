@@ -48,6 +48,9 @@ fun HostScreen(
     activeProjectName: String? = null,
     onChooseProject: (() -> Unit)? = null,
     onUnpair: (() -> Unit)? = null,
+    /** The build the computer expects, when this phone is behind it. Null if not. */
+    newerVersion: String? = null,
+    installedVersion: String = "",
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -61,6 +64,22 @@ fun HostScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.x4),
     ) {
         Text("Your computer", style = type.heading, color = colors.text)
+
+        if (newerVersion != null) {
+            // Stated, not acted on. The app cannot install anything and should not
+            // pretend it can — a button that turns out to mean "go and find a file"
+            // is worse than a sentence that says so.
+            Card {
+                Text("A newer app is available", style = type.bodyEmphasis, color = colors.text)
+                Text(
+                    text = "Your computer ships with $newerVersion and this phone is on " +
+                        "$installedVersion. Install the newer one over the top — your " +
+                        "pairing is kept.",
+                    style = type.meta,
+                    color = colors.textMuted,
+                )
+            }
+        }
 
         Card {
             Field("Machine", hostName(state) ?: "Not paired")
