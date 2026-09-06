@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.ui.theme.Motion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
+import dev.anodex.mobile.ui.theme.Touch
 
 /**
  * The strip that says *which machine is doing the work*.
@@ -53,6 +55,8 @@ import dev.anodex.mobile.ui.theme.Spacing
 fun ConnectionHeader(
     state: ConnectionState,
     modifier: Modifier = Modifier,
+    /** Opens the conversation list. Null on screens where there is nothing to open. */
+    onOpenConversations: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -65,7 +69,22 @@ fun ConnectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
-        StatusDot(state)
+        if (onOpenConversations != null) {
+            // The whole left edge is the target rather than a small glyph: this is a
+            // phone, and a 48dp region is the difference between a control that works
+            // one-handed and one that does not.
+            Box(
+                modifier = Modifier
+                    .size(Touch.minTarget)
+                    .clip(Radii.md)
+                    .clickable(onClick = onOpenConversations),
+                contentAlignment = Alignment.Center,
+            ) {
+                StatusDot(state)
+            }
+        } else {
+            StatusDot(state)
+        }
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
