@@ -866,6 +866,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     // what follows rather than rewriting what came before.
                     activePersona = ::currentPersona,
                 )
+                // Adopt whatever the computer calls itself, every connection rather
+                // than only at pairing. A phone paired by typing an address had the
+                // address as its name and showed it on every screen — a home router's
+                // public IP in plain sight on a device that leaves the house. Doing it
+                // here rather than at pairing means a phone paired before the computer
+                // sent a name picks it up by reconnecting, not by pairing again.
+                store.recordHostName(handshake.hostName)
+                // The state machine captured the identity when pairing began, so the
+                // store alone is not enough — without this the header keeps showing
+                // the old name until the app is restarted, which is the shape of a
+                // fix that appears to work and does nothing.
+                controller.onHostRenamed(handshake.hostName)
+
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
                 refreshProjects()
@@ -900,7 +913,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 val advertised = handshake.addresses.ifEmpty { stored.addresses }
                 val reported = (listOf(address) + advertised).distinct()
                 store.recordAddresses(reported)
-                _paired.value = stored.copy(addresses = reported)
+                _paired.value = stored.copy(
+                    addresses = reported,
+                    identity = stored.identity.copy(
+                        displayName = handshake.hostName.ifBlank { stored.identity.displayName },
+                    ),
+                )
 
                 // Model state is a nicety for the header, never a reason to fail a
                 // connection that is otherwise working.

@@ -47,6 +47,14 @@ sealed interface ServerFrame {
          * handshake. An update notice is not worth breaking a connection over.
          */
         val mobileVersion: String = "",
+        /**
+         * What the computer calls itself.
+         *
+         * Defaulted to empty for the same reason as [mobileVersion]: a desktop that
+         * predates this does not send it, and that is a thing to shrug at rather than
+         * a frame to reject.
+         */
+        val hostName: String = "",
     ) : ServerFrame
 
     /** Pairing completed. [deviceKey] is the long-lived credential — store it, never log it. */
@@ -58,6 +66,7 @@ sealed interface ServerFrame {
         val protocolVersion: String,
         val addresses: List<String> = emptyList(),
         val mobileVersion: String = "",
+        val hostName: String = "",
     ) : ServerFrame
 
     /** A reply to one invoke. */

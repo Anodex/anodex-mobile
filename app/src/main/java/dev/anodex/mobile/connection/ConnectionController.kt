@@ -70,6 +70,36 @@ class ConnectionController(
     }
 
     /** The user asked to try again from the offline screen. Restarts the attempt loop now. */
+    /**
+     * The computer turned out to be called something else.
+     *
+     * Rewrites the name in place rather than re-pairing, because the connection is
+     * fine — only the label is wrong. Going through [pair] would have torn down a
+     * working socket to change a string.
+     *
+     * Needed because the state machine captures the identity when pairing starts, so
+     * a name learned later during the handshake reaches the store but not the screen.
+     */
+    fun onHostRenamed(name: String) {
+        if (name.isBlank()) return
+        val current = _state.value
+        val host = when (current) {
+            is ConnectionState.Connected -> current.host
+            is ConnectionState.Reconnecting -> current.host
+            is ConnectionState.Offline -> current.host
+            ConnectionState.Unpaired -> return
+        }
+        if (host.displayName == name) return
+
+        val renamed = host.copy(displayName = name)
+        _state.value = when (current) {
+            is ConnectionState.Connected -> current.copy(host = renamed)
+            is ConnectionState.Reconnecting -> current.copy(host = renamed)
+            is ConnectionState.Offline -> current.copy(host = renamed)
+            ConnectionState.Unpaired -> return
+        }
+    }
+
     fun retryNow(host: PairedHostRef) {
         startReconnecting(host)
     }

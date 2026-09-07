@@ -88,6 +88,19 @@ internal class PairedHostStore(
         }
     }
 
+    /**
+     * Adopt the name the computer calls itself.
+     *
+     * Separate from [save] because it must not disturb the secret: a phone paired by
+     * typing an address had the address as its only name, and correcting that should
+     * not mean pairing again. Ignores an empty name so a desktop too old to send one
+     * leaves the existing name alone rather than blanking it.
+     */
+    suspend fun recordHostName(name: String) {
+        if (name.isBlank()) return
+        context.pairingDataStore.edit { prefs -> prefs[KEY_HOST_NAME] = name }
+    }
+
     /** Records that the desktop was reachable, for the offline screen's "last seen". */
     suspend fun recordSeen(atEpochMs: Long) {
         context.pairingDataStore.edit { prefs -> prefs[KEY_LAST_SEEN] = atEpochMs.toString() }
