@@ -27,6 +27,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ConversationSummary
+import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -58,6 +59,18 @@ fun AppDrawer(
     destination: AppDestination,
     onSelect: (AppDestination) -> Unit,
     conversations: List<ConversationSummary>,
+    /**
+     * The computer's projects, listed instead of conversations while Workspace is
+     * the open destination.
+     *
+     * The drawer's second half answers "what am I working on", and what that means
+     * depends on which half of the app you are in: in Chat it is a conversation, in
+     * Workspace it is a project. Showing conversations under a file browser is a
+     * list of the wrong nouns.
+     */
+    projects: List<Project> = emptyList(),
+    activeProjectId: String? = null,
+    onOpenProject: (String) -> Unit = {},
     activeConversationId: String?,
     onOpenConversation: (String) -> Unit,
     onNewChat: () -> Unit,
@@ -128,8 +141,10 @@ fun AppDrawer(
                     .background(colors.border)
             )
 
+            val showingProjects = destination == AppDestination.WORKSPACE
+
             Text(
-                text = "RECENT",
+                text = if (showingProjects) "PROJECTS" else "RECENT",
                 style = type.badge,
                 color = colors.textFaint,
                 modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x1),
@@ -139,6 +154,43 @@ fun AppDrawer(
             // right: a title is a sentence, and timestamps are noise at the moment you are
             // scanning for something you remember writing.
             LazyColumn(Modifier.weight(1f)) {
+                if (showingProjects) {
+                    items(projects, key = { it.id }) { project ->
+                        Text(
+                            text = project.name,
+                            style = type.body,
+                            color = if (project.id == activeProjectId) {
+                                colors.text
+                            } else {
+                                colors.textMuted
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = Touch.minTarget)
+                                .clickable { onOpenProject(project.id) }
+                                .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                        )
+                    }
+
+                    if (projects.isEmpty()) {
+                        item(key = "no-projects") {
+                            Text(
+                                text = "No projects on your computer yet.",
+                                style = type.meta,
+                                color = colors.textFaint,
+                                modifier = Modifier.padding(
+                                    horizontal = Spacing.x4,
+                                    vertical = Spacing.x3,
+                                ),
+                            )
+                        }
+                    }
+
+                    return@LazyColumn
+                }
+
                 items(conversations.take(RECENT_LIMIT), key = { it.id }) { conversation ->
                     Text(
                         text = conversation.title,

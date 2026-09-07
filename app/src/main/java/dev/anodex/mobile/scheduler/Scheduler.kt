@@ -41,7 +41,31 @@ data class ScheduledTask(
  */
 class Scheduler(private val socket: AnodexSocket) {
 
-    suspend fun list(): List<ScheduledTask> = parseTasks(socket.invoke(CHANNEL_LIST))
+    /**
+     * Every task on the computer.
+     *
+     * Throws rather than returning empty when the answer is a shape this cannot read.
+     * The distinction is the whole point: "there are no tasks" and "there are tasks I
+     * could not parse" look identical to somebody staring at a blank screen, and the
+     * second one is a bug that will otherwise never be reported as one.
+     */
+    suspend fun list(): List<ScheduledTask> {
+        val answer = socket.invoke(CHANNEL_LIST)
+        val tasks = parseTasks(answer)
+
+        if (tasks.isEmpty() && countsEntries(answer) > 0) {
+            error("Your computer sent ${countsEntries(answer)} tasks this app could not read.")
+        }
+
+        return tasks
+    }
+
+    /** How many entries the computer sent, whatever this could make of them. */
+    private fun countsEntries(element: JsonElement?): Int = when (element) {
+        is JsonArray -> element.size
+        is JsonObject -> (element["value"] as? JsonArray)?.size ?: 0
+        else -> 0
+    }
 
     private companion object {
         const val CHANNEL_LIST = "scheduler:list"
