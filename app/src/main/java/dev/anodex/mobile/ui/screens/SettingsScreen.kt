@@ -16,17 +16,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.chat.Personality
 import dev.anodex.mobile.ui.components.SecondaryButton
+import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -34,10 +32,10 @@ import dev.anodex.mobile.ui.theme.Touch
 /**
  * How Anodex answers, and what the app is.
  *
- * The personalities are the desktop's own five, by name and in their own words.
- * They are a real setting rather than a cosmetic one — they change the system
- * prompt — so they belong in front of the user rather than buried behind an
- * "advanced" disclosure.
+ * The personalities are the computer's own, read from it — including any the user
+ * wrote themselves. They are a real setting rather than a cosmetic one — they change
+ * the system prompt — so they belong in front of the user rather than buried behind
+ * an "advanced" disclosure.
  *
  * Chosen on the phone, applied on the computer: like the active project, this is one
  * setting shared by both, not a phone-local preference.
@@ -47,24 +45,13 @@ fun SettingsScreen(
     installedVersion: String,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    selectedPersonality: String = "Vale",
-    onSelectPersonality: (String) -> Unit = {},
+    personalities: List<Personality> = emptyList(),
+    activePersonalityId: String? = null,
+    busy: Boolean = false,
+    onSelectPersonality: (String?) -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
-
-    // Local until the desktop exposes a channel for it. Deliberately visible now:
-    // the shape of the screen is what is being judged, and a selector that does not
-    // move cannot be judged at all.
-    var chosen by remember { mutableStateOf(selectedPersonality) }
-
-    val personalities = listOf(
-        Personality("Vale", "Direct. Answer first, reasoning after.", colors.accent),
-        Personality("Wren", "Warm, and explains the reasoning.", colors.accentCyan),
-        Personality("Cass", "Terse. As few words as will do.", colors.accentViolet),
-        Personality("Juno", "Encouraging without the sugar.", colors.success),
-        Personality("Rook", "Skeptical. Argues with the premise.", colors.warn),
-    )
 
     Column(modifier.fillMaxSize().background(colors.bgApp)) {
         Row(
@@ -84,14 +71,25 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x2),
             )
 
+            // Empty before the computer has answered, and after a connection that
+            // dropped. Said plainly rather than shown as a screen with no options,
+            // which reads as a broken setting instead of a pending one.
+            if (personalities.isEmpty()) {
+                Text(
+                    text = "Waiting for your computer\u2026",
+                    style = type.meta,
+                    color = colors.textFaint,
+                    modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                )
+            }
+
             for (personality in personalities) {
                 PersonalityRow(
                     personality = personality,
-                    selected = personality.name == chosen,
-                    onClick = {
-                        chosen = personality.name
-                        onSelectPersonality(personality.name)
-                    },
+                    tint = tintOf(personality.tint, colors),
+                    selected = personality.id == activePersonalityId,
+                    enabled = !busy,
+                    onClick = { onSelectPersonality(personality.id) },
                 )
             }
 
@@ -121,12 +119,30 @@ fun SettingsScreen(
     }
 }
 
-private data class Personality(val name: String, val role: String, val tint: Color)
+/**
+ * The desktop's tint names, resolved against this theme.
+ *
+ * A name travels rather than a colour, so a personality keeps its identity on both
+ * screens without the phone inheriting a hue mixed for the desktop's ground — and so
+ * a phone in light mode is not left holding a dark-mode colour.
+ */
+private fun tintOf(name: String, colors: AnodexColors): Color =
+    when (name) {
+        "violet" -> colors.accentViolet
+        "green" -> colors.accentGreen
+        "series-1" -> colors.series1
+        "series-2" -> colors.series2
+        "series-3" -> colors.series3
+        "series-4" -> colors.series4
+        else -> colors.accent
+    }
 
 @Composable
 private fun PersonalityRow(
     personality: Personality,
+    tint: Color,
     selected: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = AnodexTheme.colors
@@ -137,18 +153,22 @@ private fun PersonalityRow(
             .fillMaxWidth()
             .background(if (selected) colors.accentSoft else colors.bgApp)
             .heightIn(min = Touch.minTarget)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
         // The tint each personality already carries on the desktop, so the choice is
         // recognisable before the words are read.
-        Box(Modifier.size(8.dp).clip(CircleShape).background(personality.tint))
+        Box(Modifier.size(8.dp).clip(CircleShape).background(tint))
 
         Column(Modifier.weight(1f)) {
             Text(personality.name, style = type.bodyEmphasis, color = colors.text)
-            Text(personality.role, style = type.meta, color = colors.textMuted)
+
+            // A personality somebody wrote themselves need not have a one-liner.
+            if (personality.role.isNotBlank()) {
+                Text(personality.role, style = type.meta, color = colors.textMuted)
+            }
         }
 
         if (selected) Text("✓", style = type.body, color = colors.accent)
@@ -159,6 +179,17 @@ private fun PersonalityRow(
 @Composable
 private fun PreviewSettings() {
     AnodexTheme(darkTheme = true) {
-        SettingsScreen(installedVersion = "0.20.0", onClose = {})
+        SettingsScreen(
+            installedVersion = "0.23.0",
+            onClose = {},
+            personalities = listOf(
+                Personality("p1", "Vale", "Direct. Answer first, reasoning after.", "accent"),
+                Personality("p2", "Wren", "Warm, and explains the reasoning.", "series-2"),
+                Personality("p3", "Cass", "Terse. As few words as will do.", "violet"),
+                Personality("p4", "Juno", "Encouraging without the sugar.", "green"),
+                Personality("p5", "Rook", "Skeptical. Argues with the premise.", "series-3"),
+            ),
+            activePersonalityId = "p1",
+        )
     }
 }

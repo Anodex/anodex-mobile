@@ -316,6 +316,8 @@ private fun ConnectedScaffold(
     val openFile by viewModel.openFile.collectAsStateWithLifecycle()
     val openFileContent by viewModel.openFileContent.collectAsStateWithLifecycle()
     val unreadEmail by viewModel.unreadEmail.collectAsStateWithLifecycle()
+    val personalityState by viewModel.personalities.collectAsStateWithLifecycle()
+    val personalityBusy by viewModel.personalityBusy.collectAsStateWithLifecycle()
 
     // Fetched when its destination is opened rather than on every connect: a phone
     // that never opens Agents should not be polling the computer for them. The
@@ -409,6 +411,10 @@ private fun ConnectedScaffold(
         SettingsScreen(
             installedVersion = BuildConfig.VERSION_NAME,
             onClose = { showingSettings = false },
+            personalities = personalityState.personalities,
+            activePersonalityId = personalityState.active,
+            busy = personalityBusy,
+            onSelectPersonality = viewModel::setPersonality,
             modifier = Modifier.safeDrawingPadding(),
         )
         return
