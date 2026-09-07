@@ -3,15 +3,15 @@ package dev.anodex.mobile.connection
 /**
  * Whether this build is behind the desktop it is paired to.
  *
- * Neither end asks GitHub. The repository is private, so checking its releases from
- * an installed app needs a credential — and a credential inside a distributed app is
- * not a secret, because the app has to be able to unlock it. That was decided for the
- * desktop's own updater and it applies unchanged here.
+ * One of two signals, and the one that does not need the internet. The desktop says
+ * what phone build it shipped alongside; this compares. "Up to date" therefore means
+ * *matched to this computer*, which is the more useful meaning between two halves of
+ * one product talking over a versioned protocol — a phone running ahead of the
+ * machine it drives is not obviously a good thing.
  *
- * So the desktop says what phone build it shipped alongside, and this compares. "Up
- * to date" therefore means *matched to this computer*, which is the more useful
- * meaning anyway: the two talk over a versioned protocol, and a phone running ahead
- * of the machine it drives is not obviously a good thing.
+ * The other signal is [dev.anodex.mobile.update.Releases], which reads GitHub for
+ * what actually exists and is the only one available before the phone has connected
+ * to anything. Both are kept because they answer different questions.
  *
  * Fails quiet throughout. A notice nobody asked for has a low tolerance for being
  * wrong: telling someone to update when they need not sends them to reinstall what
