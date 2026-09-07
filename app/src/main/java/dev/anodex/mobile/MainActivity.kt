@@ -36,7 +36,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clip
@@ -44,6 +43,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.anodex.mobile.chat.ChatMessage
@@ -333,15 +333,41 @@ private fun ConnectedScaffold(
     val installedModels by viewModel.installedModels.collectAsStateWithLifecycle()
     val loadingModelPath by viewModel.loadingModelPath.collectAsStateWithLifecycle()
 
-    val context = LocalContext.current
     val updateState by viewModel.update.collectAsStateWithLifecycle()
     val updateDismissed by viewModel.updateDismissed.collectAsStateWithLifecycle()
 
-    // Re-read rather than remembered once: granting it happens in system settings, so
-    // the app is backgrounded at the moment it changes and comes back to a stale
-    // answer otherwise. Keyed on the state so the return from that page re-checks.
     var canInstallUpdates by remember { mutableStateOf(true) }
-    LaunchedEffect(updateState) { canInstallUpdates = viewModel.canInstallUpdates() }
+
+    /**
+     * Re-read every time the app comes back to the front.
+     *
+     * The permission is granted on a system screen, so the app is always backgrounded
+     * at the moment it changes and there is no callback that carries the new value.
+     * Keying this on the update state instead was the bug: the state does not change
+     * while the user is away, so returning from the settings page left the banner
+     * still offering "Allow installs" and tapping it sent them straight back — a loop
+     * that only a force-close broke.
+     */
+    LifecycleResumeEffect(Unit) {
+        canInstallUpdates = viewModel.canInstallUpdates()
+        onPauseOrDispose {}
+    }
+
+    /**
+     * Carry straight on once the permission is granted.
+     *
+     * The user tapped "Allow installs" meaning "update the app", not meaning "visit a
+     * settings page" — so coming back having granted it should continue the job rather
+     * than return them to the same button they just pressed. This page reports no
+     * result of its own, so the answer is read back rather than taken from the
+     * callback.
+     */
+    val installPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        canInstallUpdates = viewModel.canInstallUpdates()
+        if (canInstallUpdates) viewModel.installUpdate()
+    }
 
     // Asked once at launch, before anything is connected — GitHub is the only source
     // that works when the computer is not reachable, which is exactly when somebody is
@@ -533,10 +559,7 @@ private fun ConnectedScaffold(
                 state = updateState,
                 canInstall = canInstallUpdates,
                 onInstall = viewModel::installUpdate,
-                onGrantInstall = {
-                    canInstallUpdates = false
-                    context.startActivity(viewModel.installPermissionIntent())
-                },
+                onGrantInstall = { installPermission.launch(viewModel.installPermissionIntent()) },
                 onDismiss = viewModel::dismissUpdate,
             )
         }
