@@ -330,6 +330,8 @@ private fun ConnectedScaffold(
             ?: "Anodex"
     }
     val personalityBusy by viewModel.personalityBusy.collectAsStateWithLifecycle()
+    val installedModels by viewModel.installedModels.collectAsStateWithLifecycle()
+    val loadingModelPath by viewModel.loadingModelPath.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val updateState by viewModel.update.collectAsStateWithLifecycle()
@@ -449,6 +451,10 @@ private fun ConnectedScaffold(
                 showingHost = true
             },
             newerVersion = newerVersion,
+            models = installedModels,
+            activeModelPath = model?.path?.takeIf { it.isNotBlank() },
+            loadingModelPath = loadingModelPath,
+            onLoadModel = viewModel::loadModel,
             modifier = Modifier.safeDrawingPadding(),
         )
         return
