@@ -56,18 +56,37 @@ fun WorkspaceScreen(
     projects: List<Project> = emptyList(),
     activeProjectId: String? = null,
     onOpenProject: (String) -> Unit = {},
+    /** True when Workspace was opened to browse rather than to read a project. */
+    browsing: Boolean = false,
+    onBrowseProjects: () -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        // No project open is not a state to explain, it is a choice to offer. This
-        // screen used to say "No project open" and stop there — a dead end you had to
-        // back out of and reopen the drawer to escape, which is a screen telling you
-        // what is wrong while withholding the one thing that would fix it.
-        if (projectName == null && error == null && !loading) {
+        // Two ways in, one screen. Opened from the drawer it is the index of
+        // projects; opened with one already active it is that project's files. And
+        // with no project at all it is the index again — because "No project open"
+        // on its own was a dead end, a screen naming the problem while withholding
+        // the one thing that would fix it.
+        if (browsing || (projectName == null && error == null && !loading)) {
             ProjectPicker(projects, activeProjectId, onOpenProject)
             return@Column
+        }
+
+        // A way back to the list without going through the drawer, since the files
+        // you are looking at are the reason you might want a different project.
+        if (projectName != null) {
+            Text(
+                text = projectName,
+                style = type.label,
+                color = colors.accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.minTarget)
+                    .clickable(onClick = onBrowseProjects)
+                    .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+            )
         }
 
         if (files.isEmpty()) {
