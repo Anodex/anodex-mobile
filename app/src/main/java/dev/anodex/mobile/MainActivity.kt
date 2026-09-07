@@ -91,6 +91,25 @@ import kotlinx.coroutines.delay
  */
 private const val APPROVAL_WINDOW_SECONDS = 5 * 60
 
+/**
+ * What the picker offers.
+ *
+ * The same set the computer will accept, so a file it was always going to refuse
+ * cannot be chosen in the first place. Mirrors `ALLOWED_EXTENSIONS` in
+ * `uploadStore.ts`; the desktop is still the one that decides, and this is only
+ * here so the refusal happens before a transfer rather than after one.
+ */
+private val ATTACHABLE_TYPES = arrayOf(
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/bmp",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -722,6 +741,14 @@ private fun ChatPane(
     viewModel: AnodexViewModel,
     hostLine: String?,
 ) {
+    val attachments by viewModel.attachments.collectAsStateWithLifecycle()
+
+    // The system picker, which is the only way an app sees a file it did not create.
+    // Narrowed to what the computer will actually accept, so the refusal happens in
+    // the picker rather than after a transfer.
+    val pickFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let(viewModel::attach) }
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
@@ -768,7 +795,7 @@ private fun ChatPane(
         messages = messages,
         sending = sending,
         error = error,
-        onSend = chat::send,
+        onSend = viewModel::sendMessage,
         onStop = chat::stop,
         approval = approval,
         approvalSecondsRemaining = secondsLeft,
@@ -777,6 +804,9 @@ private fun ChatPane(
         onOpenFile = viewModel::openWorkspaceFile,
         hostLine = hostLine,
         onRetryMessage = chat::retry,
+        pendingAttachments = attachments,
+        onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
+        onRemoveAttachment = viewModel::removeAttachment,
     )
 }
 

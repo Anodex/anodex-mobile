@@ -46,6 +46,14 @@ data class ChatMessage(
     /** Tools this turn ran, in the order they were called. */
     val tools: List<ToolActivity> = emptyList(),
     /**
+     * Files sent up with this message.
+     *
+     * Only ever on a user message, and only ever ones that finished uploading — the
+     * rule the whole design rests on is that the computer never sees a
+     * message-with-attachment until the attachment is whole.
+     */
+    val attachments: List<UploadedFile> = emptyList(),
+    /**
      * Who actually answered, stamped when the turn was sent.
      *
      * Per message, not per screen. The personality is a global setting, so reading
@@ -181,9 +189,11 @@ class ChatSession(
         }
     }
 
-    fun send(text: String) {
+    fun send(text: String, attachments: List<UploadedFile> = emptyList()) {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || _sending.value) return
+        // An attachment on its own is a perfectly good message: "look at this" is
+        // often the whole of what somebody wants to say.
+        if ((trimmed.isEmpty() && attachments.isEmpty()) || _sending.value) return
 
         val messageId = UUID.randomUUID().toString()
         _error.value = null
@@ -191,14 +201,19 @@ class ChatSession(
 
         // Built before the new turn is appended: the prompt carries this message, so
         // including it in history too would send it twice.
-        val payload = request(messageId, trimmed)
+        val payload = request(messageId, trimmed, attachments)
 
         // Read now, not when the reply is drawn. Switching personality afterwards
         // changes who answers next, and must not rewrite who answered before.
         val persona = activePersona()
 
         _messages.value = _messages.value +
-            ChatMessage(messageId, ChatMessage.Role.USER, trimmed) +
+            ChatMessage(
+                id = messageId,
+                role = ChatMessage.Role.USER,
+                text = trimmed,
+                attachments = attachments,
+            ) +
             ChatMessage(
                 id = assistantIdFor(messageId),
                 role = ChatMessage.Role.ASSISTANT,
@@ -279,12 +294,35 @@ class ChatSession(
      * conversation on disk, but this request is what a turn is generated from, so
      * omitting it means every message arrives with no memory of the last one.
      */
-    private fun request(messageId: String, text: String): JsonObject = buildJsonObject {
+    private fun request(
+        messageId: String,
+        text: String,
+        attachments: List<UploadedFile>,
+    ): JsonObject = buildJsonObject {
         put("conversationId", conversationId)
         put("messageId", messageId)
         put("prompt", text)
         put("history", historyForRequest())
         projectId?.let { put("projectId", it) }
+
+        // Paths on the *computer*, where the bytes already are. The desktop turns an
+        // image among these back into something the model can look at, so the file
+        // does not travel a second time as base64 inside this request.
+        if (attachments.isNotEmpty()) {
+            put(
+                "userFiles",
+                buildJsonArray {
+                    for (file in attachments) {
+                        add(
+                            buildJsonObject {
+                                put("path", file.path)
+                                put("name", file.name)
+                            },
+                        )
+                    }
+                },
+            )
+        }
     }
 
     /**

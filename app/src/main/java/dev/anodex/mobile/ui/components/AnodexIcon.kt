@@ -223,6 +223,18 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
         )
     ),
 
+    /**
+     * A paperclip. `Icon.tsx` `paperclip`.
+     *
+     * One control for attaching, not two — a plus and a clip side by side is two
+     * buttons for one job, and neither of them says which.
+     */
+    PAPERCLIP(
+        listOf(
+            "M21 11.5l-8.8 8.8a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9 9a1.8 1.8 0 0 1-2.6-2.6l8.3-8.3",
+        )
+    ),
+
     /** Back. `Icon.tsx` `chevron-left`. */
     CHEVRON_LEFT(listOf("m15 18-6-6 6-6")),
 
