@@ -428,8 +428,14 @@ private fun ConnectedScaffold(
             else -> Unit
         }
     }
-    LaunchedEffect(drawerOpen) {
-        if (drawerOpen) viewModel.refreshConversations()
+    // Whichever list the drawer is about to show, freshly read. Projects while
+    // Workspace is open, conversations otherwise: the drawer's second half answers
+    // "what am I working on", and that is a different noun in each half of the app.
+    LaunchedEffect(drawerOpen, destination) {
+        if (!drawerOpen) return@LaunchedEffect
+
+        if (destination == AppDestination.WORKSPACE) viewModel.refreshProjects()
+        else viewModel.refreshConversations()
     }
 
     // Back unwinds one step at a time, in the order the user got here.
@@ -543,6 +549,13 @@ private fun ConnectedScaffold(
                 drawerOpen = false
             },
             conversations = conversations,
+            projects = projects.projects,
+            activeProjectId = projects.activeProjectId,
+            onOpenProject = { id ->
+                viewModel.setActiveProject(id)
+                drawerOpen = false
+                destination = AppDestination.WORKSPACE
+            },
             activeConversationId = chat?.conversationId,
             onOpenConversation = {
                 viewModel.openConversation(it)
