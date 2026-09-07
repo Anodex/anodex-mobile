@@ -98,7 +98,14 @@ class ChatSession(
      * single message renamed it to the first forty characters of the first thing
      * the user ever typed.
      */
-    private val existingTitle: String? = null,
+    /**
+     * The title the computer already has for this conversation, if any.
+     *
+     * Public so the chat header can show it. Null for a conversation that has not
+     * been summarised yet, which is normal for the first minute or two — the header
+     * falls back to the first thing the user said, exactly as the saved title does.
+     */
+    val existingTitle: String? = null,
 ) {
     private val _messages = MutableStateFlow(initialMessages)
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
