@@ -12,11 +12,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -51,6 +60,14 @@ fun HostScreen(
     /** The build the computer expects, when this phone is behind it. Null if not. */
     newerVersion: String? = null,
     installedVersion: String = "",
+    /** Every way this phone knows to reach the computer, in the order it tries them. */
+    knownAddresses: List<String> = emptyList(),
+    port: Int? = null,
+    /** Teach it another one. Null hides the control entirely. */
+    onAddAddress: ((String) -> Unit)? = null,
+    /** Why the last typed address was rejected. */
+    addressError: String? = null,
+    onDismissAddressError: () -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -142,6 +159,16 @@ fun HostScreen(
             }
         }
 
+        if (knownAddresses.isNotEmpty() || onAddAddress != null) {
+            AddressCard(
+                addresses = knownAddresses,
+                port = port,
+                onAdd = onAddAddress,
+                error = addressError,
+                onDismissError = onDismissAddressError,
+            )
+        }
+
         if (onUnpair != null) {
             Card {
                 Text("Unpair this phone", style = type.bodyEmphasis, color = colors.text)
@@ -157,6 +184,108 @@ fun HostScreen(
                     modifier = Modifier.padding(top = Spacing.x1),
                 )
             }
+        }
+    }
+}
+
+/**
+ * Where this phone knows to look, and a way to add to it.
+ *
+ * Listed rather than hidden because the list is the diagnosis. A phone away from
+ * home with nothing but 192.168.x addresses cannot possibly connect, and until this
+ * was on screen that state was indistinguishable from the computer being off.
+ *
+ * Adding one does not touch the pairing. The device key still authenticates this
+ * phone and the certificate is still pinned, so a wrong address fails to connect
+ * rather than connecting to something else — which is why this can be offered
+ * without a confirmation the user would have no way to answer from away.
+ */
+@Composable
+private fun AddressCard(
+    addresses: List<String>,
+    port: Int?,
+    onAdd: ((String) -> Unit)?,
+    error: String?,
+    onDismissError: () -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    var adding by remember { mutableStateOf(false) }
+    var typed by remember { mutableStateOf("") }
+
+    Card {
+        Text("How this phone finds it", style = type.bodyEmphasis, color = colors.text)
+
+        if (addresses.isEmpty()) {
+            Text(
+                text = "No addresses stored.",
+                style = type.meta,
+                color = colors.textFaint,
+            )
+        } else {
+            for (address in addresses) {
+                Text(
+                    text = if (port != null) "$address:$port" else address,
+                    style = type.mono,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Text(
+            text = "Tried in order. Your computer cannot know its own public address, " +
+                "so if you have forwarded a port, that one has to be typed here.",
+            style = type.meta,
+            color = colors.textFaint,
+        )
+
+        if (onAdd == null) return@Card
+
+        if (!adding) {
+            SecondaryButton(
+                label = "Add an address",
+                onClick = { adding = true },
+                modifier = Modifier.padding(top = Spacing.x1),
+            )
+            return@Card
+        }
+
+        OutlinedTextField(
+            value = typed,
+            onValueChange = {
+                typed = it
+                onDismissError()
+            },
+            singleLine = true,
+            isError = error != null,
+            placeholder = { Text("76.120.41.76", style = type.body) },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { onAdd(typed) }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (error != null) {
+            Text(error, style = type.meta, color = colors.danger)
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            modifier = Modifier.padding(top = Spacing.x1),
+        ) {
+            SecondaryButton(
+                label = "Cancel",
+                onClick = {
+                    adding = false
+                    typed = ""
+                    onDismissError()
+                },
+            )
+            SecondaryButton(label = "Add", onClick = { onAdd(typed) })
         }
     }
 }
