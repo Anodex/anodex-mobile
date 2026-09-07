@@ -61,6 +61,7 @@ import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.AttachmentThumb
+import dev.anodex.mobile.ui.components.ImageViewer
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.ToolRow
@@ -339,6 +340,13 @@ private fun MessageRow(
     val type = AnodexTheme.type
     val isUser = message.role == ChatMessage.Role.USER
 
+    /** The attachment being looked at full-screen, if any. */
+    var viewing by remember(message.id) { mutableStateOf<String?>(null) }
+
+    viewing?.let { uri ->
+        ImageViewer(localUri = uri, onDismiss = { viewing = null })
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -353,11 +361,24 @@ private fun MessageRow(
                         // The picture on its own. A filename beside it is a caption
                         // nobody wrote — for a screenshot the image *is* the message,
                         // and its name is a camera's timestamp.
+                        // Tappable only when there is something to open. An
+                        // attachment loaded back from the computer has no local copy,
+                        // and a tile that responds by doing nothing reads as broken
+                        // rather than as unavailable.
+                        val openable = file.localUri
                         AttachmentThumb(
                             localUri = file.localUri,
                             isImage = true,
                             size = 200.dp,
-                            modifier = Modifier.padding(bottom = Spacing.x2),
+                            modifier = Modifier
+                                .padding(bottom = Spacing.x2)
+                                .then(
+                                    if (openable != null) {
+                                        Modifier.clickable { viewing = openable }
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         )
                     } else {
                         // A file that cannot be looked at is only its name, so that is

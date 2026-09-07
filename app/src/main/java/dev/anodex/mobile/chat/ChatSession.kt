@@ -448,7 +448,10 @@ class ChatSession(
      * away a reply the user is already reading.
      */
     private suspend fun persist() {
-        val turns = _messages.value.filter { it.text.isNotBlank() }
+        // A picture sent with no caption is still a turn. Filtering on text alone
+        // dropped it from the save entirely, so sending an image and nothing else
+        // wrote a conversation that did not contain it.
+        val turns = _messages.value.filter { it.text.isNotBlank() || it.attachments.isNotEmpty() }
         if (turns.isEmpty()) return
 
         val now = System.currentTimeMillis()
@@ -478,6 +481,37 @@ class ChatSession(
                                 // still possible to tell which personality wrote a
                                 // reply — rather than reading whichever one happens
                                 // to be selected when somebody looks.
+                                // What the desktop draws in the transcript. Sent
+                                // separately from the request's `userFiles`, which
+                                // exists so the model can look at the picture and is
+                                // not part of what gets stored — so a phone that sent
+                                // only that produced a message the computer had no
+                                // record of any attachment on, and showed nothing.
+                                //
+                                // Bytes are deliberately not included: the desktop
+                                // re-reads the file from this path, which is where its
+                                // own upload handler already put it.
+                                if (turn.attachments.isNotEmpty()) {
+                                    put(
+                                        "attachments",
+                                        buildJsonArray {
+                                            for (file in turn.attachments) {
+                                                add(
+                                                    buildJsonObject {
+                                                        put("path", file.path)
+                                                        put("name", file.name)
+                                                        put("sizeBytes", file.sizeBytes)
+                                                        put(
+                                                            "kind",
+                                                            if (file.isImage) "image" else "text",
+                                                        )
+                                                    },
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+
                                 turn.persona?.let { persona ->
                                     put(
                                         "persona",
