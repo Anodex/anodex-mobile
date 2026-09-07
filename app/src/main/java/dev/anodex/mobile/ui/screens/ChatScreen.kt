@@ -202,7 +202,7 @@ private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = n
                     .background(colors.bgSurface2)
                     .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
             ) {
-                Text(message.text, style = type.body, color = colors.text)
+                Text(message.text, style = type.chatBody, color = colors.text)
             }
         } else {
             // Assistant turns are unbubbled and full width, as on the desktop: the
@@ -306,7 +306,7 @@ private fun ThinkingLine() {
 
     Text(
         text = "Thinking…",
-        style = AnodexTheme.type.body,
+        style = AnodexTheme.type.chatBody,
         color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),
     )
 }
@@ -357,7 +357,7 @@ private fun Composer(
                         // next instruction rather than trying to stop it, and the stop
                         // button is right there for when you are.
                         text = if (sending) "Queue a message\u2026" else "Ask Anodex\u2026",
-                        style = type.body,
+                        style = type.chatBody,
                         color = colors.textFaint,
                     )
                 }
@@ -365,7 +365,7 @@ private fun Composer(
                     value = draft,
                     onValueChange = onDraftChange,
                     enabled = !sending,
-                    textStyle = type.body.copy(color = colors.text),
+                    textStyle = type.chatBody.copy(color = colors.text),
                     cursorBrush = SolidColor(colors.accent),
                     modifier = Modifier.fillMaxWidth(),
                 )

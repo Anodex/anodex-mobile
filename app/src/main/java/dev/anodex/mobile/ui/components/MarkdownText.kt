@@ -58,7 +58,7 @@ private fun Body(spans: List<Inline>) {
     val type = AnodexTheme.type
     Text(
         text = annotate(spans),
-        style = type.body,
+        style = type.chatBody,
         color = colors.text,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -74,7 +74,7 @@ private fun HeadingBlock(block: MarkdownBlock.Heading) {
     // not" — six barely-different sizes convey neither.
     Text(
         text = annotate(block.spans),
-        style = if (block.level <= 2) type.heading else type.bodyEmphasis,
+        style = if (block.level <= 2) type.chatHeading else type.chatBodyEmphasis,
         color = colors.text,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -90,12 +90,12 @@ private fun ListBlockView(block: MarkdownBlock.ListBlock) {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
                 Text(
                     text = if (block.ordered) "${index + 1}." else "\u2022",
-                    style = type.body,
+                    style = type.chatBody,
                     color = colors.textFaint,
                 )
                 Text(
                     text = annotate(spans),
-                    style = type.body,
+                    style = type.chatBody,
                     color = colors.text,
                     modifier = Modifier.weight(1f),
                 )
@@ -130,7 +130,7 @@ private fun CodeBlockView(block: MarkdownBlock.CodeBlock) {
 
         Text(
             text = block.text,
-            style = type.mono,
+            style = type.chatMono,
             color = colors.text,
             softWrap = false,
             modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -156,8 +156,8 @@ private fun annotate(spans: List<Inline>): AnnotatedString {
             when {
                 span.code -> withStyle(
                     SpanStyle(
-                        fontFamily = type.mono.fontFamily,
-                        fontSize = type.mono.fontSize,
+                        fontFamily = type.chatMono.fontFamily,
+                        fontSize = type.chatMono.fontSize,
                         color = colors.codeInlineText,
                         background = colors.bgSurface2,
                     )
