@@ -181,6 +181,31 @@ class ChatSession(
     }
 
     /**
+     * Ask the same question again.
+     *
+     * Resends the user message that produced [assistantMessageId] as a new turn,
+     * rather than replacing the reply in place. The desktop has no regenerate
+     * channel, so there is nothing to ask it to redo — and a new turn is the honest
+     * account of what happened anyway: the first answer was given, and then another
+     * was asked for. Both stay in the transcript, which is also what makes them
+     * comparable.
+     */
+    fun retry(assistantMessageId: String) {
+        if (_sending.value) return
+
+        val history = _messages.value
+        val index = history.indexOfFirst { it.id == assistantMessageId }
+        if (index <= 0) return
+
+        val question = history
+            .take(index)
+            .lastOrNull { it.role == ChatMessage.Role.USER }
+            ?: return
+
+        send(question.text)
+    }
+
+    /**
      * Stop the turn that is running.
      *
      * A generation on the phone is a generation on the computer, and one that has
