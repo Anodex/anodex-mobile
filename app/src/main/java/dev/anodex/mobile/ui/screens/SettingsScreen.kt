@@ -1,5 +1,6 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Personality
@@ -36,20 +42,20 @@ import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 
 /**
- * How Anodex answers, and what the app is.
+ * Settings, divided the way the desktop divides them.
  *
- * Grouped into cards rather than run as one flat list. That is how the platform's own
- * settings screens are built, and how [HostScreen] here already reads — the grouping
- * is what says "these belong together and that one does not", without needing a
- * heading over every second row.
+ * An index of sections rather than one long scroll. The desktop already made this
+ * split and people move between the two, so a setting filed under "AI & Models" on
+ * the computer should not be three rows below the version number here.
  *
- * The personalities are the computer's own, read from it, including any the user
- * wrote themselves. They are a real setting rather than a cosmetic one — they change
- * the system prompt — so they sit at the top rather than behind an "advanced"
- * disclosure.
+ * Two sections have nothing to change yet and say so rather than being hidden. A
+ * section missing from the phone reads as the app being unfinished; one that says
+ * where the setting lives, and why, is an answer. `settings:` and `memory:` are both
+ * denied to a paired phone deliberately, so opening them is a decision about the
+ * protocol rather than an afternoon of UI.
  *
- * Chosen on the phone, applied on the computer: like the active project, this is one
- * setting shared by both, not a phone-local preference.
+ * Everything here except the theme belongs to the computer and moves for whoever is
+ * sitting at it too, exactly like the active project does.
  */
 @Composable
 fun SettingsScreen(
@@ -73,119 +79,311 @@ fun SettingsScreen(
     /** The path being loaded right now, if any. */
     loadingModelPath: String? = null,
     onLoadModel: (String) -> Unit = {},
+    /** How this app picks its palette \u2014 the one phone-local setting here. */
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    onSelectTheme: (ThemeMode) -> Unit = {},
+) {
+    val colors = AnodexTheme.colors
+
+    // Which section is open, or null on the index. Saved, so rotating the phone in
+    // the middle of choosing a model does not throw you back to the top.
+    var section by rememberSaveable { mutableStateOf<SettingsSection?>(null) }
+
+    // Back leaves the section first and the screen second, which is what the arrow
+    // in the corner already implies.
+    BackHandler(enabled = section != null) { section = null }
+
+    Column(modifier.fillMaxSize().background(colors.bgApp)) {
+        Header(
+            title = section?.label ?: "Settings",
+            onBack = { if (section != null) section = null else onClose() },
+        )
+
+        when (section) {
+            null -> SettingsIndex(
+                hostName = hostName,
+                hostStatus = hostStatus,
+                installedVersion = installedVersion,
+                themeMode = themeMode,
+                updateAvailable = newerVersion != null,
+                onOpen = { section = it },
+            )
+
+            SettingsSection.PROFILE -> AtTheComputer(
+                what = "Your name, avatar and account",
+                why = "A phone cannot reach the computer's settings. That prefix carries " +
+                    "the permission mode, the MCP servers and the model directory, and a " +
+                    "client able to write to it could dismantle the protections that let " +
+                    "it connect at all.",
+            )
+
+            SettingsSection.MEMORY -> AtTheComputer(
+                what = "What Anodex remembers about you and your work",
+                why = "Memory is denied to a paired phone on purpose. Reading it from away " +
+                    "would put the contents of every note on a device that gets left on " +
+                    "tables.",
+            )
+
+            SettingsSection.APPEARANCE -> AppearanceSection(themeMode, onSelectTheme)
+
+            SettingsSection.AI_MODELS -> AiAndModelsSection(
+                personalities = personalities,
+                activePersonalityId = activePersonalityId,
+                busy = busy,
+                onSelectPersonality = onSelectPersonality,
+                models = models,
+                activeModelPath = activeModelPath,
+                loadingModelPath = loadingModelPath,
+                onLoadModel = onLoadModel,
+            )
+
+            SettingsSection.REMOTE -> RemoteSection(hostName, hostStatus, onOpenHost)
+
+            SettingsSection.ABOUT -> AboutSection(installedVersion, newerVersion)
+        }
+    }
+}
+
+/** The six doors, each saying what is behind it. */
+@Composable
+private fun SettingsIndex(
+    hostName: String?,
+    hostStatus: String,
+    installedVersion: String,
+    themeMode: ThemeMode,
+    updateAvailable: Boolean,
+    onOpen: (SettingsSection) -> Unit,
+) {
+    SectionBody {
+        Box(Modifier.heightIn(min = Spacing.x2, max = Spacing.x2))
+
+        Group {
+            SettingsSection.entries.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                SettingsRow(
+                    icon = entry.icon,
+                    label = entry.label,
+                    // The current value where there is one, so the question people
+                    // actually open Settings to answer is answered on the index.
+                    value = when (entry) {
+                        SettingsSection.APPEARANCE -> themeMode.label
+                        SettingsSection.REMOTE ->
+                            hostName?.let { "$it \u00b7 $hostStatus" } ?: hostStatus
+                        SettingsSection.ABOUT ->
+                            if (updateAvailable) "Update available" else installedVersion
+                        else -> entry.summary
+                    },
+                    onClick = { onOpen(entry) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A section that exists on the computer and is not reachable from here.
+ *
+ * Shown rather than hidden. A section missing from the phone reads as the app being
+ * unfinished; one that says where the setting lives, and why, is an answer.
+ */
+@Composable
+private fun AtTheComputer(what: String, why: String) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    SectionBody(spacing = Spacing.x3) {
+        Box(Modifier.heightIn(min = Spacing.x4, max = Spacing.x4))
+        Text(what, style = type.bodyEmphasis, color = colors.text)
+        Text("Set it at your computer.", style = type.body, color = colors.textMuted)
+        Text(why, style = type.meta, color = colors.textFaint)
+    }
+}
+
+@Composable
+private fun AppearanceSection(mode: ThemeMode, onSelect: (ThemeMode) -> Unit) {
+    SectionBody {
+        SectionLabel("Theme")
+
+        Group {
+            ThemeMode.entries.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = entry.label,
+                    detail = entry.description,
+                    selected = entry == mode,
+                    onClick = { onSelect(entry) },
+                )
+            }
+        }
+
+        Footnote(
+            "This one is only about this phone. Everything else in Settings is your " +
+                "computer\u2019s, and moves for whoever is sitting at it too.",
+        )
+    }
+}
+
+@Composable
+private fun AiAndModelsSection(
+    personalities: List<Personality>,
+    activePersonalityId: String?,
+    busy: Boolean,
+    onSelectPersonality: (String?) -> Unit,
+    models: List<LocalModel>,
+    activeModelPath: String?,
+    loadingModelPath: String?,
+    onLoadModel: (String) -> Unit,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        Header(onClose)
+    SectionBody {
+        SectionLabel("How Anodex answers")
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.x4),
-        ) {
-            SectionLabel("How Anodex answers")
-
-            Group {
-                // Empty before the computer has answered, and after a connection that
-                // dropped. Said plainly rather than shown as a card with no rows in
-                // it, which reads as a broken setting instead of a pending one.
-                if (personalities.isEmpty()) {
-                    Text(
-                        text = "Waiting for your computer…",
-                        style = type.body,
-                        color = colors.textFaint,
-                        modifier = Modifier.padding(Spacing.x4),
-                    )
-                }
-
-                personalities.forEachIndexed { index, personality ->
-                    if (index > 0) RowDivider()
-                    PersonalityRow(
-                        personality = personality,
-                        tint = tintOf(personality.tint, colors),
-                        selected = personality.id == activePersonalityId,
-                        enabled = !busy,
-                        onClick = { onSelectPersonality(personality.id) },
-                    )
-                }
-            }
-
-            Footnote("Changing this changes how the computer replies, for both of you.")
-
-            if (onOpenHost != null) {
-                SectionLabel("Your computer")
-
-                Group {
-                    SettingsRow(
-                        icon = AnodexIcon.MONITOR,
-                        label = hostName ?: "Not paired",
-                        // The value under the label: the platform's way of stating a
-                        // setting's current setting without making you open it first.
-                        value = hostStatus,
-                        onClick = onOpenHost,
-                    )
-                }
-            }
-
-            if (models.isNotEmpty()) {
-                SectionLabel("Model")
-
-                Group {
-                    models.forEachIndexed { index, model ->
-                        if (index > 0) RowDivider()
-                        ModelRow(
-                            model = model,
-                            active = model.path == activeModelPath,
-                            loading = model.path == loadingModelPath,
-                            // One load at a time. A second while the first is still
-                            // going would queue a minutes-long job behind another.
-                            enabled = loadingModelPath == null,
-                            onClick = { onLoadModel(model.path) },
-                        )
-                    }
-                }
-
-                Footnote(
-                    "Only what is already on your computer. Downloading a new model is " +
-                        "done at the machine.",
+        Group {
+            // Empty before the computer has answered, and after a connection that
+            // dropped. Said plainly rather than shown as a card with no rows in it,
+            // which reads as a broken setting instead of a pending one.
+            if (personalities.isEmpty()) {
+                Text(
+                    text = "Waiting for your computer\u2026",
+                    style = type.body,
+                    color = colors.textFaint,
+                    modifier = Modifier.padding(Spacing.x4),
                 )
             }
 
-            SectionLabel("About")
-
-            Group {
-                SettingsRow(
-                    icon = AnodexIcon.SETTINGS,
-                    label = "Version",
-                    trailing = installedVersion,
+            personalities.forEachIndexed { index, personality ->
+                if (index > 0) RowDivider()
+                PersonalityRow(
+                    personality = personality,
+                    tint = tintOf(personality.tint, colors),
+                    selected = personality.id == activePersonalityId,
+                    enabled = !busy,
+                    onClick = { onSelectPersonality(personality.id) },
                 )
-
-                if (newerVersion != null) {
-                    RowDivider()
-                    // Stated, not acted on. The app cannot install anything yet and
-                    // should not pretend it can — a button that turns out to mean "go
-                    // and find a file" is worse than a sentence that says so.
-                    Column(Modifier.padding(Spacing.x4)) {
-                        Text(
-                            text = "$newerVersion is available",
-                            style = type.bodyEmphasis,
-                            color = colors.accent,
-                        )
-                        Text(
-                            text = "Your computer ships with it. Install the newer one " +
-                                "over the top — your pairing is kept.",
-                            style = type.meta,
-                            color = colors.textMuted,
-                        )
-                    }
-                }
             }
-
-            Box(Modifier.heightIn(min = Spacing.x8))
         }
+
+        Footnote("Changing this changes how the computer replies, for both of you.")
+
+        if (models.isNotEmpty()) {
+            SectionLabel("Model")
+
+            Group {
+                models.forEachIndexed { index, model ->
+                    if (index > 0) RowDivider()
+                    ModelRow(
+                        model = model,
+                        active = model.path == activeModelPath,
+                        loading = model.path == loadingModelPath,
+                        // One load at a time. A second while the first is still going
+                        // would queue a minutes-long job behind another.
+                        enabled = loadingModelPath == null,
+                        onClick = { onLoadModel(model.path) },
+                    )
+                }
+            }
+
+            Footnote(
+                "Only what is already on your computer. Downloading a new model is done " +
+                    "at the machine.",
+            )
+        }
+    }
+}
+
+@Composable
+private fun RemoteSection(hostName: String?, hostStatus: String, onOpenHost: (() -> Unit)?) {
+    SectionBody {
+        SectionLabel("Your computer")
+
+        Group {
+            SettingsRow(
+                icon = AnodexIcon.MONITOR,
+                label = hostName ?: "Not paired",
+                value = hostStatus,
+                onClick = onOpenHost,
+            )
+        }
+
+        Footnote(
+            "The full picture \u2014 model, context, project, and unpairing \u2014 is on the " +
+                "computer\u2019s own screen.",
+        )
+    }
+}
+
+@Composable
+private fun AboutSection(installedVersion: String, newerVersion: String?) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    SectionBody {
+        SectionLabel("About")
+
+        Group {
+            SettingsRow(icon = AnodexIcon.INFO, label = "Version", trailing = installedVersion)
+
+            if (newerVersion != null) {
+                RowDivider()
+                Column(Modifier.padding(Spacing.x4)) {
+                    Text(
+                        text = "$newerVersion is available",
+                        style = type.bodyEmphasis,
+                        color = colors.accent,
+                    )
+                    Text(
+                        text = "The banner at the top of the app installs it, and your " +
+                            "pairing is kept.",
+                        style = type.meta,
+                        color = colors.textMuted,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The scrolling body every section shares, so they cannot drift apart. */
+@Composable
+private fun SectionBody(spacing: Dp = 0.dp, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Spacing.x4),
+        verticalArrangement = Arrangement.spacedBy(spacing),
+    ) {
+        content()
+        // Clears the gesture bar, so the last row is reachable rather than sitting
+        // under it.
+        Box(Modifier.heightIn(min = Spacing.x8, max = Spacing.x8))
+    }
+}
+
+/** One of a set, with a tick on the one in force. */
+@Composable
+private fun ChoiceRow(label: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .heightIn(min = Touch.minTarget)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = type.bodyEmphasis, color = colors.text)
+            Text(detail, style = type.meta, color = colors.textMuted)
+        }
+
+        if (selected) Text("\u2713", style = type.body, color = colors.accent)
     }
 }
 
@@ -195,15 +393,18 @@ fun SettingsScreen(
  * A chevron rather than a boxed "Back" button: the box drew as much weight as the
  * settings under it, and everything else on the phone leaves going back to a plain
  * affordance in the corner.
+ *
+ * The title names the open section, so the same arrow reads as "up one" rather
+ * than "close" — which is what it now does.
  */
 @Composable
-private fun Header(onClose: () -> Unit) {
+private fun Header(title: String, onBack: () -> Unit) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     Box(Modifier.fillMaxWidth().padding(vertical = Spacing.x2)) {
         Text(
-            text = "Settings",
+            text = title,
             style = type.bodyEmphasis,
             color = colors.text,
             textAlign = TextAlign.Center,
@@ -214,7 +415,7 @@ private fun Header(onClose: () -> Unit) {
             modifier = Modifier
                 .size(Touch.minTarget)
                 .clip(CircleShape)
-                .clickable(onClick = onClose),
+                .clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) {
             AnodexIcon(AnodexIcon.CHEVRON_LEFT, tint = colors.text, contentDescription = "Back")
@@ -430,25 +631,21 @@ private fun ModelRow(
 private fun PreviewSettings() {
     AnodexTheme(darkTheme = true) {
         SettingsScreen(
-            installedVersion = "0.23.0",
+            installedVersion = "0.26.0",
             onClose = {},
             personalities = listOf(
-                Personality("p1", "Vale", "Direct. Answer first, reasoning after.", "accent"),
-                Personality("p2", "Wren", "Warm, and explains the reasoning.", "series-2"),
-                Personality("p3", "Cass", "Terse. As few words as will do.", "violet"),
-                Personality("p4", "Juno", "Encouraging without the sugar.", "green"),
-                Personality("p5", "Rook", "Skeptical. Argues with the premise.", "series-3"),
+                Personality("p1", "Anodex", "The default voice.", "accent"),
+                Personality("p2", "Vale", "Direct. Answer first, reasoning after.", "series-2"),
             ),
             activePersonalityId = "p1",
             models = listOf(
                 LocalModel("/m/qwen.gguf", "Qwen3 30B A3B", 18_500_000_000, "Q4_K_M"),
-                LocalModel("/m/gemma.gguf", "Gemma 3 27B", 16_200_000_000, "Q4_K_M"),
             ),
             activeModelPath = "/m/qwen.gguf",
             hostName = "Gort",
             hostStatus = "Connected",
             onOpenHost = {},
-            newerVersion = "0.24.0",
+            newerVersion = "0.27.0",
         )
     }
 }
