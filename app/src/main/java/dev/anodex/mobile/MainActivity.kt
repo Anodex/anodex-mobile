@@ -481,7 +481,14 @@ private fun ConnectedScaffold(
 
         Box(Modifier.weight(1f)) {
             when (destination) {
-                AppDestination.CHAT -> ChatPane(chat, viewModel, model)
+                AppDestination.CHAT -> ChatPane(
+                    chat,
+                    viewModel,
+                    model,
+                    // Named on the empty screen, because which computer is awake is
+                    // the one thing no other assistant can put there.
+                    hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
+                )
 
                 AppDestination.AGENTS -> AgentsScreen(
                     runs = agentRuns,
@@ -604,6 +611,7 @@ private fun ChatPane(
     chat: ChatSession?,
     viewModel: AnodexViewModel,
     model: ModelStatus?,
+    hostLine: String?,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -659,6 +667,7 @@ private fun ChatPane(
         onDeny = { chat.respondToApproval(approved = false) },
         model = model,
         onOpenFile = viewModel::openWorkspaceFile,
+        hostLine = hostLine,
     )
 }
 
