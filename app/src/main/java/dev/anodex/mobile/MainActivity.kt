@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -73,7 +74,9 @@ import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
+import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.AppearanceStore
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.ui.theme.Spacing
@@ -97,9 +100,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val crash = CrashLog.read(this)
+        val appearance = AppearanceStore(this)
 
         setContent {
-            AnodexTheme {
+            // Read here rather than inside the app, because the theme wraps
+            // everything including the crash screen. SYSTEM until the store has
+            // answered, which is one frame and is also the right default.
+            val mode by appearance.themeMode.collectAsStateWithLifecycle(ThemeMode.SYSTEM)
+
+            AnodexTheme(
+                darkTheme = when (mode) {
+                    ThemeMode.DARK -> true
+                    ThemeMode.LIGHT -> false
+                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                },
+            ) {
                 if (crash != null) {
                     CrashReportScreen(
                         report = crash,
@@ -323,6 +338,7 @@ private fun ConnectedScaffold(
     val personalityBusy by viewModel.personalityBusy.collectAsStateWithLifecycle()
     val installedModels by viewModel.installedModels.collectAsStateWithLifecycle()
     val loadingModelPath by viewModel.loadingModelPath.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
     val updateState by viewModel.update.collectAsStateWithLifecycle()
     val updateDismissed by viewModel.updateDismissed.collectAsStateWithLifecycle()
@@ -475,6 +491,8 @@ private fun ConnectedScaffold(
                 showingHost = true
             },
             newerVersion = newerVersion,
+            themeMode = themeMode,
+            onSelectTheme = viewModel::setThemeMode,
             models = installedModels,
             activeModelPath = model?.path?.takeIf { it.isNotBlank() },
             loadingModelPath = loadingModelPath,

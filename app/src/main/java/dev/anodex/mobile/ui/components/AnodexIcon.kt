@@ -164,6 +164,65 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
         )
     ),
 
+    /**
+     * The settings sections, from `Icon.tsx`.
+     *
+     * These are the glyphs the desktop draws with `<circle>`, `<rect>` and `<line>`,
+     * which a path parser has none of — so they are transcribed rather than copied,
+     * the same exception `MONITOR` already is. The geometry is the desktop's exactly;
+     * only the notation differs.
+     */
+    USER(
+        listOf(
+            "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2",
+            "M8 7a4 4 0 1 0 8 0 4 4 0 1 0-8 0z",
+        )
+    ),
+
+    /**
+     * A disc split down the middle.
+     *
+     * The one deliberate deviation: the desktop fills half the circle, and `filled`
+     * here is per glyph rather than per sub-path. A drawn diameter says the same
+     * thing — two halves — without turning the outline solid.
+     */
+    PALETTE(
+        listOf(
+            "M12 3a9 9 0 1 1 0 18 9 9 0 1 1 0-18z",
+            "M12 3v18",
+        )
+    ),
+
+    MEMORY(
+        listOf(
+            "M12 6.5C10.5 5 8.5 4.5 4 4.5v12c4.5 0 6.5.5 8 2 1.5-1.5 3.5-2 8-2v-12c-4.5 0-6.5.5-8 2z",
+            "M12 6.5v10",
+        )
+    ),
+
+    CPU(
+        listOf(
+            "M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z",
+            "M9 9h6v6H9z",
+            "M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3",
+        )
+    ),
+
+    SMARTPHONE(
+        listOf(
+            "M9 2h6a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z",
+            "M10.5 5.5h3",
+        )
+    ),
+
+    INFO(
+        listOf(
+            "M12 3a9 9 0 1 1 0 18 9 9 0 1 1 0-18z",
+            "M12 11v5",
+            "M12 8h.01",
+        )
+    ),
+
     /** Back. `Icon.tsx` `chevron-left`. */
     CHEVRON_LEFT(listOf("m15 18-6-6 6-6")),
 
