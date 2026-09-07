@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One directory, inside the app's own cache, holding one downloaded APK.
+
+  Narrow on purpose: a FileProvider that exports the whole cache exports every other
+  thing that happens to be in it.
+-->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

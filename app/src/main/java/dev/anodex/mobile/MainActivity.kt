@@ -36,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clip
@@ -64,6 +65,7 @@ import dev.anodex.mobile.ui.screens.ConversationsScreen
 import dev.anodex.mobile.ui.screens.ComingSoonScreen
 import dev.anodex.mobile.ui.screens.EmailPane
 import dev.anodex.mobile.ui.screens.FileScreen
+import dev.anodex.mobile.ui.components.UpdateBanner
 import dev.anodex.mobile.ui.screens.HostScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.ManualPairScreen
@@ -319,6 +321,21 @@ private fun ConnectedScaffold(
     val personalityState by viewModel.personalities.collectAsStateWithLifecycle()
     val personalityBusy by viewModel.personalityBusy.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val updateState by viewModel.update.collectAsStateWithLifecycle()
+    val updateDismissed by viewModel.updateDismissed.collectAsStateWithLifecycle()
+
+    // Re-read rather than remembered once: granting it happens in system settings, so
+    // the app is backgrounded at the moment it changes and comes back to a stale
+    // answer otherwise. Keyed on the state so the return from that page re-checks.
+    var canInstallUpdates by remember { mutableStateOf(true) }
+    LaunchedEffect(updateState) { canInstallUpdates = viewModel.canInstallUpdates() }
+
+    // Asked once at launch, before anything is connected — GitHub is the only source
+    // that works when the computer is not reachable, which is exactly when somebody is
+    // most likely to be wondering whether their app is current.
+    LaunchedEffect(Unit) { viewModel.checkForUpdate() }
+
     // Fetched when its destination is opened rather than on every connect: a phone
     // that never opens Agents should not be polling the computer for them. The
     // conversation list is refreshed whenever the drawer opens, since that is the
@@ -491,6 +508,22 @@ private fun ConnectedScaffold(
             )
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+
+        // Under the header on every screen rather than inside chat: a newer app is
+        // not a chat concern, and the previous version of this notice lived two taps
+        // in on the host screen, where it went unseen through an entire release.
+        if (!updateDismissed) {
+            UpdateBanner(
+                state = updateState,
+                canInstall = canInstallUpdates,
+                onInstall = viewModel::installUpdate,
+                onGrantInstall = {
+                    canInstallUpdates = false
+                    context.startActivity(viewModel.installPermissionIntent())
+                },
+                onDismiss = viewModel::dismissUpdate,
+            )
+        }
 
         Box(Modifier.weight(1f)) {
             when (destination) {
