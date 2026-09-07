@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -51,11 +52,43 @@ fun WorkspaceScreen(
     projectName: String? = null,
     /** Why the list is empty, when the reason is not "the project has no files". */
     error: String? = null,
+    /** Every project on the computer, so this screen can be its own way in. */
+    projects: List<Project> = emptyList(),
+    activeProjectId: String? = null,
+    onOpenProject: (String) -> Unit = {},
+    /** True when Workspace was opened to browse rather than to read a project. */
+    browsing: Boolean = false,
+    onBrowseProjects: () -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     Column(modifier.fillMaxSize().background(colors.bgApp)) {
+        // Two ways in, one screen. Opened from the drawer it is the index of
+        // projects; opened with one already active it is that project's files. And
+        // with no project at all it is the index again — because "No project open"
+        // on its own was a dead end, a screen naming the problem while withholding
+        // the one thing that would fix it.
+        if (browsing || (projectName == null && error == null && !loading)) {
+            ProjectPicker(projects, activeProjectId, onOpenProject)
+            return@Column
+        }
+
+        // A way back to the list without going through the drawer, since the files
+        // you are looking at are the reason you might want a different project.
+        if (projectName != null) {
+            Text(
+                text = projectName,
+                style = type.label,
+                color = colors.accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.minTarget)
+                    .clickable(onClick = onBrowseProjects)
+                    .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+            )
+        }
+
         if (files.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
@@ -107,6 +140,96 @@ fun WorkspaceScreen(
         ) {
             items(files, key = { it.path }) { file ->
                 FileRow(file, onClick = { onOpenFile(file.path) })
+            }
+        }
+    }
+}
+
+/**
+ * Which project to work in, offered where the files would be.
+ *
+ * The drawer lists these too. Both are worth having: the drawer is the shortcut for
+ * somebody who already knows they want to switch, and this is the answer for
+ * somebody who opened Workspace and found nothing there.
+ */
+@Composable
+private fun ProjectPicker(
+    projects: List<Project>,
+    activeProjectId: String?,
+    onOpenProject: (String) -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    if (projects.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+                modifier = Modifier.padding(Spacing.x6),
+            ) {
+                Text(
+                    text = "No projects yet",
+                    style = type.bodyEmphasis,
+                    color = colors.textMuted,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "Create one on your computer and it will appear here.",
+                    style = type.meta,
+                    color = colors.textFaint,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = Spacing.x2),
+    ) {
+        item(key = "prompt") {
+            Text(
+                text = "Choose a project to work in",
+                style = type.meta,
+                color = colors.textFaint,
+                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+            )
+        }
+
+        items(projects, key = { it.id }) { project ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.minTarget)
+                    .clickable { onOpenProject(project.id) }
+                    .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+            ) {
+                AnodexIcon(AnodexIcon.FOLDER, size = 18.dp, tint = colors.textFaint)
+
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = project.name,
+                        style = type.body,
+                        color = colors.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = project.folderPath,
+                        style = type.meta,
+                        color = colors.textFaint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                if (project.id == activeProjectId) {
+                    Text("\u2713", style = type.body, color = colors.accent)
+                }
             }
         }
     }
