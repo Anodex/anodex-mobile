@@ -45,6 +45,21 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
+    <!--
+      The app is sideloaded, so nothing else is going to update it. This lets it hand a
+      downloaded APK to Android's own installer, which then shows its usual "update this
+      app?" screen - the app cannot install anything silently and this permission does
+      not let it.
+
+      From Android 8 the user must also switch it on for this app specifically, in system
+      settings. That is deliberate on Android's part and the app only ever sends them to
+      the page; see Updater.canRequestInstall.
+
+      The download it hands over is fetched from a fixed GitHub URL over HTTPS and is
+      rejected unless it carries this app's own signing certificate.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -63,6 +78,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Hands one downloaded APK to the system installer. Exports a single cache
+          subdirectory and nothing else: grantUriPermissions means the installer gets
+          read access to the one file it is passed, for as long as it is handling it.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
 
         <!--
           specialUse, not connectedDevice or dataSync, and each rejection is for a
