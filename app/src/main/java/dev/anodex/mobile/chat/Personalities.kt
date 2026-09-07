@@ -73,9 +73,14 @@ internal fun parsePersonalityState(element: JsonElement?): PersonalityState {
     )
 }
 
-private fun JsonObject.asPersonality(): Personality? = Personality(
-    id = this["id"]?.jsonPrimitive?.contentOrNull ?: return null,
-    name = this["name"]?.jsonPrimitive?.contentOrNull ?: return null,
-    role = this["role"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-    tint = this["tint"]?.jsonPrimitive?.contentOrNull ?: "accent",
-)
+private fun JsonObject.asPersonality(): Personality? {
+    val id = this["id"]?.jsonPrimitive?.contentOrNull ?: return null
+    val name = this["name"]?.jsonPrimitive?.contentOrNull ?: return null
+
+    return Personality(
+        id = id,
+        name = name,
+        role = this["role"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        tint = this["tint"]?.jsonPrimitive?.contentOrNull ?: "accent",
+    )
+}
