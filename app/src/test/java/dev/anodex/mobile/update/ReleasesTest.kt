@@ -16,6 +16,9 @@ import org.junit.Test
  */
 class ReleasesTest {
 
+    /** The list shape the app actually asks for, since a single object is not it. */
+    private fun list(vararg entries: String) = "[${entries.joinToString(",")}]"
+
     private fun release(
         tag: String = "v0.23.0-preview.31",
         assetName: String = "anodex-0.23.0.apk",
@@ -30,6 +33,43 @@ class ReleasesTest {
           ]
         }
     """.trimIndent()
+
+    @Test
+    fun `asks for the release list, not the latest release`() {
+        // The bug this pins. `/releases/latest` means "newest release that is not a
+        // prerelease and not a draft" — so with every build published as a preview it
+        // answered 404, the app read that as "nothing to offer", and the banner could
+        // never appear on any version. Nothing failed; it just never fired.
+        assertTrue(
+            "must not use /releases/latest — it excludes prereleases",
+            !Releases.LATEST_URL.contains("/releases/latest"),
+        )
+        assertTrue(Releases.LATEST_URL.contains("/releases"))
+    }
+
+    @Test
+    fun `takes the newest entry from the list, prerelease or not`() {
+        val newest = release(tag = "v0.25.0-preview.33", url = "https://github.com/a/b/x.apk")
+        val older = release(tag = "v0.24.0-preview.32", url = "https://github.com/a/b/y.apk")
+
+        assertEquals("0.25.0", Releases.parseLatest(list(newest, older))!!.version)
+    }
+
+    @Test
+    fun `skips a leading entry with no APK rather than giving up on the list`() {
+        // Real case: a release published before CI has uploaded the build. The one
+        // before it is still a perfectly good answer.
+        val empty = """{ "tag_name": "v0.26.0", "assets": [] }"""
+        val usable = release(tag = "v0.25.0-preview.33")
+
+        assertEquals("0.25.0", Releases.parseLatest(list(empty, usable))!!.version)
+    }
+
+    @Test
+    fun `a 404 body is still nothing to offer`() {
+        // What the old endpoint actually returned, every time.
+        assertNull(Releases.parseLatest("""{ "message": "Not Found", "status": "404" }"""))
+    }
 
     @Test
     fun `reads the version, the notes and the APK`() {
