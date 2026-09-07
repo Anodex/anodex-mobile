@@ -124,6 +124,19 @@ class Conversations(private val socket: AnodexSocket) {
             id = id,
             role = if (role == "user") ChatMessage.Role.USER else ChatMessage.Role.ASSISTANT,
             text = content,
+            // Absent on anything written before it was recorded, and on a turn sent
+            // with no character selected. Both render as no byline rather than as a
+            // guess taken from whatever is selected now.
+            persona = (this["persona"] as? JsonObject)?.asPersona(),
+        )
+    }
+
+    private fun JsonObject.asPersona(): MessagePersona? {
+        val name = this["name"]?.jsonPrimitive?.contentOrNull() ?: return null
+        return MessagePersona(
+            id = this["id"]?.jsonPrimitive?.contentOrNull() ?: return null,
+            name = name,
+            tint = this["tint"]?.jsonPrimitive?.contentOrNull() ?: "accent",
         )
     }
 

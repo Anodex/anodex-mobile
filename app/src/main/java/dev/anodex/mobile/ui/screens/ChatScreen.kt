@@ -112,6 +112,25 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
 
     /**
+     * A message written while the last one was still being answered.
+     *
+     * Mid-turn is exactly when the next instruction gets written — you already know
+     * what you want next while the answer to the last thing is still arriving. So
+     * what is typed during a turn is neither refused nor silently held: it waits, it
+     * says so, and it goes out on its own the moment the turn ends.
+     *
+     * The draft *is* the queue rather than a second piece of state, which is why
+     * there is no way to end up with a queued message and a draft disagreeing about
+     * what is on the point of being sent.
+     */
+    LaunchedEffect(sending) {
+        if (!sending && draft.isNotBlank()) {
+            onSend(draft)
+            draft = ""
+        }
+    }
+
+    /**
      * Whether the view is close enough to the end to keep following the stream.
      *
      * Read from live geometry rather than remembered, because the transcript shrinks
@@ -280,6 +299,7 @@ fun ChatScreen(
                 onSend(draft)
                 draft = ""
             },
+            onClearDraft = { draft = "" },
             onStop = onStop,
             attachments = pendingAttachments,
             onAttach = onAttach,
@@ -451,6 +471,47 @@ private fun ActionButton(
             // 48dp targets between each one would push the conversation apart.
             .padding(horizontal = Spacing.x2, vertical = Spacing.x2),
     )
+}
+
+/**
+ * A message written while a turn was still running.
+ *
+ * It goes out on its own the moment the answer lands. Shown rather than silently
+ * held, because a message that vanished from the composer and has not appeared in
+ * the transcript is one somebody will type again.
+ */
+@Composable
+private fun QueuedNotice(onClear: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = Spacing.x2)
+            .clip(Radii.md)
+            .background(colors.accentSoft)
+            .padding(start = Spacing.x3, top = Spacing.x1, bottom = Spacing.x1),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Text(
+            text = "Sends when this turn ends",
+            style = type.meta,
+            color = colors.accent,
+            modifier = Modifier.weight(1f),
+        )
+
+        Box(
+            modifier = Modifier
+                .size(Touch.minTarget)
+                .clip(CircleShape)
+                .clickable(onClick = onClear),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("\u2715", style = type.meta, color = colors.accent)
+        }
+    }
 }
 
 /**
@@ -709,6 +770,7 @@ private fun Composer(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    onClearDraft: () -> Unit = {},
     attachments: List<UploadState> = emptyList(),
     onAttach: (() -> Unit)? = null,
     onRemoveAttachment: (UploadState) -> Unit = {},
@@ -723,6 +785,12 @@ private fun Composer(
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
+        // Said while it is true, not after. A message that is going to send
+        // itself should say so before it does, and be removable right up to the
+        // moment it fires: one you thought better of must not become
+        // unstoppable just because the turn in front of it is slow.
+        if (sending && draft.isNotBlank()) QueuedNotice(onClear = onClearDraft)
+
         // Above the field, because an attachment belongs to the message being
         // written rather than to the act of typing it.
         for (attachment in attachments) {
