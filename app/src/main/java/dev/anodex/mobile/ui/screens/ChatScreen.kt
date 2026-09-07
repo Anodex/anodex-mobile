@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -61,7 +62,6 @@ import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.ui.components.ToolApprovalCard
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -88,14 +88,6 @@ fun ChatScreen(
     approvalSecondsRemaining: Int = 0,
     onApprove: () -> Unit = {},
     onDeny: () -> Unit = {},
-    /**
-     * The computer's loaded model, for the context meter above the composer.
-     *
-     * Null when nothing is loaded or the socket is down, and the meter simply is
-     * not drawn — an empty bar would read as "no context used" rather than "not
-     * known", which is the opposite of the truth.
-     */
-    model: ModelStatus? = null,
     /** Opens a file a tool touched. Null in previews and where there is no socket. */
     onOpenFile: ((String) -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
@@ -262,7 +254,6 @@ fun ChatScreen(
                 draft = ""
             },
             onStop = onStop,
-            model = model,
         )
     }
 }
@@ -285,7 +276,11 @@ private fun MessageRow(
         if (isUser) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.78f)
+                    // Hugs the words. `fillMaxWidth(0.78f)` gave "ok" a box the width
+                    // of a paragraph, so every short reply looked like a long one and
+                    // the column of identical rectangles said nothing about the
+                    // conversation's shape.
+                    .widthIn(max = 300.dp)
                     .clip(Radii.lg)
                     .background(colors.bgSurface2)
                     .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
@@ -589,7 +584,6 @@ private fun Composer(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
-    model: ModelStatus? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -601,15 +595,6 @@ private fun Composer(
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
-        // Directly above the box you type into, because that is where the decision
-        // is made. A context window filling up is the reason a long conversation
-        // starts forgetting its own beginning, and the desktop shows it in the
-        // header where somebody about to type is not looking.
-        val fraction = model?.contextFraction
-        if (fraction != null) {
-            ContextStrip(model, fraction)
-        }
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
@@ -624,10 +609,12 @@ private fun Composer(
             ) {
                 if (draft.isEmpty()) {
                     Text(
-                        // "Queue", not "Interrupt". Mid-turn you are usually writing the
-                        // next instruction rather than trying to stop it, and the stop
-                        // button is right there for when you are.
-                        text = if (sending) "Queue a message\u2026" else "Ask Anodex\u2026",
+                        // Mid-turn you are usually writing the next instruction rather
+                        // than trying to stop it, so the field stays live. It no longer
+                        // says "queue": nothing sends this by itself, and the old
+                        // wording promised exactly that while the field was disabled
+                        // and would not take a keystroke at all.
+                        text = if (sending) "Write your next message\u2026" else "Ask Anodex\u2026",
                         style = type.chatBody,
                         color = colors.textFaint,
                     )
@@ -635,7 +622,6 @@ private fun Composer(
                 BasicTextField(
                     value = draft,
                     onValueChange = onDraftChange,
-                    enabled = !sending,
                     textStyle = type.chatBody.copy(color = colors.text),
                     cursorBrush = SolidColor(colors.accent),
                     modifier = Modifier.fillMaxWidth(),
@@ -658,48 +644,6 @@ private fun Composer(
     }
 }
 
-/** Context used, as a number and a hairline bar. */
-@Composable
-private fun ContextStrip(model: ModelStatus, fraction: Float) {
-    val colors = AnodexTheme.colors
-    val type = AnodexTheme.type
-    // Amber past the point where the desktop starts summarising history away, so the
-    // bar changes character before the model appears to forget something rather than
-    // after.
-    val tight = fraction > 0.85f
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-    ) {
-        Text("Context", style = type.meta, color = colors.textFaint)
-
-        Box(
-            Modifier
-                .weight(1f)
-                .height(2.dp)
-                .clip(Radii.pill)
-                .background(colors.border),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth(fraction)
-                    .height(2.dp)
-                    .clip(Radii.pill)
-                    .background(if (tight) colors.warn else colors.accent),
-            )
-        }
-
-        Text(
-            text = "${compactTokens(model.contextUsedTokens)} / " +
-                compactTokens(model.contextTotalTokens),
-            style = type.meta,
-            color = if (tight) colors.warn else colors.textFaint,
-            maxLines = 1,
-        )
-    }
-}
 
 /**
  * The one round control in the app.
@@ -746,11 +690,6 @@ private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) 
         )
     }
 }
-
-/** Thousands abbreviated: the exact figure changes several times a second mid-turn. */
-private fun compactTokens(tokens: Int): String =
-    if (tokens < 1_000) tokens.toString() else "${"%.1f".format(tokens / 1000f)}K"
-
 
 @Preview(name = "Chat - dark", showBackground = true, heightDp = 700)
 @Composable
