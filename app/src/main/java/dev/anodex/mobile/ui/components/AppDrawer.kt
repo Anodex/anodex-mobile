@@ -158,6 +158,13 @@ fun AppDrawer(
             LazyColumn(Modifier.weight(1f)) {
                 val openProject = projects.firstOrNull { it.id == activeProjectId }
                 if (openProject != null) {
+                    // Named, because a project and a conversation sat in one
+                    // undifferentiated list and nothing said which was which. A folder
+                    // icon carried the whole distinction, and an icon is not a label —
+                    // it tells you something is a folder only if you already know that
+                    // is the thing being asked.
+                    item(key = "kind-workspace") { KindLabel("WORKSPACE") }
+
                     item(key = "project-${openProject.id}") {
                         Row(
                             modifier = Modifier
@@ -182,6 +189,10 @@ fun AppDrawer(
                             )
                         }
                     }
+                }
+
+                if (conversations.isNotEmpty()) {
+                    item(key = "kind-chats") { KindLabel("CHATS") }
                 }
 
                 items(conversations.take(RECENT_LIMIT), key = { it.id }) { conversation ->
@@ -243,6 +254,28 @@ fun AppDrawer(
             Text("New chat", style = type.bodyEmphasis, color = colors.bgBase)
         }
     }
+}
+
+/**
+ * Which kind of thing the rows under it are.
+ *
+ * Quieter than the section headings above it: this separates two short lists inside
+ * one area rather than announcing a new area, and a second heading at full strength
+ * would compete with the navigation it sits beneath.
+ */
+@Composable
+private fun KindLabel(text: String) {
+    Text(
+        text = text,
+        style = AnodexTheme.type.badge,
+        color = AnodexTheme.colors.textFaint,
+        modifier = Modifier.padding(
+            start = Spacing.x4,
+            end = Spacing.x4,
+            top = Spacing.x3,
+            bottom = Spacing.x1,
+        ),
+    )
 }
 
 @Composable
