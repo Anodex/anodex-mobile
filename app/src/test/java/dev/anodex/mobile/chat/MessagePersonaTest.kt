@@ -23,8 +23,8 @@ class MessagePersonaTest {
 
     @Test
     fun `a reply carries its own author, not the screen's`() {
-        val rook = MessagePersona("Rook", "series-3")
-        val vale = MessagePersona("Vale", "accent")
+        val rook = MessagePersona("builtin:skeptical", "Rook", "series-3")
+        val vale = MessagePersona("builtin:direct", "Vale", "accent")
 
         val transcript = listOf(reply(rook), reply(vale))
 
@@ -36,11 +36,11 @@ class MessagePersonaTest {
 
     @Test
     fun `switching personality later does not rewrite an existing message`() {
-        val original = reply(MessagePersona("Rook", "series-3"))
+        val original = reply(MessagePersona("builtin:skeptical", "Rook", "series-3"))
 
         // The selection moving on is a change to a different object entirely; a
         // message is immutable and the copy is explicit.
-        val laterSelection = MessagePersona("Juno", "green")
+        val laterSelection = MessagePersona("builtin:encouraging", "Juno", "green")
 
         assertEquals("Rook", original.persona?.name)
         assertEquals("Juno", laterSelection.name)
@@ -59,7 +59,7 @@ class MessagePersonaTest {
         // Both halves are needed: the dot is how the personality is recognised
         // before the name is read, and a name with the wrong colour beside it is
         // its own small lie.
-        val persona = reply(MessagePersona("Cass", "violet")).persona!!
+        val persona = reply(MessagePersona("builtin:terse", "Cass", "violet")).persona!!
 
         assertEquals("Cass", persona.name)
         assertEquals("violet", persona.tint)
