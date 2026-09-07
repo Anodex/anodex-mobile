@@ -8,6 +8,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -48,7 +50,7 @@ fun StatusDot(
     )
 
     Canvas(modifier.size(size * 2.6f)) {
-        val centre = androidx.compose.ui.geometry.Offset(this.size.width / 2, this.size.height / 2)
+        val centre = Offset(this.size.width / 2, this.size.height / 2)
         val radius = size.toPx() / 2
 
         if (running && !reducedMotion) {
