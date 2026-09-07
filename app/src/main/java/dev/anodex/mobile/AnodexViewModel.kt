@@ -17,6 +17,8 @@ import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.diagnoseConnectionFailure
 import dev.anodex.mobile.connection.isUpdateAvailable
 import dev.anodex.mobile.update.UpdateState
+import dev.anodex.mobile.ui.screens.ThemeMode
+import dev.anodex.mobile.ui.theme.AppearanceStore
 import dev.anodex.mobile.update.Updater
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.notify.NotificationKind
@@ -54,7 +56,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -310,6 +314,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     val newerVersion: StateFlow<String?> = _newerVersion.asStateFlow()
 
     private val updater = Updater(application)
+
+    private val appearance = AppearanceStore(application)
+
+    /**
+     * How this app picks its palette.
+     *
+     * The only setting here that belongs to the phone rather than the computer.
+     * Everything else in Settings moves for whoever is at the desk too; this one is
+     * about the screen in your hand at midnight.
+     */
+    val themeMode: StateFlow<ThemeMode> = appearance.themeMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.SYSTEM)
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { appearance.setThemeMode(mode) }
+    }
 
     private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
 
