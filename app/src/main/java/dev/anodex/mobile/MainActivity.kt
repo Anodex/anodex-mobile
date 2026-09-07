@@ -650,6 +650,7 @@ private fun ConnectedScaffold(
                 onInstall = viewModel::installUpdate,
                 onGrantInstall = { installPermission.launch(viewModel.installPermissionIntent()) },
                 onDismiss = viewModel::dismissUpdate,
+                installedVersion = BuildConfig.VERSION_NAME,
             )
         }
 
