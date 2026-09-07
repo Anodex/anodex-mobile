@@ -35,6 +35,7 @@ import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Personality
 import dev.anodex.mobile.chat.detailLabel
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -257,7 +258,6 @@ private fun AiAndModelsSection(
                 if (index > 0) RowDivider()
                 PersonalityRow(
                     personality = personality,
-                    tint = tintOf(personality.tint, colors),
                     selected = personality.id == activePersonalityId,
                     enabled = !busy,
                     onClick = { onSelectPersonality(personality.id) },
@@ -520,28 +520,9 @@ private fun SettingsRow(
     }
 }
 
-/**
- * The desktop's tint names, resolved against this theme.
- *
- * A name travels rather than a colour, so a personality keeps its identity on both
- * screens without the phone inheriting a hue mixed for the desktop's ground — and so
- * a phone in light mode is not left holding a dark-mode colour.
- */
-private fun tintOf(name: String, colors: AnodexColors): Color =
-    when (name) {
-        "violet" -> colors.accentViolet
-        "green" -> colors.accentGreen
-        "series-1" -> colors.series1
-        "series-2" -> colors.series2
-        "series-3" -> colors.series3
-        "series-4" -> colors.series4
-        else -> colors.accent
-    }
-
 @Composable
 private fun PersonalityRow(
     personality: Personality,
-    tint: Color,
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -559,9 +540,14 @@ private fun PersonalityRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
-        // The tint each personality already carries on the desktop, so the choice is
-        // recognisable before the words are read.
-        Box(Modifier.size(8.dp).clip(CircleShape).background(tint))
+        // The face the desktop gives them, so the same personality is recognisable
+        // on both screens before a word is read.
+        PersonalityAvatar(
+            id = personality.id,
+            name = personality.name,
+            tint = personality.tint,
+            size = 30.dp,
+        )
 
         Column(Modifier.weight(1f)) {
             Text(personality.name, style = type.bodyEmphasis, color = colors.text)

@@ -235,7 +235,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private fun currentPersona(): MessagePersona? {
         val state = _personalities.value
         val active = state.personalities.firstOrNull { it.id == state.active } ?: return null
-        return MessagePersona(active.name, active.tint)
+        return MessagePersona(active.id, active.name, active.tint)
     }
 
     private fun refreshPersonalities() {
