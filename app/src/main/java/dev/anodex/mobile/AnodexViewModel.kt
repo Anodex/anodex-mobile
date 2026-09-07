@@ -291,6 +291,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _attachments.value = _attachments.value.filterNot { it is UploadState.Done }
     }
 
+
     private var personalityClient: Personalities? = null
 
     private var modelClient: Models? = null
@@ -727,7 +728,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun newConversation() {
         val open = socket ?: return
-        _chat.value = ChatSession(open, viewModelScope, projectId = null)
+        _chat.value = ChatSession(
+            socket = open,
+            scope = viewModelScope,
+            activePersona = ::currentPersona,
+            projectId = null,
+        )
     }
 
     private var socket: AnodexSocket? = null
