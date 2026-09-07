@@ -35,6 +35,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextAlign
@@ -92,6 +96,13 @@ fun ChatScreen(
     onOpenFile: ((String) -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
     hostLine: String? = null,
+    /**
+     * Who is answering. "Anodex" when no character is selected — the default voice
+     * speaks as itself, which is what the desktop shows too.
+     */
+    personaName: String = "Anodex",
+    /** Ask the same question again. Null where there is no socket to ask down. */
+    onRetryMessage: ((String) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -140,7 +151,17 @@ fun ChatScreen(
                     vertical = Spacing.x4
                 ),
             ) {
-                items(messages, key = { it.id }) { message -> MessageRow(message, onOpenFile) }
+                items(messages, key = { it.id }) { message ->
+                    MessageRow(
+                        message = message,
+                        onOpenFile = onOpenFile,
+                        personaName = personaName,
+                        onRetry = onRetryMessage,
+                        // Nothing to copy or retry while the answer is still
+                        // arriving, and a retry mid-turn would be refused anyway.
+                        actionsEnabled = !sending,
+                    )
+                }
             }
         }
 
@@ -185,7 +206,13 @@ fun ChatScreen(
 }
 
 @Composable
-private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = null) {
+private fun MessageRow(
+    message: ChatMessage,
+    onOpenFile: ((String) -> Unit)? = null,
+    personaName: String = "Anodex",
+    onRetry: ((String) -> Unit)? = null,
+    actionsEnabled: Boolean = true,
+) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val isUser = message.role == ChatMessage.Role.USER
@@ -208,6 +235,16 @@ private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = n
             // Assistant turns are unbubbled and full width, as on the desktop: the
             // reply is the page, not a card sitting on it.
             Column(Modifier.fillMaxWidth()) {
+                // Who is answering, above the answer. The personality is a real
+                // setting that changes the voice, and a voice that changes with
+                // nothing on screen to say so reads as the model being erratic.
+                Text(
+                    text = personaName,
+                    style = type.label,
+                    color = colors.textMuted,
+                    modifier = Modifier.padding(bottom = Spacing.x1),
+                )
+
                 // Collapsed to one line once there is more than one, because a turn
                 // that ran twenty tools buries the reply that was the point. Tapping
                 // gives every row back — the summary is a door, not a redaction.
@@ -237,9 +274,87 @@ private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = n
                     // frozen rather than the model having started.
                     ThinkingLine()
                 }
+
+                if (!message.streaming && message.text.isNotEmpty()) {
+                    MessageActions(
+                        text = message.text,
+                        enabled = actionsEnabled,
+                        onRetry = onRetry?.let { retry -> { retry(message.id) } },
+                    )
+                }
             }
         }
     }
+}
+
+/**
+ * Copy, and ask again.
+ *
+ * Copy is not a convenience here the way it is on a desktop. Compose `Text` is not
+ * selectable, so without this there is no way at all to get a reply off the phone —
+ * not the code in it, not a command, not one line of it.
+ *
+ * Quiet until wanted: no labels, no filled buttons, and nothing under a message
+ * still being written.
+ */
+@Composable
+private fun MessageActions(
+    text: String,
+    enabled: Boolean,
+    onRetry: (() -> Unit)?,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val clipboard = LocalClipboardManager.current
+
+    // Reverts on its own. A tick that stays forever stops meaning "just now" and
+    // starts meaning "this message is special", which is not a thing.
+    var copied by remember(text) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1_600)
+            copied = false
+        }
+    }
+
+    Row(
+        modifier = Modifier.padding(top = Spacing.x1),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ActionButton(
+            label = if (copied) "Copied" else "Copy",
+            tint = if (copied) colors.success else colors.textFaint,
+            enabled = enabled,
+        ) {
+            clipboard.setText(AnnotatedString(text))
+            copied = true
+        }
+
+        if (onRetry != null) {
+            ActionButton(label = "Retry", tint = colors.textFaint, enabled = enabled, onClick = onRetry)
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(
+    label: String,
+    tint: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        style = AnodexTheme.type.meta,
+        color = if (enabled) tint else AnodexTheme.colors.textFaint.copy(alpha = 0.4f),
+        modifier = Modifier
+            .clip(Radii.md)
+            .clickable(enabled = enabled, onClick = onClick)
+            // Padded rather than sized: these sit under every reply, and a pair of
+            // 48dp targets between each one would push the conversation apart.
+            .padding(horizontal = Spacing.x2, vertical = Spacing.x2),
+    )
 }
 
 /**

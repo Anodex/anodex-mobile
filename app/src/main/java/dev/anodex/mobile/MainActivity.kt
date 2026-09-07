@@ -319,6 +319,16 @@ private fun ConnectedScaffold(
     val openFileContent by viewModel.openFileContent.collectAsStateWithLifecycle()
     val unreadEmail by viewModel.unreadEmail.collectAsStateWithLifecycle()
     val personalityState by viewModel.personalities.collectAsStateWithLifecycle()
+
+    // The default voice speaks as itself, so an unselected or not-yet-loaded
+    // personality is "Anodex" rather than blank — the same name the desktop puts on
+    // a reply when no character is chosen.
+    val personaName = remember(personalityState) {
+        personalityState.personalities
+            .firstOrNull { it.id == personalityState.active }
+            ?.name
+            ?: "Anodex"
+    }
     val personalityBusy by viewModel.personalityBusy.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -531,6 +541,7 @@ private fun ConnectedScaffold(
                     chat,
                     viewModel,
                     model,
+                    personaName = personaName,
                     // Named on the empty screen, because which computer is awake is
                     // the one thing no other assistant can put there.
                     hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
@@ -658,6 +669,8 @@ private fun ChatPane(
     viewModel: AnodexViewModel,
     model: ModelStatus?,
     hostLine: String?,
+    /** Who is answering, resolved once above rather than per message. */
+    personaName: String,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -714,6 +727,8 @@ private fun ChatPane(
         model = model,
         onOpenFile = viewModel::openWorkspaceFile,
         hostLine = hostLine,
+        personaName = personaName,
+        onRetryMessage = chat::retry,
     )
 }
 
