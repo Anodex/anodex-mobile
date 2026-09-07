@@ -59,6 +59,8 @@ fun WorkspaceScreen(
     /** True when Workspace was opened to browse rather than to read a project. */
     browsing: Boolean = false,
     onBrowseProjects: () -> Unit = {},
+    /** Start a chat that runs against this project's files. */
+    onNewChatHere: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -74,19 +76,42 @@ fun WorkspaceScreen(
             return@Column
         }
 
-        // A way back to the list without going through the drawer, since the files
-        // you are looking at are the reason you might want a different project.
+        // The project's name is the way back to the list, since the files you are
+        // looking at are the reason you might want a different project. Beside it,
+        // the thing there was previously no way to do at all: start work here.
         if (projectName != null) {
-            Text(
-                text = projectName,
-                style = type.label,
-                color = colors.accent,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = Touch.minTarget)
-                    .clickable(onClick = onBrowseProjects)
-                    .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = projectName,
+                    style = type.label,
+                    color = colors.accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = Touch.minTarget)
+                        .clickable(onClick = onBrowseProjects)
+                        .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                )
+
+                if (onNewChatHere != null) {
+                    // Named rather than a bare plus. A chat in a project can read and
+                    // write real files, so which project it belongs to is the most
+                    // important thing about it and belongs in the label.
+                    Text(
+                        text = "New chat here",
+                        style = type.label,
+                        color = colors.accent,
+                        modifier = Modifier
+                            .heightIn(min = Touch.minTarget)
+                            .clickable(onClick = onNewChatHere)
+                            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                    )
+                }
+            }
         }
 
         if (files.isEmpty()) {
