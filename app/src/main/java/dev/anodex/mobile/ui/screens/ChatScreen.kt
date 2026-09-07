@@ -59,6 +59,7 @@ import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.FacetField
+import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.ToolRow
@@ -545,7 +546,11 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
-            AnodexIcon(AnodexIcon.PAPERCLIP, size = 16.dp, tint = colors.textFaint)
+            if (state is UploadState.Sending) {
+                AnodexSpinner(size = 16.dp, thickness = 1.5.dp, tint = colors.accent)
+            } else {
+                AnodexIcon(AnodexIcon.PAPERCLIP, size = 16.dp, tint = colors.textFaint)
+            }
 
             Column(Modifier.weight(1f)) {
                 Text(
@@ -736,9 +741,16 @@ private fun ActivityLine(summary: String, expanded: Boolean, onToggle: () -> Uni
 /**
  * The gap between sending and the first token.
  *
- * A shimmer rather than a spinner: it is the same "something is happening, nothing
- * is wrong" signal the desktop uses for live activity, and it stops the moment a
- * token lands.
+ * The comet arc next to the words, because a line of text that only fades says
+ * "something is here" where a turning one says "something is happening" — the same
+ * distinction the desktop draws, and the reason its spinner stretches as it goes
+ * rather than rotating evenly.
+ *
+ * The shimmer stays underneath it. Together they are one signal at two speeds, and
+ * either alone is weaker: the arc without the fade is a loading spinner like any
+ * other, and the fade without the arc is a label that happens to breathe.
+ *
+ * Both stop the moment a token lands.
  */
 @Composable
 private fun ThinkingLine() {
@@ -756,11 +768,18 @@ private fun ThinkingLine() {
         label = "thinkingAlpha",
     )
 
-    Text(
-        text = "Thinking…",
-        style = AnodexTheme.type.chatBody,
-        color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),
-    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        AnodexSpinner(size = 14.dp, thickness = 1.5.dp, tint = colors.textFaint)
+
+        Text(
+            text = "Thinking…",
+            style = AnodexTheme.type.chatBody,
+            color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),
+        )
+    }
 }
 
 @Composable
