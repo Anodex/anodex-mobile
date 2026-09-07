@@ -184,6 +184,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     val workspaceLoading: StateFlow<Boolean> = _workspaceLoading.asStateFlow()
 
     /**
+     * Why the list is empty, when the reason is not "there is nothing".
+     *
+     * Swallowing this was the bug: a refused channel, a dropped socket and a genuinely
+     * empty project all rendered as the same blank screen, so there was no way to tell
+     * a working feature with nothing to show from a broken one.
+     */
+    private val _workspaceError = MutableStateFlow<String?>(null)
+    val workspaceError: StateFlow<String?> = _workspaceError.asStateFlow()
+
+    /**
      * Re-read the project's files.
      *
      * Called when the screen is opened rather than on a timer: a file list is only
@@ -191,11 +201,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * size from a phone would spend battery answering a question nobody asked.
      */
     fun refreshWorkspaceFiles() {
-        val client = workspace ?: return
+        val client = workspace
+        if (client == null) {
+            _workspaceError.value = "Not connected to your computer."
+            return
+        }
+
         _workspaceLoading.value = true
+        _workspaceError.value = null
 
         viewModelScope.launch {
-            _workspaceFiles.value = runCatching { client.listFiles() }.getOrDefault(emptyList())
+            runCatching { client.listFiles() }
+                .onSuccess { _workspaceFiles.value = it }
+                .onFailure {
+                    _workspaceFiles.value = emptyList()
+                    _workspaceError.value = it.message ?: "Your computer would not answer."
+                }
             _workspaceLoading.value = false
         }
     }
@@ -210,12 +231,27 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _tasksLoading = MutableStateFlow(false)
     val tasksLoading: StateFlow<Boolean> = _tasksLoading.asStateFlow()
 
+    /** Why the list is empty, when the reason is not "nothing is scheduled". */
+    private val _tasksError = MutableStateFlow<String?>(null)
+    val tasksError: StateFlow<String?> = _tasksError.asStateFlow()
+
     fun refreshTasks() {
-        val client = schedulerClient ?: return
+        val client = schedulerClient
+        if (client == null) {
+            _tasksError.value = "Not connected to your computer."
+            return
+        }
+
         _tasksLoading.value = true
+        _tasksError.value = null
 
         viewModelScope.launch {
-            _tasks.value = runCatching { client.list() }.getOrDefault(emptyList())
+            runCatching { client.list() }
+                .onSuccess { _tasks.value = it }
+                .onFailure {
+                    _tasks.value = emptyList()
+                    _tasksError.value = it.message ?: "Your computer would not answer."
+                }
             _tasksLoading.value = false
         }
     }

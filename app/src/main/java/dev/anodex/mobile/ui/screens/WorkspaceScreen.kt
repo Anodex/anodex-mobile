@@ -49,6 +49,8 @@ fun WorkspaceScreen(
     modifier: Modifier = Modifier,
     /** Null when no project is open, which is a different thing from an empty one. */
     projectName: String? = null,
+    /** Why the list is empty, when the reason is not "the project has no files". */
+    error: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -64,15 +66,26 @@ fun WorkspaceScreen(
                     Text(
                         text = when {
                             loading -> "Reading the project…"
+                            error != null -> "Could not read the project"
                             projectName == null -> "No project open"
                             else -> "Nothing in this project yet"
                         },
                         style = type.bodyEmphasis,
-                        color = colors.textMuted,
+                        color = if (error != null) colors.danger else colors.textMuted,
                         textAlign = TextAlign.Center,
                     )
 
-                    if (!loading && projectName == null) {
+                    if (!loading && error != null) {
+                        // An empty project and a failed read looked identical before.
+                        Text(
+                            text = error,
+                            style = type.meta,
+                            color = colors.textFaint,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+
+                    if (!loading && error == null && projectName == null) {
                         // The distinction matters: an empty project and no project at
                         // all look identical in a list of nothing, and the remedy for
                         // one of them is at the computer.

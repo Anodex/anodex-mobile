@@ -47,6 +47,8 @@ fun SchedulerScreen(
     tasks: List<ScheduledTask>,
     loading: Boolean,
     modifier: Modifier = Modifier,
+    /** Why the list is empty, when the reason is not "nothing is scheduled". */
+    error: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -60,14 +62,21 @@ fun SchedulerScreen(
                     modifier = Modifier.padding(Spacing.x6),
                 ) {
                     Text(
-                        text = if (loading) "Asking your computer…" else "Nothing scheduled",
+                        text = when {
+                            loading -> "Asking your computer…"
+                            error != null -> "Could not read your tasks"
+                            else -> "Nothing scheduled"
+                        },
                         style = type.bodyEmphasis,
-                        color = colors.textMuted,
+                        color = if (error != null) colors.danger else colors.textMuted,
                         textAlign = TextAlign.Center,
                     )
                     if (!loading) {
+                        // The reason, when there is one. An empty list and a failed
+                        // read looked identical before, so a broken feature was
+                        // indistinguishable from a working one with nothing to show.
                         Text(
-                            text = "Tasks are created at the computer.",
+                            text = error ?: "Tasks are created at the computer.",
                             style = type.meta,
                             color = colors.textFaint,
                             textAlign = TextAlign.Center,

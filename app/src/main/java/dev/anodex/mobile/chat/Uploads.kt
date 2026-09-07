@@ -31,6 +31,14 @@ data class UploadedFile(
     val name: String,
     val sizeBytes: Long,
     val isImage: Boolean,
+    /**
+     * The phone's own copy, for drawing a thumbnail.
+     *
+     * Display only, and deliberately not sent anywhere: a `content://` URI means
+     * nothing on the computer. It is here so the transcript can show the picture
+     * that was sent rather than a paperclip and a filename.
+     */
+    val localUri: String? = null,
 )
 
 /** Where an upload has got to. */
@@ -174,6 +182,7 @@ class Uploads(
             name = value["name"]?.jsonPrimitive?.contentOrNull ?: file.name,
             sizeBytes = file.sizeBytes,
             isImage = value["kind"]?.jsonPrimitive?.contentOrNull == "image",
+            localUri = file.uri.toString(),
         )
     }
 
