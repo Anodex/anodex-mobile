@@ -16,6 +16,8 @@ import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.diagnoseConnectionFailure
 import dev.anodex.mobile.connection.isUpdateAvailable
+import dev.anodex.mobile.update.UpdateState
+import dev.anodex.mobile.update.Updater
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
@@ -245,6 +247,78 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * the desktop is old enough not to send one. All three are silent on purpose.
      */
     val newerVersion: StateFlow<String?> = _newerVersion.asStateFlow()
+
+    private val updater = Updater(application)
+
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+
+    /** Finding, fetching and handing over a newer build of this app. */
+    val update: StateFlow<UpdateState> = _update.asStateFlow()
+
+    /** Whether the user has waved the banner away for this run of the app. */
+    private val _updateDismissed = MutableStateFlow(false)
+    val updateDismissed: StateFlow<Boolean> = _updateDismissed.asStateFlow()
+
+    /**
+     * Ask GitHub whether there is a newer build.
+     *
+     * Run at launch and again whenever the desktop says this phone is behind. Two
+     * triggers because they know different things: the desktop knows what it was
+     * tested against, and only GitHub knows what actually exists — and only GitHub is
+     * reachable before the phone has ever connected to anything.
+     *
+     * Silent when there is nothing to say. Nobody asked for this, so a failed check is
+     * not worth a message.
+     */
+    fun checkForUpdate() {
+        if (_update.value is UpdateState.Downloading || _update.value is UpdateState.Ready) return
+
+        viewModelScope.launch {
+            val release = updater.check(BuildConfig.VERSION_NAME) ?: return@launch
+            _update.value = UpdateState.Available(release)
+        }
+    }
+
+    /**
+     * Download it, verify it, and hand it to Android's installer.
+     *
+     * The app cannot install anything itself — it can only ask, and the user then sees
+     * Android's own update screen. That is the ceiling for an app distributed outside
+     * a store, and it is still worth doing: the alternative is finding a GitHub page
+     * on a phone and driving a browser download by hand.
+     */
+    fun installUpdate() {
+        val release = when (val state = _update.value) {
+            is UpdateState.Available -> state.release
+            is UpdateState.Failed -> state.release ?: return
+            // Already fetched. Ask again rather than downloading it twice — the user
+            // may have declined Android's screen the first time.
+            is UpdateState.Ready -> return updater.install(state.file)
+            else -> return
+        }
+
+        _update.value = UpdateState.Downloading(release, 0f)
+
+        viewModelScope.launch {
+            updater.download(release) { fraction ->
+                _update.value = UpdateState.Downloading(release, fraction)
+            }.onSuccess { file ->
+                _update.value = UpdateState.Ready(release, file)
+                updater.install(file)
+            }.onFailure { error ->
+                _update.value = UpdateState.Failed(release, error.message ?: "The update failed.")
+            }
+        }
+    }
+
+    /** Whether this phone will let the app hand an APK to the installer at all. */
+    fun canInstallUpdates(): Boolean = updater.canRequestInstall()
+
+    fun installPermissionIntent() = updater.installPermissionIntent()
+
+    fun dismissUpdate() {
+        _updateDismissed.value = true
+    }
 
     private val _unreadEmail = MutableStateFlow(0)
 
@@ -502,6 +576,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
                 _newerVersion.value = handshake.mobileVersion
                     .takeIf { isUpdateAvailable(BuildConfig.VERSION_NAME, it) }
+
+                // The computer says this phone is behind. Only GitHub knows what is
+                // actually downloadable, so that is who gets asked.
+                if (_newerVersion.value != null) checkForUpdate()
 
                 _connectionHint.value = null
                 socket = candidate
