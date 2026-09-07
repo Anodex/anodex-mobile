@@ -349,28 +349,42 @@ private fun MessageRow(
                 // attachments landed and never drawn until now, so a picture went to
                 // the computer and left no trace in the conversation it belonged to.
                 for (file in message.attachments) {
-                    Row(
-                        modifier = Modifier
-                            .padding(bottom = Spacing.x2)
-                            .widthIn(max = 300.dp)
-                            .clip(Radii.lg)
-                            .background(colors.bgSurface2)
-                            .padding(Spacing.x2),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-                    ) {
+                    if (file.isImage) {
+                        // The picture on its own. A filename beside it is a caption
+                        // nobody wrote — for a screenshot the image *is* the message,
+                        // and its name is a camera's timestamp.
                         AttachmentThumb(
                             localUri = file.localUri,
-                            isImage = file.isImage,
-                            size = 44.dp,
+                            isImage = true,
+                            size = 200.dp,
+                            modifier = Modifier.padding(bottom = Spacing.x2),
                         )
-                        Text(
-                            text = file.name,
-                            style = type.meta,
-                            color = colors.textMuted,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                    } else {
+                        // A file that cannot be looked at is only its name, so that is
+                        // what there is to show.
+                        Row(
+                            modifier = Modifier
+                                .padding(bottom = Spacing.x2)
+                                .widthIn(max = 300.dp)
+                                .clip(Radii.lg)
+                                .background(colors.bgSurface2)
+                                .padding(Spacing.x3),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                        ) {
+                            AnodexIcon(
+                                AnodexIcon.PAPERCLIP,
+                                size = 16.dp,
+                                tint = colors.textFaint,
+                            )
+                            Text(
+                                text = file.name,
+                                style = type.meta,
+                                color = colors.textMuted,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
 
