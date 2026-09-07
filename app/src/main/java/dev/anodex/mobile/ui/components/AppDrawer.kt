@@ -141,10 +141,8 @@ fun AppDrawer(
                     .background(colors.border)
             )
 
-            val showingProjects = destination == AppDestination.WORKSPACE
-
             Text(
-                text = if (showingProjects) "PROJECTS" else "RECENT",
+                text = "RECENT",
                 style = type.badge,
                 color = colors.textFaint,
                 modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x1),
@@ -153,42 +151,37 @@ fun AppDrawer(
             // Plain text, no metadata. Every one of the four apps does this, and they are
             // right: a title is a sentence, and timestamps are noise at the moment you are
             // scanning for something you remember writing.
+            // Both kinds, because "recent" is about what you were last doing rather
+            // than which section it belonged to. The section rows above open the full
+            // index of each; this is the shortcut back into the two or three things
+            // anybody actually returns to.
             LazyColumn(Modifier.weight(1f)) {
-                if (showingProjects) {
-                    items(projects, key = { it.id }) { project ->
-                        Text(
-                            text = project.name,
-                            style = type.body,
-                            color = if (project.id == activeProjectId) {
-                                colors.text
-                            } else {
-                                colors.textMuted
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                val openProject = projects.firstOrNull { it.id == activeProjectId }
+                if (openProject != null) {
+                    item(key = "project-${openProject.id}") {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = Touch.minTarget)
-                                .clickable { onOpenProject(project.id) }
+                                .clickable { onOpenProject(openProject.id) }
                                 .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-                        )
-                    }
-
-                    if (projects.isEmpty()) {
-                        item(key = "no-projects") {
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+                        ) {
+                            AnodexIcon(
+                                AnodexIcon.FOLDER,
+                                size = 16.dp,
+                                tint = colors.textFaint,
+                            )
                             Text(
-                                text = "No projects on your computer yet.",
-                                style = type.meta,
-                                color = colors.textFaint,
-                                modifier = Modifier.padding(
-                                    horizontal = Spacing.x4,
-                                    vertical = Spacing.x3,
-                                ),
+                                text = openProject.name,
+                                style = type.body,
+                                color = colors.text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
-
-                    return@LazyColumn
                 }
 
                 items(conversations.take(RECENT_LIMIT), key = { it.id }) { conversation ->

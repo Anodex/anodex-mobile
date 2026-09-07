@@ -335,6 +335,15 @@ private fun ConnectedScaffold(
     var choosingProject by rememberSaveable { mutableStateOf(false) }
     var showingHost by rememberSaveable { mutableStateOf(false) }
     var showingAllConversations by rememberSaveable { mutableStateOf(false) }
+
+    /**
+     * Whether Workspace is showing the list of projects rather than a project's files.
+     *
+     * Set when Workspace is chosen from the drawer, cleared when a project is picked.
+     * The screen also shows the list unasked when no project is open, which is the
+     * same idea arrived at from the other direction.
+     */
+    var browsingProjects by rememberSaveable { mutableStateOf(false) }
     var showingSettings by rememberSaveable { mutableStateOf(false) }
 
     val agentRuns by viewModel.agentRuns.collectAsStateWithLifecycle()
@@ -423,7 +432,12 @@ private fun ConnectedScaffold(
     LaunchedEffect(destination) {
         when (destination) {
             AppDestination.AGENTS -> viewModel.refreshAgentRuns()
-            AppDestination.WORKSPACE -> viewModel.refreshWorkspaceFiles()
+            AppDestination.WORKSPACE -> {
+                // Both: the files if a project is open, and the list to choose from
+                // if one is not. Which of the two the screen shows is decided there.
+                viewModel.refreshProjects()
+                viewModel.refreshWorkspaceFiles()
+            }
             AppDestination.SCHEDULER -> viewModel.refreshTasks()
             else -> Unit
         }
@@ -441,13 +455,14 @@ private fun ConnectedScaffold(
     // Back unwinds one step at a time, in the order the user got here.
     BackHandler(
         enabled = drawerOpen || choosingProject || showingHost || showingSettings ||
-            showingAllConversations || destination != AppDestination.CHAT
+            showingAllConversations || browsingProjects || destination != AppDestination.CHAT
     ) {
         when {
             drawerOpen -> drawerOpen = false
             showingSettings -> showingSettings = false
             showingHost -> showingHost = false
             showingAllConversations -> showingAllConversations = false
+            browsingProjects -> browsingProjects = false
             choosingProject -> choosingProject = false
             else -> destination = AppDestination.CHAT
         }
@@ -544,9 +559,20 @@ private fun ConnectedScaffold(
     if (drawerOpen) {
         AppDrawer(
             destination = destination,
-            onSelect = {
-                destination = it
+            onSelect = { chosen ->
+                // Every section opens its own index. Agents, Email and Scheduler
+                // already are lists; Chat and Workspace were the two that dropped you
+                // into a single item — or into nothing at all, which is how Workspace
+                // became a dead end.
                 drawerOpen = false
+                when (chosen) {
+                    AppDestination.CHAT -> showingAllConversations = true
+                    AppDestination.WORKSPACE -> {
+                        destination = AppDestination.WORKSPACE
+                        browsingProjects = true
+                    }
+                    else -> destination = chosen
+                }
             },
             conversations = conversations,
             projects = projects.projects,
@@ -554,6 +580,7 @@ private fun ConnectedScaffold(
             onOpenProject = { id ->
                 viewModel.setActiveProject(id)
                 drawerOpen = false
+                browsingProjects = false
                 destination = AppDestination.WORKSPACE
             },
             activeConversationId = chat?.conversationId,
@@ -657,6 +684,14 @@ private fun ConnectedScaffold(
                     onOpenFile = viewModel::openWorkspaceFile,
                     projectName = projects.active?.name,
                     error = workspaceError,
+                    projects = projects.projects,
+                    activeProjectId = projects.activeProjectId,
+                    browsing = browsingProjects,
+                    onOpenProject = { id ->
+                        viewModel.setActiveProject(id)
+                        browsingProjects = false
+                    },
+                    onBrowseProjects = { browsingProjects = true },
                 )
 
                 AppDestination.SCHEDULER -> SchedulerScreen(
