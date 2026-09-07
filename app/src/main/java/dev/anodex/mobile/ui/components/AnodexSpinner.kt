@@ -9,6 +9,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Path
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -117,7 +119,7 @@ fun AnodexSpinner(
                     drawPath(path, tint.copy(alpha = 0.15f), style = outline)
 
                     val start = if (reducedMotion) 0f else (turn / 360f) * length
-                    val runner = androidx.compose.ui.graphics.Path()
+                    val runner = Path()
                     val segment = length * 0.26f
 
                     // Wrapped by hand: getSegment does not run past the end, so a
