@@ -62,8 +62,14 @@ data class ChatMessage(
     enum class Role { USER, ASSISTANT }
 }
 
-/** The name and tint a reply was written under. */
-data class MessagePersona(val name: String, val tint: String)
+/**
+ * Who a reply was written by.
+ *
+ * Carries the id as well as the name, because the shipped artwork for a built-in
+ * is keyed off the identity rather than anything stored — the same rule the
+ * desktop follows, so a copy of a built-in does not inherit its face.
+ */
+data class MessagePersona(val id: String, val name: String, val tint: String)
 
 /**
  * A conversation, driven over the remote socket.

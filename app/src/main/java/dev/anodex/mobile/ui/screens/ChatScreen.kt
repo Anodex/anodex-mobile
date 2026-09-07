@@ -36,7 +36,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
@@ -56,6 +59,7 @@ import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.MarkdownText
+import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.chat.ToolApproval
@@ -135,14 +139,25 @@ fun ChatScreen(
     val currentRequest = remember(messages) {
         messages.lastOrNull { it.role == ChatMessage.Role.USER }
     }
+
+    /**
+     * Held through `rememberUpdatedState`, which is the whole fix.
+     *
+     * `remember { derivedStateOf { ... } }` with no keys captures the values around it
+     * once and never sees another — so this was comparing the *first* question's id
+     * against the *first* message list for the rest of the conversation. It worked on
+     * a short exchange, where the first question is still the newest one, and stopped
+     * the moment a second turn arrived. Which is exactly when a pinned question starts
+     * being worth having.
+     */
+    val pinnedId by rememberUpdatedState(currentRequest?.id)
     val requestPinned by remember {
         derivedStateOf {
-            val id = currentRequest?.id ?: return@derivedStateOf false
-            val info = listState.layoutInfo
-            // Off the top, not merely partly scrolled: an item still peeking into
-            // the viewport does not need repeating above itself.
-            info.visibleItemsInfo.none { it.key == id } &&
-                messages.indexOfFirst { it.id == id } < (info.visibleItemsInfo.firstOrNull()?.index ?: 0)
+            val id = pinnedId ?: return@derivedStateOf false
+            // Simply "not on screen". Comparing keys rather than indices, because an
+            // index is a statement about a list that grows underneath this check,
+            // while a key is a statement about the message.
+            listState.layoutInfo.visibleItemsInfo.none { it.key == id }
         }
     }
 
@@ -185,7 +200,13 @@ fun ChatScreen(
                         vertical = Spacing.x4
                     ),
                 ) {
-                    items(messages, key = { it.id }) { message ->
+                    itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+                        // A seam between exchanges, not between messages: it opens
+                        // where a new question starts, so one turn reads as one thing.
+                        // Faded at both ends so it separates rather than ruling a line
+                        // across the conversation.
+                        if (index > 0 && message.role == ChatMessage.Role.USER) TurnSeam()
+
                         MessageRow(
                             message = message,
                             onOpenFile = onOpenFile,
@@ -301,11 +322,11 @@ private fun MessageRow(
                         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
                         modifier = Modifier.padding(bottom = Spacing.x1),
                     ) {
-                        Box(
-                            Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(personaTint(persona.tint, colors))
+                        PersonalityAvatar(
+                            id = persona.id,
+                            name = persona.name,
+                            tint = persona.tint,
+                            size = 20.dp,
                         )
                         Text(persona.name, style = type.label, color = colors.textMuted)
                     }
@@ -424,21 +445,30 @@ private fun ActionButton(
 }
 
 /**
- * The desktop's tint names, resolved against this theme.
+ * The join between one exchange and the next.
  *
- * A name travels rather than a colour, so a personality is the same one on both
- * screens without the phone inheriting a hue mixed for the desktop's ground.
+ * The transcript was correct and completely flat — a long conversation read as one
+ * undifferentiated column with no way to see where you had asked something new.
+ * This is the whole of the fix: a hairline, faded at both ends, drawn only where a
+ * question begins.
  */
-private fun personaTint(name: String, colors: dev.anodex.mobile.ui.theme.AnodexColors): Color =
-    when (name) {
-        "violet" -> colors.accentViolet
-        "green" -> colors.accentGreen
-        "series-1" -> colors.series1
-        "series-2" -> colors.series2
-        "series-3" -> colors.series3
-        "series-4" -> colors.series4
-        else -> colors.accent
-    }
+@Composable
+private fun TurnSeam() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.x2)
+            .heightIn(min = 1.dp, max = 1.dp)
+            .background(
+                Brush.horizontalGradient(
+                    0f to Color.Transparent,
+                    0.18f to AnodexTheme.colors.border,
+                    0.82f to AnodexTheme.colors.border,
+                    1f to Color.Transparent,
+                )
+            )
+    )
+}
 
 /**
  * What you asked, held at the top once it has scrolled away.
