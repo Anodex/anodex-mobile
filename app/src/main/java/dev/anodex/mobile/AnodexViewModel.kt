@@ -30,6 +30,7 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Agents
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.MessagePersona
 import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Models
 import dev.anodex.mobile.chat.Personalities
@@ -220,6 +221,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _personalityBusy = MutableStateFlow(false)
     val personalityBusy: StateFlow<Boolean> = _personalityBusy.asStateFlow()
 
+    /**
+     * The personality in force right now, as a reply should be stamped with it.
+     *
+     * Null before the computer has answered — better an unlabelled reply than one
+     * labelled with a guess, since the label exists precisely so somebody can tell
+     * which personality said a thing.
+     */
+    private fun currentPersona(): MessagePersona? {
+        val state = _personalities.value
+        val active = state.personalities.firstOrNull { it.id == state.active } ?: return null
+        return MessagePersona(active.name, active.tint)
+    }
+
     private fun refreshPersonalities() {
         val client = personalityClient ?: return
         viewModelScope.launch {
@@ -306,19 +320,33 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _updateDismissed = MutableStateFlow(false)
     val updateDismissed: StateFlow<Boolean> = _updateDismissed.asStateFlow()
 
+    private var lastUpdateCheck = 0L
+
     /**
      * Ask GitHub whether there is a newer build.
      *
-     * Run at launch and again whenever the desktop says this phone is behind. Two
-     * triggers because they know different things: the desktop knows what it was
-     * tested against, and only GitHub knows what actually exists — and only GitHub is
-     * reachable before the phone has ever connected to anything.
+     * Three triggers, because they know different things: the desktop knows what it
+     * was tested against, GitHub knows what actually exists, and only GitHub is
+     * reachable before the phone has connected to anything.
+     *
+     * The third is every return to the foreground, and it is here because of a real
+     * gap. Checking once per process meant reopening from recents — which resumes the
+     * existing process rather than starting one — never checked again, so an update
+     * published while the app sat in the background stayed invisible until the
+     * desktop was restarted and the handshake happened to mention it.
+     *
+     * Throttled, because that trigger fires often and the GitHub API allows sixty
+     * anonymous requests an hour per address. A new build is not urgent to the minute.
      *
      * Silent when there is nothing to say. Nobody asked for this, so a failed check is
      * not worth a message.
      */
-    fun checkForUpdate() {
+    fun checkForUpdate(force: Boolean = false) {
         if (_update.value is UpdateState.Downloading || _update.value is UpdateState.Ready) return
+
+        val now = System.currentTimeMillis()
+        if (!force && now - lastUpdateCheck < UPDATE_CHECK_INTERVAL_MS) return
+        lastUpdateCheck = now
 
         viewModelScope.launch {
             val release = updater.check(BuildConfig.VERSION_NAME) ?: return@launch
@@ -526,18 +554,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 ?: System.currentTimeMillis()
 
             _chat.value = ChatSession(
-                open,
-                viewModelScope,
-                conversationId,
-                history,
-                createdAt,
+                socket = open,
+                scope = viewModelScope,
+                activePersona = ::currentPersona,
+                conversationId = conversationId,
+                initialMessages = history,
+                createdAt = createdAt,
                 // The conversation's own project, not whichever one happens to be
                 // active. Saving with the active one refiles a conversation the user
                 // merely opened — the turn would run in a workspace they did not
                 // choose, and the conversation would move out of the group they
                 // found it in.
-                summary?.projectId ?: _projects.value.activeProjectId,
-                summary?.storedTitle,
+                projectId = summary?.projectId ?: _projects.value.activeProjectId,
+                existingTitle = summary?.storedTitle,
             )
         }
     }
@@ -625,8 +654,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     .takeIf { isUpdateAvailable(BuildConfig.VERSION_NAME, it) }
 
                 // The computer says this phone is behind. Only GitHub knows what is
-                // actually downloadable, so that is who gets asked.
-                if (_newerVersion.value != null) checkForUpdate()
+                // actually downloadable, so that is who gets asked — and this one
+                // skips the throttle, because it is a fact rather than a poll.
+                if (_newerVersion.value != null) checkForUpdate(force = true)
 
                 _connectionHint.value = null
                 socket = candidate
@@ -637,7 +667,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
                 modelClient = Models(candidate)
-                _chat.value = ChatSession(candidate, viewModelScope)
+                _chat.value = ChatSession(
+                    socket = candidate,
+                    scope = viewModelScope,
+                    // Read per turn, so a personality changed mid-conversation labels
+                    // what follows rather than rewriting what came before.
+                    activePersona = ::currentPersona,
+                )
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
                 refreshProjects()
@@ -1091,3 +1127,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 }
+
+/** Long enough that a resume-driven check cannot exhaust GitHub's anonymous quota. */
+private const val UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000L
