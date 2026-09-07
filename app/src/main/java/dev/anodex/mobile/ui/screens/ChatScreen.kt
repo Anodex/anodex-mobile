@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.ToolRow
@@ -182,10 +185,21 @@ private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = n
             // Assistant turns are unbubbled and full width, as on the desktop: the
             // reply is the page, not a card sitting on it.
             Column(Modifier.fillMaxWidth()) {
-                // Tools first, in the order they ran — the reply is the conclusion,
-                // and the work that produced it reads better above it than after.
-                for (tool in message.tools) {
-                    ToolRow(tool, onOpenFile = onOpenFile)
+                // Collapsed to one line once there is more than one, because a turn
+                // that ran twenty tools buries the reply that was the point. Tapping
+                // gives every row back — the summary is a door, not a redaction.
+                val summary = remember(message.tools) { toolSummary(message.tools) }
+                var toolsExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
+
+                if (summary != null && !toolsExpanded) {
+                    ActivityLine(summary, expanded = false) { toolsExpanded = true }
+                } else {
+                    if (summary != null) {
+                        ActivityLine(summary, expanded = true) { toolsExpanded = false }
+                    }
+                    for (tool in message.tools) {
+                        ToolRow(tool, onOpenFile = onOpenFile)
+                    }
                 }
 
                 if (message.text.isNotEmpty()) {
@@ -202,6 +216,31 @@ private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = n
                 }
             }
         }
+    }
+}
+
+/**
+ * What the turn did, folded into a line.
+ *
+ * Deliberately quiet — muted text, no card, no icon. It sits between a question and
+ * its answer, and anything louder competes with both.
+ */
+@Composable
+private fun ActivityLine(summary: String, expanded: Boolean, onToggle: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 36.dp)
+            .clickable(onClick = onToggle)
+            .padding(vertical = Spacing.x1),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Text(summary, style = type.meta, color = colors.textMuted)
+        Text(if (expanded) "\u2304" else "\u203a", style = type.meta, color = colors.textFaint)
     }
 }
 
@@ -277,7 +316,10 @@ private fun Composer(
             ) {
                 if (draft.isEmpty()) {
                     Text(
-                        text = if (sending) "Interrupt\u2026" else "Ask Anodex\u2026",
+                        // "Queue", not "Interrupt". Mid-turn you are usually writing the
+                        // next instruction rather than trying to stop it, and the stop
+                        // button is right there for when you are.
+                        text = if (sending) "Queue a message\u2026" else "Ask Anodex\u2026",
                         style = type.body,
                         color = colors.textFaint,
                     )
