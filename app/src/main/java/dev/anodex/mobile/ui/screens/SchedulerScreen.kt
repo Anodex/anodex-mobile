@@ -25,6 +25,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -104,8 +105,13 @@ private fun TaskCard(task: ScheduledTask) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
-            // The outcome, before the name. What somebody opened this to find out.
-            Box(Modifier.size(8.dp).clip(CircleShape).background(statusColour(task, colors)))
+            // The outcome, before the name: what somebody opened this to find out.
+            // A task due within the hour ripples, because it is the one whose state
+            // is about to change while they are looking at it.
+            StatusDot(
+                colour = statusColour(task, colors),
+                running = task.enabled && isDueSoon(task.nextRunAt),
+            )
 
             Text(
                 text = task.name,
@@ -149,6 +155,12 @@ private fun TaskCard(task: ScheduledTask) {
             )
         }
     }
+}
+
+/** Within the hour, so its state is about to change while somebody watches. */
+private fun isDueSoon(nextRunAt: Long?): Boolean {
+    val next = nextRunAt ?: return false
+    return (next - System.currentTimeMillis()) in 0..(60 * 60 * 1000L)
 }
 
 /**
