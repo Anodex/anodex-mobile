@@ -54,6 +54,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import java.time.LocalTime
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
@@ -98,6 +99,11 @@ fun ChatScreen(
     hostLine: String? = null,
     /** Ask the same question again. Null where there is no socket to ask down. */
     onRetryMessage: ((String) -> Unit)? = null,
+    /** What is attached to the message being written, and how it is getting on. */
+    pendingAttachments: List<UploadState> = emptyList(),
+    /** Null where attaching is not possible — previews, and no socket. */
+    onAttach: (() -> Unit)? = null,
+    onRemoveAttachment: (UploadState) -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -275,6 +281,9 @@ fun ChatScreen(
                 draft = ""
             },
             onStop = onStop,
+            attachments = pendingAttachments,
+            onAttach = onAttach,
+            onRemoveAttachment = onRemoveAttachment,
         )
     }
 }
@@ -442,6 +451,92 @@ private fun ActionButton(
             // 48dp targets between each one would push the conversation apart.
             .padding(horizontal = Spacing.x2, vertical = Spacing.x2),
     )
+}
+
+/**
+ * One file on its way up, or already there.
+ *
+ * Shown from the moment it is picked rather than when it finishes, because a file
+ * that is quietly uploading with nothing on screen looks like a tap that missed.
+ * Removable at any point — including mid-send, where the upload is abandoned and
+ * the computer told to forget the bytes.
+ */
+@Composable
+private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    val file = when (state) {
+        is UploadState.Sending -> state.file
+        is UploadState.Done -> state.file
+        is UploadState.Failed -> state.file
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = Spacing.x2)
+            .clip(Radii.md)
+            .background(colors.bgSurface2)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            AnodexIcon(AnodexIcon.PAPERCLIP, size = 16.dp, tint = colors.textFaint)
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = file.name,
+                    style = type.label,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = when (state) {
+                        is UploadState.Sending -> "Sending\u2026"
+                        is UploadState.Done -> "On your computer"
+                        is UploadState.Failed -> state.message
+                    },
+                    style = type.meta,
+                    color = if (state is UploadState.Failed) colors.danger else colors.textFaint,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(Touch.minTarget)
+                    .clip(CircleShape)
+                    .clickable(onClick = onRemove),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("\u2715", style = type.body, color = colors.textFaint)
+            }
+        }
+
+        if (state is UploadState.Sending) {
+            Box(
+                Modifier
+                    .padding(top = Spacing.x1)
+                    .fillMaxWidth()
+                    .heightIn(min = 2.dp, max = 2.dp)
+                    .clip(Radii.pill)
+                    .background(colors.bgElevated)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(state.fraction.coerceIn(0f, 1f))
+                        .heightIn(min = 2.dp, max = 2.dp)
+                        .clip(Radii.pill)
+                        .background(colors.accent)
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -614,6 +709,9 @@ private fun Composer(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    attachments: List<UploadState> = emptyList(),
+    onAttach: (() -> Unit)? = null,
+    onRemoveAttachment: (UploadState) -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -625,11 +723,31 @@ private fun Composer(
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
+        // Above the field, because an attachment belongs to the message being
+        // written rather than to the act of typing it.
+        for (attachment in attachments) {
+            AttachmentChip(attachment, onRemove = { onRemoveAttachment(attachment) })
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
+            if (onAttach != null) {
+                // One control, not two. A `+` and a paperclip side by side is two
+                // buttons for one job, and neither says which.
+                Box(
+                    modifier = Modifier
+                        .size(Touch.minTarget)
+                        .clip(CircleShape)
+                        .clickable(onClick = onAttach),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnodexIcon(AnodexIcon.PAPERCLIP, size = 20.dp, tint = colors.textMuted)
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .weight(1f)

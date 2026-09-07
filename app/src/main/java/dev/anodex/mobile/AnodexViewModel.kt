@@ -39,6 +39,8 @@ import dev.anodex.mobile.chat.MessagePersona
 import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Models
 import dev.anodex.mobile.chat.Personalities
+import dev.anodex.mobile.chat.UploadState
+import dev.anodex.mobile.chat.Uploads
 import dev.anodex.mobile.chat.PersonalityState
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.Conversations
@@ -216,6 +218,77 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             _tasks.value = runCatching { client.list() }.getOrDefault(emptyList())
             _tasksLoading.value = false
         }
+    }
+
+    private var uploads: Uploads? = null
+
+    private val _attachments = MutableStateFlow<List<UploadState>>(emptyList())
+
+    /** Files attached to the message being written, and how each is getting on. */
+    val attachments: StateFlow<List<UploadState>> = _attachments.asStateFlow()
+
+    /**
+     * Start sending a file the user picked.
+     *
+     * Uploaded the moment it is chosen rather than when the message is sent, so the
+     * waiting happens while they are still typing instead of after they have asked
+     * for something. By the time send is pressed the bytes are usually already there.
+     */
+    fun attach(uri: android.net.Uri) {
+        val client = uploads ?: return
+
+        viewModelScope.launch {
+            val file = client.describe(uri) ?: return@launch
+
+            fun update(state: UploadState) {
+                _attachments.value = _attachments.value.map {
+                    if (fileOf(it).uri == uri) state else it
+                }
+            }
+
+            _attachments.value = _attachments.value + UploadState.Sending(file, 0f)
+
+            client.send(file) { fraction -> update(UploadState.Sending(file, fraction)) }
+                .onSuccess { update(UploadState.Done(file, it)) }
+                .onFailure { update(UploadState.Failed(file, it.message ?: "That didn't send.")) }
+        }
+    }
+
+    /**
+     * Take a file back off the message.
+     *
+     * Tells the computer to forget the bytes when they already arrived. Without that
+     * the upload directory keeps everything anybody ever changed their mind about.
+     */
+    fun removeAttachment(state: UploadState) {
+        _attachments.value = _attachments.value.filterNot { fileOf(it).uri == fileOf(state).uri }
+
+        val done = state as? UploadState.Done ?: return
+        viewModelScope.launch { uploads?.discard(done.uploaded.path) }
+    }
+
+    private fun fileOf(state: UploadState) = when (state) {
+        is UploadState.Sending -> state.file
+        is UploadState.Done -> state.file
+        is UploadState.Failed -> state.file
+    }
+
+    /**
+     * Send the message, with whatever finished uploading attached.
+     *
+     * The rule the design rests on: the computer never sees a message carrying an
+     * attachment until that attachment is whole. So anything still in flight or
+     * failed is simply not part of this message — it stays in the composer, and the
+     * text goes without it rather than the whole thing being blocked.
+     */
+    fun sendMessage(text: String) {
+        val session = _chat.value ?: return
+        val ready = _attachments.value.filterIsInstance<UploadState.Done>()
+
+        session.send(text, ready.map { it.uploaded })
+
+        // Only the ones that went. Anything still uploading is still the user's.
+        _attachments.value = _attachments.value.filterNot { it is UploadState.Done }
     }
 
     private var personalityClient: Personalities? = null
@@ -734,6 +807,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 emailClient = Email(candidate)
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
+                uploads = Uploads(candidate, application.contentResolver)
                 schedulerClient = Scheduler(candidate)
                 modelClient = Models(candidate)
                 _chat.value = ChatSession(
