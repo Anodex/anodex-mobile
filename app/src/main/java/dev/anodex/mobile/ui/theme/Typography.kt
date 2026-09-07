@@ -70,6 +70,43 @@ data class AnodexTypography(
         fontWeight = FontWeight.Normal,
     ),
     val bodyEmphasis: TextStyle = body.copy(fontWeight = FontWeight.Medium),
+
+    /**
+     * Chat prose, and only chat prose.
+     *
+     * Deliberately off the ladder above. Everything else in the app is *scanned* — list
+     * rows, labels, counts, timestamps — and a scanned surface wants density, because
+     * the win is fitting more of it on one screen. A reply is *read*, often several
+     * paragraphs of it, held at arm's length, and at 15sp that starts to cost the
+     * reader. So the one surface people read gets its own size, and the rest stays
+     * where it is: enlarging every label to fix chat would only push the thing people
+     * opened the app for further down the screen.
+     *
+     * The generous line height is the other half of it. Long-form text on a narrow
+     * column needs the leading more than it needs the point size.
+     */
+    val chatBody: TextStyle = body.copy(fontSize = 17.sp, lineHeight = 26.sp),
+    val chatBodyEmphasis: TextStyle = chatBody.copy(fontWeight = FontWeight.Medium),
+
+    /** A heading inside a reply, kept a clear step above `chatBody`. */
+    val chatHeading: TextStyle = chatBody.copy(
+        fontSize = 20.sp,
+        lineHeight = 28.sp,
+        fontWeight = FontWeight.SemiBold,
+    ),
+
+    /**
+     * Code inside a reply.
+     *
+     * Tracks `chatBody` rather than the compact `mono` used for tool output and file
+     * paths. A snippet in the middle of prose that is four points smaller than the
+     * prose reads as a footnote, and it is usually the part being asked about.
+     */
+    val chatMono: TextStyle = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = 15.sp,
+        lineHeight = 22.sp,
+    ),
     val label: TextStyle = TextStyle(
         fontFamily = FontFamily.Default,
         fontSize = TextSize.sm,
