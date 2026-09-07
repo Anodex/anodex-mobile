@@ -16,7 +16,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,12 +37,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
@@ -66,6 +73,7 @@ import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
+import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
 
@@ -449,10 +457,26 @@ private fun ConnectedScaffold(
     }
 
     Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
-        ConnectionHeader(
-            state = state,
-            onOpenDrawer = { drawerOpen = true },
-        )
+        // Inside a conversation the title takes the top line and the host shrinks to
+        // its dot: you already know which computer, and what you are reading is the
+        // conversation. Everywhere else the host bar is the most useful thing there.
+        val conversationTitle = chat?.let { session ->
+            session.existingTitle?.takeIf { it.isNotBlank() }
+                ?: messagesTitle(session)
+        }
+
+        if (destination == AppDestination.CHAT && conversationTitle != null) {
+            ChatHeader(
+                title = conversationTitle,
+                connected = state is ConnectionState.Connected,
+                onOpenDrawer = { drawerOpen = true },
+            )
+        } else {
+            ConnectionHeader(
+                state = state,
+                onOpenDrawer = { drawerOpen = true },
+            )
+        }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
 
         Box(Modifier.weight(1f)) {
@@ -491,6 +515,70 @@ private fun ConnectedScaffold(
         }
     }
 }
+
+/**
+ * The conversation's own bar: a way out, what this is, and whether the computer is
+ * still there.
+ *
+ * The status dot survives from the host bar because it is the one thing that can
+ * change under you mid-conversation. Everything else about the machine — the model,
+ * the context, the project — is a between-turns concern and moved to Host.
+ */
+@Composable
+private fun ChatHeader(title: String, connected: Boolean, onOpenDrawer: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.bgSurface)
+            .padding(horizontal = Spacing.x2, vertical = Spacing.x2),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(Touch.minTarget)
+                .clip(Radii.md)
+                .clickable(onClick = onOpenDrawer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Box(Modifier.width(18.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
+                Box(Modifier.width(13.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
+                Box(Modifier.width(18.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
+            }
+        }
+
+        Text(
+            text = title,
+            style = type.bodyEmphasis,
+            color = colors.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+
+        Box(
+            Modifier
+                .padding(end = Spacing.x3)
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(if (connected) colors.success else colors.warn)
+        )
+    }
+}
+
+/** The first thing the user said, when the computer has not titled it yet. */
+private fun messagesTitle(session: ChatSession): String? =
+    session.messages.value
+        .firstOrNull { it.role == ChatMessage.Role.USER && it.text.isNotBlank() }
+        ?.text
+        ?.lineSequence()
+        ?.firstOrNull { it.isNotBlank() }
+        ?.trim()
+        ?.take(60)
 
 private fun hostNameOf(state: ConnectionState): String? = when (state) {
     is ConnectionState.Connected -> state.host.displayName
