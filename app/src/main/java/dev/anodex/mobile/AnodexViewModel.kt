@@ -28,6 +28,8 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Agents
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.Personalities
+import dev.anodex.mobile.chat.PersonalityState
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.Conversations
 import dev.anodex.mobile.chat.Projects
@@ -158,6 +160,46 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     val threadLoading: StateFlow<Boolean> = _threadLoading.asStateFlow()
 
     private var workspace: Workspace? = null
+
+    private var personalityClient: Personalities? = null
+
+    private val _personalities = MutableStateFlow(PersonalityState(null, emptyList()))
+
+    /** How Anodex is set to answer, and what else it could be. */
+    val personalities: StateFlow<PersonalityState> = _personalities.asStateFlow()
+
+    private val _personalityBusy = MutableStateFlow(false)
+    val personalityBusy: StateFlow<Boolean> = _personalityBusy.asStateFlow()
+
+    private fun refreshPersonalities() {
+        val client = personalityClient ?: return
+        viewModelScope.launch {
+            // Failure leaves the list empty and Settings says it is waiting. The
+            // personalities are a nicety, never a reason to fail a connection.
+            _personalities.value = runCatching { client.state() }
+                .getOrDefault(PersonalityState(null, emptyList()))
+        }
+    }
+
+    /**
+     * Change how Anodex answers.
+     *
+     * Global, like the active project: it moves for whoever is at the computer too.
+     * The new state comes back from the computer rather than being assumed here, so
+     * a refusal leaves the phone showing what is actually in force instead of a
+     * selection that never took.
+     */
+    fun setPersonality(id: String?) {
+        val client = personalityClient ?: return
+        _personalityBusy.value = true
+
+        viewModelScope.launch {
+            runCatching { client.setActive(id) }
+                .onSuccess { _personalities.value = it }
+                .onFailure { _projectError.value = it.message ?: "That didn't work." }
+            _personalityBusy.value = false
+        }
+    }
 
     private val _openFile = MutableStateFlow<String?>(null)
 
@@ -468,12 +510,14 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 agentClient = Agents(candidate)
                 emailClient = Email(candidate)
                 workspace = Workspace(candidate)
+                personalityClient = Personalities(candidate)
                 _chat.value = ChatSession(candidate, viewModelScope)
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
                 refreshProjects()
                 refreshAgentRuns()
                 refreshUnreadEmail()
+                refreshPersonalities()
 
                 // Refreshed every time, so a desktop that gains a VPN — or has its
                 // port forwarded — after pairing becomes reachable from away without
