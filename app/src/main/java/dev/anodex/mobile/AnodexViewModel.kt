@@ -554,18 +554,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 ?: System.currentTimeMillis()
 
             _chat.value = ChatSession(
-                open,
-                viewModelScope,
-                conversationId,
-                history,
-                createdAt,
+                socket = open,
+                scope = viewModelScope,
+                activePersona = ::currentPersona,
+                conversationId = conversationId,
+                initialMessages = history,
+                createdAt = createdAt,
                 // The conversation's own project, not whichever one happens to be
                 // active. Saving with the active one refiles a conversation the user
                 // merely opened — the turn would run in a workspace they did not
                 // choose, and the conversation would move out of the group they
                 // found it in.
-                summary?.projectId ?: _projects.value.activeProjectId,
-                summary?.storedTitle,
+                projectId = summary?.projectId ?: _projects.value.activeProjectId,
+                existingTitle = summary?.storedTitle,
             )
         }
     }
