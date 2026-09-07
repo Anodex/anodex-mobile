@@ -30,6 +30,8 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Agents
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.LocalModel
+import dev.anodex.mobile.chat.Models
 import dev.anodex.mobile.chat.Personalities
 import dev.anodex.mobile.chat.PersonalityState
 import dev.anodex.mobile.chat.ConversationSummary
@@ -164,6 +166,51 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private var workspace: Workspace? = null
 
     private var personalityClient: Personalities? = null
+
+    private var modelClient: Models? = null
+
+    private val _installedModels = MutableStateFlow<List<LocalModel>>(emptyList())
+
+    /** What is already on the computer, ready to load. Never what could be downloaded. */
+    val installedModels: StateFlow<List<LocalModel>> = _installedModels.asStateFlow()
+
+    /** The path being loaded, while it loads. Null when nothing is. */
+    private val _loadingModelPath = MutableStateFlow<String?>(null)
+    val loadingModelPath: StateFlow<String?> = _loadingModelPath.asStateFlow()
+
+    private fun refreshModels() {
+        val client = modelClient ?: return
+        viewModelScope.launch {
+            _installedModels.value = runCatching { client.list() }.getOrDefault(emptyList())
+        }
+    }
+
+    /**
+     * Load a model that is already on the computer.
+     *
+     * Minutes, not seconds, and it moves the machine out from under anyone sitting
+     * at it — so the row stays visibly busy for the whole load rather than appearing
+     * to do nothing. The phone sends only the path: context size and GPU layers are
+     * tuned per machine in the desktop's settings, which it cannot read, so it says
+     * nothing and lets the computer fill them in.
+     */
+    fun loadModel(path: String) {
+        val client = modelClient ?: return
+        if (_loadingModelPath.value != null) return
+        _loadingModelPath.value = path
+
+        viewModelScope.launch {
+            runCatching { client.load(path) }
+                .onFailure { _projectError.value = it.message ?: "That model didn't load." }
+            _loadingModelPath.value = null
+
+            // The header reads the engine, so it has to be re-asked: the model it was
+            // showing is not the one running any more.
+            socket?.let { open ->
+                controller.onModelUpdated(runCatching { readModelState(open) }.getOrNull())
+            }
+        }
+    }
 
     private val _personalities = MutableStateFlow(PersonalityState(null, emptyList()))
 
@@ -589,6 +636,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 emailClient = Email(candidate)
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
+                modelClient = Models(candidate)
                 _chat.value = ChatSession(candidate, viewModelScope)
                 store.recordSeen(System.currentTimeMillis())
                 refreshConversations()
@@ -596,6 +644,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 refreshAgentRuns()
                 refreshUnreadEmail()
                 refreshPersonalities()
+                refreshModels()
 
                 // Refreshed every time, so a desktop that gains a VPN — or has its
                 // port forwarded — after pairing becomes reachable from away without
@@ -664,6 +713,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             name = name,
             contextUsedTokens = state.intOrZero("contextTokensUsed"),
             contextTotalTokens = state.intOrZero("contextSize"),
+            // Marks the running model in the picker. Empty is fine — the list simply
+            // ticks nothing rather than ticking the wrong row.
+            path = (state["model"] as? JsonObject)
+                ?.get("path")
+                ?.let { (it as? JsonPrimitive)?.content }
+                .orEmpty(),
         )
     }
 

@@ -25,7 +25,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Personality
+import dev.anodex.mobile.chat.detailLabel
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -64,6 +66,13 @@ fun SettingsScreen(
     onOpenHost: (() -> Unit)? = null,
     /** The build the computer expects, when this phone is behind it. Null if not. */
     newerVersion: String? = null,
+    /** What is already on the computer. Never what could be downloaded. */
+    models: List<LocalModel> = emptyList(),
+    /** The path of the model actually running, so the list can mark it. */
+    activeModelPath: String? = null,
+    /** The path being loaded right now, if any. */
+    loadingModelPath: String? = null,
+    onLoadModel: (String) -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -119,6 +128,30 @@ fun SettingsScreen(
                         onClick = onOpenHost,
                     )
                 }
+            }
+
+            if (models.isNotEmpty()) {
+                SectionLabel("Model")
+
+                Group {
+                    models.forEachIndexed { index, model ->
+                        if (index > 0) RowDivider()
+                        ModelRow(
+                            model = model,
+                            active = model.path == activeModelPath,
+                            loading = model.path == loadingModelPath,
+                            // One load at a time. A second while the first is still
+                            // going would queue a minutes-long job behind another.
+                            enabled = loadingModelPath == null,
+                            onClick = { onLoadModel(model.path) },
+                        )
+                    }
+                }
+
+                Footnote(
+                    "Only what is already on your computer. Downloading a new model is " +
+                        "done at the machine.",
+                )
             }
 
             SectionLabel("About")
@@ -342,6 +375,56 @@ private fun PersonalityRow(
     }
 }
 
+/**
+ * One model on the computer, and whether it is the one running.
+ *
+ * Loading is minutes rather than a moment, so the row says "Loading…" for the
+ * whole of it. A tap that appears to do nothing for two minutes is indistinguishable
+ * from a tap that missed.
+ */
+@Composable
+private fun ModelRow(
+    model: LocalModel,
+    active: Boolean,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (active) colors.accentSoft else Color.Transparent)
+            .heightIn(min = Touch.minTarget)
+            .clickable(enabled = enabled && !active, onClick = onClick)
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = model.name,
+                style = type.bodyEmphasis,
+                color = if (enabled || active) colors.text else colors.textMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            val detail = model.detailLabel()
+            if (detail.isNotBlank()) {
+                Text(detail, style = type.meta, color = colors.textFaint)
+            }
+        }
+
+        when {
+            loading -> Text("Loading…", style = type.meta, color = colors.accent)
+            active -> Text("✓", style = type.body, color = colors.accent)
+        }
+    }
+}
+
 @Preview(name = "Settings", showBackground = true, backgroundColor = 0xFF0C0C0C)
 @Composable
 private fun PreviewSettings() {
@@ -357,6 +440,11 @@ private fun PreviewSettings() {
                 Personality("p5", "Rook", "Skeptical. Argues with the premise.", "series-3"),
             ),
             activePersonalityId = "p1",
+            models = listOf(
+                LocalModel("/m/qwen.gguf", "Qwen3 30B A3B", 18_500_000_000, "Q4_K_M"),
+                LocalModel("/m/gemma.gguf", "Gemma 3 27B", 16_200_000_000, "Q4_K_M"),
+            ),
+            activeModelPath = "/m/qwen.gguf",
             hostName = "Gort",
             hostStatus = "Connected",
             onOpenHost = {},

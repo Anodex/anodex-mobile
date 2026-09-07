@@ -81,6 +81,14 @@ data class ModelStatus(
     val name: String,
     val contextUsedTokens: Int,
     val contextTotalTokens: Int,
+    /**
+     * The file behind it, when the desktop said.
+     *
+     * Only used to mark the running model in the picker. Matching on the name would
+     * be wrong: the same model at two quantisations carries the same name, and the
+     * picker would tick both.
+     */
+    val path: String = "",
 ) {
     /** 0f..1f, or null when the desktop has no model loaded. */
     val contextFraction: Float?
