@@ -35,6 +35,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.graphics.Color
@@ -96,11 +100,6 @@ fun ChatScreen(
     onOpenFile: ((String) -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
     hostLine: String? = null,
-    /**
-     * Who is answering. "Anodex" when no character is selected — the default voice
-     * speaks as itself, which is what the desktop shows too.
-     */
-    personaName: String = "Anodex",
     /** Ask the same question again. Null where there is no socket to ask down. */
     onRetryMessage: ((String) -> Unit)? = null,
 ) {
@@ -108,9 +107,51 @@ fun ChatScreen(
     val type = AnodexTheme.type
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
+    /**
+     * Whether the view is close enough to the end to keep following the stream.
+     *
+     * Read from live geometry rather than remembered, because the transcript shrinks
+     * whenever the composer grows a line — a change that moves the bottom without
+     * ever firing a scroll event.
+     */
+    val atBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            last.index >= info.totalItemsCount - 1 &&
+                last.offset + last.size <= info.viewportEndOffset + STICK_SLOP_PX
+        }
+    }
+
+    // Follows the stream only while the reader is already at the end. Yanking the
+    // view down while somebody is reading further up is the rudest thing a chat
+    // screen can do, and it is what an unconditional scroll does.
     LaunchedEffect(messages.size, messages.lastOrNull()?.text) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isNotEmpty() && atBottom) listState.animateScrollToItem(messages.lastIndex)
+    }
+
+    /**
+     * The newest thing asked, shown when it has scrolled off the top.
+     *
+     * The *newest*, not the nearest one above — the same rule the desktop follows.
+     * Anchoring to whichever request happens to be overhead would leave an old
+     * prompt pinned after a follow-up was sent lower down, which is the opposite of
+     * "what am I waiting on".
+     */
+    val currentRequest = remember(messages) {
+        messages.lastOrNull { it.role == ChatMessage.Role.USER }
+    }
+    val requestPinned by remember {
+        derivedStateOf {
+            val id = currentRequest?.id ?: return@derivedStateOf false
+            val info = listState.layoutInfo
+            // Off the top, not merely partly scrolled: an item still peeking into
+            // the viewport does not need repeating above itself.
+            info.visibleItemsInfo.none { it.key == id } &&
+                messages.indexOfFirst { it.id == id } < (info.visibleItemsInfo.firstOrNull()?.index ?: 0)
+        }
     }
 
     Column(modifier = modifier.fillMaxSize().background(colors.bgApp).imePadding()) {
@@ -143,23 +184,44 @@ fun ChatScreen(
                 }
             }
         } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = Spacing.x4),
-                verticalArrangement = Arrangement.spacedBy(Spacing.x3),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    vertical = Spacing.x4
-                ),
-            ) {
-                items(messages, key = { it.id }) { message ->
-                    MessageRow(
-                        message = message,
-                        onOpenFile = onOpenFile,
-                        personaName = personaName,
-                        onRetry = onRetryMessage,
-                        // Nothing to copy or retry while the answer is still
-                        // arriving, and a retry mid-turn would be refused anyway.
-                        actionsEnabled = !sending,
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.x4),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        vertical = Spacing.x4
+                    ),
+                ) {
+                    items(messages, key = { it.id }) { message ->
+                        MessageRow(
+                            message = message,
+                            onOpenFile = onOpenFile,
+                            onRetry = onRetryMessage,
+                            // Nothing to copy or retry while the answer is still
+                            // arriving, and a retry mid-turn would be refused anyway.
+                            actionsEnabled = !sending,
+                        )
+                    }
+                }
+
+                if (requestPinned && currentRequest != null) {
+                    CurrentRequestBar(
+                        text = currentRequest.text,
+                        onTap = {
+                            scope.launch {
+                                val index = messages.indexOfFirst { it.id == currentRequest.id }
+                                if (index >= 0) listState.animateScrollToItem(index)
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                }
+
+                if (!atBottom) {
+                    JumpToBottom(
+                        onClick = { scope.launch { listState.animateScrollToItem(messages.lastIndex) } },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = Spacing.x3),
                     )
                 }
             }
@@ -209,7 +271,6 @@ fun ChatScreen(
 private fun MessageRow(
     message: ChatMessage,
     onOpenFile: ((String) -> Unit)? = null,
-    personaName: String = "Anodex",
     onRetry: ((String) -> Unit)? = null,
     actionsEnabled: Boolean = true,
 ) {
@@ -235,15 +296,25 @@ private fun MessageRow(
             // Assistant turns are unbubbled and full width, as on the desktop: the
             // reply is the page, not a card sitting on it.
             Column(Modifier.fillMaxWidth()) {
-                // Who is answering, above the answer. The personality is a real
-                // setting that changes the voice, and a voice that changes with
-                // nothing on screen to say so reads as the model being erratic.
-                Text(
-                    text = personaName,
-                    style = type.label,
-                    color = colors.textMuted,
-                    modifier = Modifier.padding(bottom = Spacing.x1),
-                )
+                // Who wrote *this* reply, from the message itself. Absent on
+                // history loaded back from the computer, which records no author —
+                // and a blank line is the honest rendering of "not known", where a
+                // name taken from the current selection would be a confident lie.
+                message.persona?.let { persona ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                        modifier = Modifier.padding(bottom = Spacing.x1),
+                    ) {
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(personaTint(persona.tint, colors))
+                        )
+                        Text(persona.name, style = type.label, color = colors.textMuted)
+                    }
+                }
 
                 // Collapsed to one line once there is more than one, because a turn
                 // that ran twenty tools buries the reply that was the point. Tapping
@@ -356,6 +427,91 @@ private fun ActionButton(
             .padding(horizontal = Spacing.x2, vertical = Spacing.x2),
     )
 }
+
+/**
+ * The desktop's tint names, resolved against this theme.
+ *
+ * A name travels rather than a colour, so a personality is the same one on both
+ * screens without the phone inheriting a hue mixed for the desktop's ground.
+ */
+private fun personaTint(name: String, colors: dev.anodex.mobile.ui.theme.AnodexColors): Color =
+    when (name) {
+        "violet" -> colors.accentViolet
+        "green" -> colors.accentGreen
+        "series-1" -> colors.series1
+        "series-2" -> colors.series2
+        "series-3" -> colors.series3
+        "series-4" -> colors.series4
+        else -> colors.accent
+    }
+
+/**
+ * What you asked, held at the top once it has scrolled away.
+ *
+ * A long answer easily runs past a screen, and by the time it is worth judging, the
+ * question is gone. One line, tappable to go back to it in full.
+ */
+@Composable
+private fun CurrentRequestBar(
+    text: String,
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2)
+            .clip(Radii.lg)
+            .background(colors.bgElevated)
+            .clickable(onClick = onTap)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Current request", style = type.badge, color = colors.textFaint)
+            Text(
+                text = text,
+                style = type.label,
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** Back to the newest turn, when the reader has scrolled away from it. */
+@Composable
+private fun JumpToBottom(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = modifier
+            .clip(Radii.pill)
+            .background(colors.bgElevated)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Text("\u2193", style = type.body, color = colors.text)
+        Text("Latest", style = type.label, color = colors.text)
+    }
+}
+
+/**
+ * How far from the exact end still counts as "at the end".
+ *
+ * Without a tolerance, a stream that grows the last item by a pixel between frames
+ * reads as the reader having scrolled up, and the screen stops following its own
+ * output mid-sentence.
+ */
+private const val STICK_SLOP_PX = 24
 
 /**
  * "Good afternoon" — by the clock, and nothing else.

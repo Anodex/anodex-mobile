@@ -45,9 +45,25 @@ data class ChatMessage(
     val streaming: Boolean = false,
     /** Tools this turn ran, in the order they were called. */
     val tools: List<ToolActivity> = emptyList(),
+    /**
+     * Who actually answered, stamped when the turn was sent.
+     *
+     * Per message, not per screen. The personality is a global setting, so reading
+     * the *current* one to label an *old* reply relabels the whole transcript every
+     * time it is changed — which is worse than useless when the reason to look is
+     * "which one said this". A message is written by one personality and keeps it.
+     *
+     * Null where it is genuinely not known: history loaded back from the computer
+     * carries no author, because the desktop's conversation store does not record
+     * one. Blank is the honest rendering of that; a confident wrong name is not.
+     */
+    val persona: MessagePersona? = null,
 ) {
     enum class Role { USER, ASSISTANT }
 }
+
+/** The name and tint a reply was written under. */
+data class MessagePersona(val name: String, val tint: String)
 
 /**
  * A conversation, driven over the remote socket.
@@ -64,6 +80,14 @@ data class ChatMessage(
 class ChatSession(
     private val socket: AnodexSocket,
     private val scope: CoroutineScope,
+    /**
+     * Who is set to answer, read fresh at the moment a turn is sent.
+     *
+     * A provider rather than a value, because the selection can change during the
+     * life of a session and each turn should be stamped with what was in force when
+     * it was asked.
+     */
+    private val activePersona: () -> MessagePersona? = { null },
     /**
      * Which conversation this is.
      *
@@ -163,9 +187,19 @@ class ChatSession(
         // including it in history too would send it twice.
         val payload = request(messageId, trimmed)
 
+        // Read now, not when the reply is drawn. Switching personality afterwards
+        // changes who answers next, and must not rewrite who answered before.
+        val persona = activePersona()
+
         _messages.value = _messages.value +
             ChatMessage(messageId, ChatMessage.Role.USER, trimmed) +
-            ChatMessage(assistantIdFor(messageId), ChatMessage.Role.ASSISTANT, "", streaming = true)
+            ChatMessage(
+                id = assistantIdFor(messageId),
+                role = ChatMessage.Role.ASSISTANT,
+                text = "",
+                streaming = true,
+                persona = persona,
+            )
 
         scope.launch {
             try {

@@ -320,15 +320,6 @@ private fun ConnectedScaffold(
     val unreadEmail by viewModel.unreadEmail.collectAsStateWithLifecycle()
     val personalityState by viewModel.personalities.collectAsStateWithLifecycle()
 
-    // The default voice speaks as itself, so an unselected or not-yet-loaded
-    // personality is "Anodex" rather than blank — the same name the desktop puts on
-    // a reply when no character is chosen.
-    val personaName = remember(personalityState) {
-        personalityState.personalities
-            .firstOrNull { it.id == personalityState.active }
-            ?.name
-            ?: "Anodex"
-    }
     val personalityBusy by viewModel.personalityBusy.collectAsStateWithLifecycle()
     val installedModels by viewModel.installedModels.collectAsStateWithLifecycle()
     val loadingModelPath by viewModel.loadingModelPath.collectAsStateWithLifecycle()
@@ -350,6 +341,13 @@ private fun ConnectedScaffold(
      */
     LifecycleResumeEffect(Unit) {
         canInstallUpdates = viewModel.canInstallUpdates()
+
+        // And ask again whether there is a newer build. Checking only at launch meant
+        // reopening from recents — which resumes this process rather than starting
+        // one — never checked again, so an update published while the app sat in the
+        // background stayed invisible until something else forced a reconnect. The
+        // view model throttles this; it is safe to call on every resume.
+        viewModel.checkForUpdate()
         onPauseOrDispose {}
     }
 
@@ -369,10 +367,10 @@ private fun ConnectedScaffold(
         if (canInstallUpdates) viewModel.installUpdate()
     }
 
-    // Asked once at launch, before anything is connected — GitHub is the only source
-    // that works when the computer is not reachable, which is exactly when somebody is
+    // A cold start always looks, throttle or not: GitHub is the only source that
+    // works when the computer is not reachable, which is exactly when somebody is
     // most likely to be wondering whether their app is current.
-    LaunchedEffect(Unit) { viewModel.checkForUpdate() }
+    LaunchedEffect(Unit) { viewModel.checkForUpdate(force = true) }
 
     // Fetched when its destination is opened rather than on every connect: a phone
     // that never opens Agents should not be polling the computer for them. The
@@ -570,7 +568,6 @@ private fun ConnectedScaffold(
                     chat,
                     viewModel,
                     model,
-                    personaName = personaName,
                     // Named on the empty screen, because which computer is awake is
                     // the one thing no other assistant can put there.
                     hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
@@ -698,8 +695,6 @@ private fun ChatPane(
     viewModel: AnodexViewModel,
     model: ModelStatus?,
     hostLine: String?,
-    /** Who is answering, resolved once above rather than per message. */
-    personaName: String,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -756,7 +751,6 @@ private fun ChatPane(
         model = model,
         onOpenFile = viewModel::openWorkspaceFile,
         hostLine = hostLine,
-        personaName = personaName,
         onRetryMessage = chat::retry,
     )
 }
