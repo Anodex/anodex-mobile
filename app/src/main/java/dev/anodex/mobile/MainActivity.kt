@@ -508,6 +508,12 @@ private fun ConnectedScaffold(
     }
 
     if (showingHost) {
+        // Collected here rather than passed down: this is the only screen that shows
+        // the address list, and threading it through the scaffold's signature for one
+        // caller buys nothing.
+        val pairedHost by viewModel.paired.collectAsStateWithLifecycle()
+        val addressError by viewModel.addressError.collectAsStateWithLifecycle()
+
         HostScreen(
             state = state,
             newerVersion = newerVersion,
@@ -518,6 +524,11 @@ private fun ConnectedScaffold(
                 choosingProject = true
             },
             onUnpair = viewModel::unpair,
+            knownAddresses = pairedHost?.addresses.orEmpty(),
+            port = pairedHost?.port,
+            onAddAddress = viewModel::addAddress,
+            addressError = addressError,
+            onDismissAddressError = viewModel::clearAddressError,
             modifier = Modifier.safeDrawingPadding(),
         )
         return
