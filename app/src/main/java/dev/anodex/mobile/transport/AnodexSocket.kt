@@ -110,8 +110,11 @@ class AnodexSocket(
         socket = client.newWebSocket(request, Listener())
 
         val opening = when (credential) {
-            is Credential.DeviceKey -> ClientFrames.hello(credential.value, deviceName)
-            is Credential.PairingSecret -> ClientFrames.pair(credential.value, deviceName)
+            is Credential.DeviceKey ->
+                ClientFrames.hello(credential.value, deviceName, address)
+
+            is Credential.PairingSecret ->
+                ClientFrames.pair(credential.value, deviceName, address)
         }
         socket?.send(opening)
 
