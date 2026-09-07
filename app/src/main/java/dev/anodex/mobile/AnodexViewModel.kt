@@ -807,7 +807,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 emailClient = Email(candidate)
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
-                uploads = Uploads(candidate, application.contentResolver)
+                uploads = Uploads(candidate, getApplication<Application>().contentResolver)
                 schedulerClient = Scheduler(candidate)
                 modelClient = Models(candidate)
                 _chat.value = ChatSession(
