@@ -10,7 +10,10 @@ import dev.anodex.mobile.connection.ConnectionService
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.workspace.FileContent
+import dev.anodex.mobile.scheduler.ScheduledTask
+import dev.anodex.mobile.scheduler.Scheduler
 import dev.anodex.mobile.workspace.Workspace
+import dev.anodex.mobile.workspace.WorkspaceFile
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.connection.ConnectionState
@@ -169,6 +172,51 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     val threadLoading: StateFlow<Boolean> = _threadLoading.asStateFlow()
 
     private var workspace: Workspace? = null
+
+    private val _workspaceFiles = MutableStateFlow<List<WorkspaceFile>>(emptyList())
+
+    /** The project's files, newest first. A live read, never a cache. */
+    val workspaceFiles: StateFlow<List<WorkspaceFile>> = _workspaceFiles.asStateFlow()
+
+    private val _workspaceLoading = MutableStateFlow(false)
+    val workspaceLoading: StateFlow<Boolean> = _workspaceLoading.asStateFlow()
+
+    /**
+     * Re-read the project's files.
+     *
+     * Called when the screen is opened rather than on a timer: a file list is only
+     * interesting at the moment somebody looks at it, and polling a project of any
+     * size from a phone would spend battery answering a question nobody asked.
+     */
+    fun refreshWorkspaceFiles() {
+        val client = workspace ?: return
+        _workspaceLoading.value = true
+
+        viewModelScope.launch {
+            _workspaceFiles.value = runCatching { client.listFiles() }.getOrDefault(emptyList())
+            _workspaceLoading.value = false
+        }
+    }
+
+    private var schedulerClient: Scheduler? = null
+
+    private val _tasks = MutableStateFlow<List<ScheduledTask>>(emptyList())
+
+    /** What the computer runs on its own. */
+    val tasks: StateFlow<List<ScheduledTask>> = _tasks.asStateFlow()
+
+    private val _tasksLoading = MutableStateFlow(false)
+    val tasksLoading: StateFlow<Boolean> = _tasksLoading.asStateFlow()
+
+    fun refreshTasks() {
+        val client = schedulerClient ?: return
+        _tasksLoading.value = true
+
+        viewModelScope.launch {
+            _tasks.value = runCatching { client.list() }.getOrDefault(emptyList())
+            _tasksLoading.value = false
+        }
+    }
 
     private var personalityClient: Personalities? = null
 
@@ -686,6 +734,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 emailClient = Email(candidate)
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
+                schedulerClient = Scheduler(candidate)
                 modelClient = Models(candidate)
                 _chat.value = ChatSession(
                     socket = candidate,

@@ -63,7 +63,6 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.ConversationsScreen
-import dev.anodex.mobile.ui.screens.ComingSoonScreen
 import dev.anodex.mobile.ui.screens.EmailPane
 import dev.anodex.mobile.ui.screens.FileScreen
 import dev.anodex.mobile.ui.components.UpdateBanner
@@ -73,6 +72,8 @@ import dev.anodex.mobile.ui.screens.ManualPairScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
+import dev.anodex.mobile.ui.screens.SchedulerScreen
+import dev.anodex.mobile.ui.screens.WorkspaceScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -339,6 +340,10 @@ private fun ConnectedScaffold(
     val installedModels by viewModel.installedModels.collectAsStateWithLifecycle()
     val loadingModelPath by viewModel.loadingModelPath.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val workspaceFiles by viewModel.workspaceFiles.collectAsStateWithLifecycle()
+    val workspaceLoading by viewModel.workspaceLoading.collectAsStateWithLifecycle()
+    val tasks by viewModel.tasks.collectAsStateWithLifecycle()
+    val tasksLoading by viewModel.tasksLoading.collectAsStateWithLifecycle()
 
     val updateState by viewModel.update.collectAsStateWithLifecycle()
     val updateDismissed by viewModel.updateDismissed.collectAsStateWithLifecycle()
@@ -392,8 +397,15 @@ private fun ConnectedScaffold(
     // that never opens Agents should not be polling the computer for them. The
     // conversation list is refreshed whenever the drawer opens, since that is the
     // only place it is shown.
+    // Read when the screen is opened, not on a timer. Both are only interesting at
+    // the moment somebody looks at them.
     LaunchedEffect(destination) {
-        if (destination == AppDestination.AGENTS) viewModel.refreshAgentRuns()
+        when (destination) {
+            AppDestination.AGENTS -> viewModel.refreshAgentRuns()
+            AppDestination.WORKSPACE -> viewModel.refreshWorkspaceFiles()
+            AppDestination.SCHEDULER -> viewModel.refreshTasks()
+            else -> Unit
+        }
     }
     LaunchedEffect(drawerOpen) {
         if (drawerOpen) viewModel.refreshConversations()
@@ -605,18 +617,16 @@ private fun ConnectedScaffold(
 
                 AppDestination.EMAIL -> EmailPane(viewModel)
 
-                AppDestination.WORKSPACE -> ComingSoonScreen(
-                    title = "Workspace",
-                    icon = AnodexIcon.FOLDER,
-                    description = "The files in the project your computer has open — to read " +
-                        "from here, and to hand to a turn.",
+                AppDestination.WORKSPACE -> WorkspaceScreen(
+                    files = workspaceFiles,
+                    loading = workspaceLoading,
+                    onOpenFile = viewModel::openWorkspaceFile,
+                    projectName = projects.active?.name,
                 )
 
-                AppDestination.SCHEDULER -> ComingSoonScreen(
-                    title = "Scheduler",
-                    icon = AnodexIcon.CLOCK,
-                    description = "What your computer is set to do on its own, and when it " +
-                        "last did it.",
+                AppDestination.SCHEDULER -> SchedulerScreen(
+                    tasks = tasks,
+                    loading = tasksLoading,
                 )
             }
         }

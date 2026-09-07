@@ -1,0 +1,177 @@
+package dev.anodex.mobile.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Radii
+import dev.anodex.mobile.ui.theme.Spacing
+import dev.anodex.mobile.ui.theme.Touch
+import dev.anodex.mobile.workspace.WorkspaceFile
+
+/**
+ * The project's files, newest first.
+ *
+ * Not a folder navigator. The computer sends a tree, which is right beside an editor
+ * and wrong on a six-inch screen — nobody wants to tap through four folders to reach
+ * a path they already know. From away the question is "what has changed", so the
+ * list is flat, ordered by modification time, and says which of them Anodex touched.
+ *
+ * That last part is what makes this worth opening rather than a curiosity: it turns
+ * a file list into a record of what the computer did while nobody was watching.
+ */
+@Composable
+fun WorkspaceScreen(
+    files: List<WorkspaceFile>,
+    loading: Boolean,
+    onOpenFile: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    /** Null when no project is open, which is a different thing from an empty one. */
+    projectName: String? = null,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Column(modifier.fillMaxSize().background(colors.bgApp)) {
+        if (files.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+                    modifier = Modifier.padding(Spacing.x6),
+                ) {
+                    Text(
+                        text = when {
+                            loading -> "Reading the project…"
+                            projectName == null -> "No project open"
+                            else -> "Nothing in this project yet"
+                        },
+                        style = type.bodyEmphasis,
+                        color = colors.textMuted,
+                        textAlign = TextAlign.Center,
+                    )
+
+                    if (!loading && projectName == null) {
+                        // The distinction matters: an empty project and no project at
+                        // all look identical in a list of nothing, and the remedy for
+                        // one of them is at the computer.
+                        Text(
+                            text = "Choose one on your computer, or from the host screen.",
+                            style = type.meta,
+                            color = colors.textFaint,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            }
+            return@Column
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = Spacing.x2),
+        ) {
+            items(files, key = { it.path }) { file ->
+                FileRow(file, onClick = { onOpenFile(file.path) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileRow(file: WorkspaceFile, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.minTarget)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        AnodexIcon(AnodexIcon.FOLDER, size = 18.dp, tint = colors.textFaint)
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = file.name,
+                style = type.body,
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            val where = file.folder.ifBlank { "in the project root" }
+            val when_ = relativeTime(file.modifiedAt)
+            Text(
+                text = if (when_ != null) "$where · $when_" else where,
+                style = type.meta,
+                color = colors.textFaint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Only marked when Anodex was last to touch it. Marking both would make the
+        // column noise; marking the rarer one makes it a signal.
+        if (file.editedByAi) {
+            Text(
+                text = "Anodex",
+                style = type.badge,
+                color = colors.accent,
+                modifier = Modifier
+                    .clip(Radii.sm)
+                    .background(colors.accentSoft)
+                    .padding(horizontal = Spacing.x2, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+@Preview(name = "Workspace", showBackground = true, backgroundColor = 0xFF0C0C0C)
+@Composable
+private fun PreviewWorkspace() {
+    AnodexTheme(darkTheme = true) {
+        WorkspaceScreen(
+            files = listOf(
+                WorkspaceFile(
+                    "src/sim/useDragBody.ts", "useDragBody.ts", 4_200,
+                    System.currentTimeMillis() - 4 * 60_000, editedByAi = true,
+                ),
+                WorkspaceFile(
+                    "src/sim/orbit.ts", "orbit.ts", 8_800,
+                    System.currentTimeMillis() - 3 * 3_600_000, editedByAi = false,
+                ),
+                WorkspaceFile(
+                    "README.md", "README.md", 1_100,
+                    System.currentTimeMillis() - 2L * 86_400_000, editedByAi = false,
+                ),
+            ),
+            loading = false,
+            onOpenFile = {},
+            projectName = "Universe Sandbox",
+        )
+    }
+}
