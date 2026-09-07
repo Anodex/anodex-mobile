@@ -52,19 +52,27 @@ class Scheduler(private val socket: AnodexSocket) {
     suspend fun list(): List<ScheduledTask> {
         val answer = socket.invoke(CHANNEL_LIST)
         val tasks = parseTasks(answer)
+        if (tasks.isNotEmpty()) return tasks
 
-        if (tasks.isEmpty() && countsEntries(answer) > 0) {
-            error("Your computer sent ${countsEntries(answer)} tasks this app could not read.")
+        // Four different things used to look identical here, and only one of them is
+        // "you have no tasks". Naming which one it is costs a line and saves a day:
+        // the first version of this check folded a missing answer and an empty list
+        // into the same silence, which is exactly the case that then happened.
+        when {
+            answer == null ->
+                error("Your computer answered with nothing at all. Restart Anodex there.")
+
+            // The one case that is not a fault: the computer looked and there is
+            // genuinely nothing. Returns rather than throwing, so an empty scheduler
+            // reads as empty instead of broken.
+            answer is JsonArray && answer.isEmpty() -> return emptyList()
+
+            answer is JsonArray ->
+                error("Your computer sent ${answer.size} tasks this app could not read.")
+
+            else ->
+                error("Your computer answered in a shape this app did not expect.")
         }
-
-        return tasks
-    }
-
-    /** How many entries the computer sent, whatever this could make of them. */
-    private fun countsEntries(element: JsonElement?): Int = when (element) {
-        is JsonArray -> element.size
-        is JsonObject -> (element["value"] as? JsonArray)?.size ?: 0
-        else -> 0
     }
 
     private companion object {

@@ -43,6 +43,8 @@ fun UpdateBanner(
     /** False when Android has not been told this app may install anything. */
     canInstall: Boolean = true,
     onGrantInstall: () -> Unit = {},
+    /** What is running now, so the banner says what the jump actually is. */
+    installedVersion: String = "",
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -70,7 +72,14 @@ fun UpdateBanner(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "Anodex ${release.version} is available",
+                    // Both ends of the jump. "0.35.0 is available" tells you nothing
+                    // about whether that is one build ahead or six, and the version
+                    // you are on is otherwise three taps away in Settings.
+                    text = if (installedVersion.isBlank()) {
+                        "Anodex ${release.version} is available"
+                    } else {
+                        "Anodex ${release.version} is available · you have $installedVersion"
+                    },
                     style = type.bodyEmphasis,
                     color = colors.text,
                 )
