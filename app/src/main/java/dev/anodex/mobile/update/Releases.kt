@@ -21,11 +21,12 @@ data class Release(
 /**
  * The releases of `Anodex/anodex-mobile`, read straight from GitHub.
  *
- * This is only possible because the phone repo is public. `Anodex/Anodex` is not, and
- * that is why the desktop tells the phone its expected version over the handshake
- * instead of either end calling out — a credential shipped inside a distributed
- * binary is not a secret. Nothing here needs one: the releases endpoint of a public
- * repository is anonymous, and so is the asset download.
+ * Possible because the repository is public: the releases endpoint of a public repo
+ * is anonymous, and so is the asset download. Neither needs a credential, which
+ * matters because a credential shipped inside a distributed binary is not a secret —
+ * the app has to be able to unlock it, so anyone holding the app can follow the same
+ * path. That constraint is why the handshake carries a version at all, and it is why
+ * this could not have been built while the repos were private.
  *
  * The two signals do different jobs and both are kept. The desktop's is authoritative
  * about *what this computer expects*, which is the version pairing is tested against.
