@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
@@ -135,14 +136,25 @@ fun ChatScreen(
     val currentRequest = remember(messages) {
         messages.lastOrNull { it.role == ChatMessage.Role.USER }
     }
+
+    /**
+     * Held through `rememberUpdatedState`, which is the whole fix.
+     *
+     * `remember { derivedStateOf { ... } }` with no keys captures the values around it
+     * once and never sees another — so this was comparing the *first* question's id
+     * against the *first* message list for the rest of the conversation. It worked on
+     * a short exchange, where the first question is still the newest one, and stopped
+     * the moment a second turn arrived. Which is exactly when a pinned question starts
+     * being worth having.
+     */
+    val pinnedId by rememberUpdatedState(currentRequest?.id)
     val requestPinned by remember {
         derivedStateOf {
-            val id = currentRequest?.id ?: return@derivedStateOf false
-            val info = listState.layoutInfo
-            // Off the top, not merely partly scrolled: an item still peeking into
-            // the viewport does not need repeating above itself.
-            info.visibleItemsInfo.none { it.key == id } &&
-                messages.indexOfFirst { it.id == id } < (info.visibleItemsInfo.firstOrNull()?.index ?: 0)
+            val id = pinnedId ?: return@derivedStateOf false
+            // Simply "not on screen". Comparing keys rather than indices, because an
+            // index is a statement about a list that grows underneath this check,
+            // while a key is a statement about the message.
+            listState.layoutInfo.visibleItemsInfo.none { it.key == id }
         }
     }
 
