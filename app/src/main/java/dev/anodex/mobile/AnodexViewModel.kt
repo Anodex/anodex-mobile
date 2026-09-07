@@ -885,7 +885,20 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 // forever, so every reconnect back at home would go out to the
                 // router and back. Ordering is decided per attempt instead, by
                 // where the phone actually is.
-                val reported = handshake.addresses.ifEmpty { stored.addresses }
+                // The address that just worked goes first, then everything the
+                // desktop reports. Replacing the list outright was a real fault: a
+                // desktop that has not been told its own public address advertises
+                // LAN addresses only, so a phone that had just reached it from the
+                // internet would overwrite the route that worked with routes that
+                // cannot work from where it is standing. The connection in hand
+                // survived; the next reconnect had nowhere to go, and the way back
+                // was a pairing code on a screen the user was nowhere near.
+                //
+                // An address that stops working is dropped by being unreachable, not
+                // by being forgotten — trying a stale one costs a timeout, and losing
+                // a live one costs the whole feature.
+                val advertised = handshake.addresses.ifEmpty { stored.addresses }
+                val reported = (listOf(address) + advertised).distinct()
                 store.recordAddresses(reported)
                 _paired.value = stored.copy(addresses = reported)
 
@@ -1229,6 +1242,57 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** Retry from the offline screen. */
     fun retry() {
         _paired.value?.let { controller.retryNow(it.toRef()) }
+    }
+
+    /** Rejected input, when the typed address could not be one. Null when fine. */
+    private val _addressError = MutableStateFlow<String?>(null)
+    val addressError: StateFlow<String?> = _addressError.asStateFlow()
+
+    /**
+     * Teach an already-paired computer a new way to be reached.
+     *
+     * The gap this closes: a phone knows only the addresses its computer has
+     * advertised, and a computer behind a router does not know its own public
+     * address unless somebody tells it. So the one address that works from away is
+     * precisely the one the phone can never learn on its own. Before this, saying it
+     * meant pairing again — which needs a code from the computer's screen, which is
+     * the thing a user away from home does not have.
+     *
+     * Pairing is untouched. The device key already authenticates this phone and the
+     * certificate is still pinned by fingerprint, so a wrong address fails to
+     * connect rather than connecting to the wrong machine. This says where to knock,
+     * not who is allowed in.
+     */
+    fun addAddress(raw: String) {
+        val cleaned = raw.trim().removeSurrounding("[", "]")
+        val problem = when {
+            cleaned.isEmpty() -> "Type an address first."
+            cleaned.any { it.isWhitespace() } -> "An address cannot contain spaces."
+            "://" in cleaned -> "Just the address — no http:// in front."
+            cleaned.count { it == ':' } == 1 ->
+                "Just the address. The port is already set to ${_paired.value?.port ?: 47800}."
+            else -> null
+        }
+        if (problem != null) {
+            _addressError.value = problem
+            return
+        }
+
+        viewModelScope.launch {
+            val current = _paired.value ?: return@launch
+            _addressError.value = null
+            // First, because the user typing it is better evidence about where this
+            // phone is standing than anything the computer has said about itself.
+            val merged = (listOf(cleaned) + current.addresses).distinct()
+            store.recordAddresses(merged)
+            _paired.value = current.copy(addresses = merged)
+            controller.retryNow(current.toRef())
+        }
+    }
+
+    /** Clears a rejected-address message, so reopening the field starts clean. */
+    fun clearAddressError() {
+        _addressError.value = null
     }
 
     /** Completed pairing: persist it and start connecting. */
