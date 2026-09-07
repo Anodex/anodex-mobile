@@ -415,6 +415,13 @@ private fun ConnectedScaffold(
             activePersonalityId = personalityState.active,
             busy = personalityBusy,
             onSelectPersonality = viewModel::setPersonality,
+            hostName = hostNameOf(state),
+            hostStatus = hostDetailOf(state, projects.active?.name),
+            onOpenHost = {
+                showingSettings = false
+                showingHost = true
+            },
+            newerVersion = newerVersion,
             modifier = Modifier.safeDrawingPadding(),
         )
         return

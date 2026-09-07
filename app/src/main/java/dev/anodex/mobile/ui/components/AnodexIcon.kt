@@ -163,4 +163,10 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
             "M12 17v4",
         )
     ),
+
+    /** Back. `Icon.tsx` `chevron-left`. */
+    CHEVRON_LEFT(listOf("m15 18-6-6 6-6")),
+
+    /** "This row opens something." `Icon.tsx` `chevron-right`. */
+    CHEVRON_RIGHT(listOf("m9 18 6-6-6-6")),
 }
