@@ -758,23 +758,24 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Start a fresh conversation. Nothing is written until the first message is sent.
      *
-     * With no project, always. This used to inherit whichever project was active,
-     * which put a chat started on the phone inside a project folder on the computer —
-     * so it did not appear in the general chat list where it was looked for, and the
-     * turn ran with access to real files nobody had asked it to touch.
+     * Outside any project unless one is named. This used to inherit whichever project
+     * was active, which put a chat started on the phone inside a project folder on the
+     * computer — so it did not appear in the general chat list where it was looked
+     * for, and the turn ran with access to real files nobody had asked it to touch.
      *
-     * The desktop has held the same rule all along, in `chatStore.newConversation`:
-     * a chat created without an explicit project must not silently inherit one. Only
-     * the workspace and agent runs work against project files. The phone disagreeing
-     * with that was the bug.
+     * The desktop's `chatStore.newConversation` takes the same shape and holds the
+     * same rule: a chat created without an explicit project must not *silently*
+     * inherit one. Naming it is a different thing entirely, and that is what the
+     * Workspace screen does — the phone had no way to say it before, which is why
+     * there was no way to start work in a project from here at all.
      */
-    fun newConversation() {
+    fun newConversation(projectId: String? = null) {
         val open = socket ?: return
         _chat.value = ChatSession(
             socket = open,
             scope = viewModelScope,
             activePersona = ::currentPersona,
-            projectId = null,
+            projectId = projectId,
         )
     }
 
