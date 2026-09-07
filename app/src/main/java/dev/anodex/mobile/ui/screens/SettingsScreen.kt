@@ -35,6 +35,8 @@ import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Personality
 import dev.anodex.mobile.chat.detailLabel
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.AnodexSpinner
+import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -606,7 +608,22 @@ private fun ModelRow(
         }
 
         when {
-            loading -> Text("Loading…", style = type.meta, color = colors.accent)
+            // A model load is minutes, not a moment. The hexagon is the desktop's
+            // brand loader and this is the kind of wait it is kept for — spent on
+            // every spinner it would stop meaning anything.
+            loading -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                AnodexSpinner(
+                    size = 16.dp,
+                    thickness = 1.5.dp,
+                    variant = SpinnerVariant.HEX,
+                    tint = colors.accent,
+                )
+                Text("Loading…", style = type.meta, color = colors.accent)
+            }
+
             active -> Text("✓", style = type.body, color = colors.accent)
         }
     }
