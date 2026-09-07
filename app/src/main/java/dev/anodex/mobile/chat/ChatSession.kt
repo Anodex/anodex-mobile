@@ -473,6 +473,21 @@ class ChatSession(
                                 )
                                 put("content", turn.text)
                                 put("createdAt", now)
+
+                                // Recorded with the message, so months later it is
+                                // still possible to tell which personality wrote a
+                                // reply — rather than reading whichever one happens
+                                // to be selected when somebody looks.
+                                turn.persona?.let { persona ->
+                                    put(
+                                        "persona",
+                                        buildJsonObject {
+                                            put("id", persona.id)
+                                            put("name", persona.name)
+                                            put("tint", persona.tint)
+                                        },
+                                    )
+                                }
                             },
                         )
                     }
