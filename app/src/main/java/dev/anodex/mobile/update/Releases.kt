@@ -41,7 +41,7 @@ object Releases {
      * in the source rather than anything a response could redirect. Assets are checked
      * against this host too — a release body cannot point the installer elsewhere.
      */
-    const val LATEST_URL = "https://api.github.com/repos/Anodex/anodex-mobile/releases/latest"
+    const val LATEST_URL = "https://api.github.com/repos/Anodex/anodex-mobile/releases?per_page=20"
 
     const val RELEASES_PAGE = "https://github.com/Anodex/anodex-mobile/releases/latest"
 
@@ -53,14 +53,39 @@ object Releases {
     /**
      * The newest published release, or null if the answer is unusable.
      *
-     * Unusable covers more than malformed: a release with no APK attached, a draft, or
-     * an asset hosted somewhere other than GitHub. All of those are "there is nothing
-     * to offer", which is a state this app already handles, rather than an error worth
-     * showing somebody who did not ask for an update.
+     * Reads the release *list*, not `/releases/latest`. That endpoint means "the newest
+     * release that is not a prerelease and not a draft" — so with every build published
+     * as a preview it answered 404, the app read that as "nothing to offer", and the
+     * update banner could never appear on any version. It failed silently and
+     * correctly, which is exactly why it went unnoticed through three releases.
+     *
+     * The list is newest-first and includes previews, so the first entry with a usable
+     * APK is the answer regardless of how a release happens to be flagged. Drafts are
+     * skipped: they are not published, and an anonymous caller cannot see them anyway.
+     *
+     * Unusable still covers more than malformed — a release with no APK attached, or an
+     * asset hosted somewhere other than GitHub. Those are "nothing to offer", a state
+     * this app already handles, rather than an error worth showing somebody who did not
+     * ask for an update.
      */
     fun parseLatest(body: String): Release? {
-        val root = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
+        val parsed = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return null
 
+        // Accepts a bare object too, so a caller pointed at a single-release endpoint
+        // still works. The list is what this asks for; the object is what it used to.
+        val candidates = when (parsed) {
+            is JsonArray -> parsed.filterIsInstance<JsonObject>()
+            is JsonObject -> listOf(parsed)
+            else -> return null
+        }
+
+        return candidates.asSequence()
+            .filter { it["draft"]?.jsonPrimitive?.contentOrNull != "true" }
+            .mapNotNull { releaseOf(it) }
+            .firstOrNull()
+    }
+
+    private fun releaseOf(root: JsonObject): Release? {
         val tag = root["tag_name"]?.jsonPrimitive?.contentOrNull ?: return null
         val version = versionOf(tag) ?: return null
 
