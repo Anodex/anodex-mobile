@@ -11,7 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
@@ -58,8 +60,26 @@ sealed interface UpdateState {
  */
 class Updater(private val context: Context) {
 
+    /**
+     * For asking GitHub a question. A whole-call ceiling is right here: the answer is
+     * a few kilobytes, and one that has not arrived in half a minute is not coming.
+     */
     private val client = OkHttpClient.Builder()
-        .callTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * For fetching ten megabytes, which is a different problem.
+     *
+     * Deliberately **no** `callTimeout`. That bounds the entire call including the
+     * body, so 60 seconds meant any connection slower than about 1.4 Mbps failed
+     * every single time, whatever GitHub was doing. The bound that belongs here is
+     * on *stalling* — if no bytes arrive for a minute the link is dead — not on how
+     * long a large file is allowed to take in total.
+     */
+    private val downloadClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
     /**
@@ -106,9 +126,11 @@ class Updater(private val context: Context) {
                 // there is no reason to keep an installer the user did not run.
                 dir.listFiles()?.forEach { if (it != target) it.delete() }
 
-                client.newCall(Request.Builder().url(release.apkUrl).build()).execute().use { response ->
+                fetch(release.apkUrl).use { response ->
                     val body = response.body
-                    if (!response.isSuccessful || body == null) error("The download failed.")
+                    if (!response.isSuccessful || body == null) {
+                        error(describeFailure(response.code))
+                    }
 
                     val total = body.contentLength().takeIf { it > 0 } ?: release.apkBytes
                     var read = 0L
@@ -140,6 +162,56 @@ class Updater(private val context: Context) {
                 target
             }.onFailure { partial.delete() }
         }
+
+    /**
+     * Ask for the file, and try again if the answer was a shrug.
+     *
+     * A ten-megabyte download over a phone connection meets transient failures as a
+     * matter of course, and GitHub itself returns the odd 502 or 504 — one did, which
+     * is what sent somebody here. Giving up on the first of those turns a working
+     * update into a dead button.
+     *
+     * Only failures worth repeating are repeated. A 404 means the asset is not there
+     * and asking four more times will not put it there.
+     */
+    private fun fetch(url: String): Response {
+        var lastFailure: Exception? = null
+
+        repeat(DOWNLOAD_ATTEMPTS) { attempt ->
+            if (attempt > 0) Thread.sleep(RETRY_BACKOFF_MS * attempt)
+
+            val response = try {
+                downloadClient.newCall(Request.Builder().url(url).build()).execute()
+            } catch (e: IOException) {
+                lastFailure = e
+                return@repeat
+            }
+
+            if (response.isSuccessful || !isWorthRetrying(response.code)) return response
+            response.close()
+            lastFailure = IOException(describeFailure(response.code))
+        }
+
+        throw lastFailure ?: IOException("The download failed.")
+    }
+
+    /**
+     * Say which kind of failure it was.
+     *
+     * "The download failed" is true of every one of these and useful for none: a
+     * server having a moment and a file that does not exist need completely different
+     * things from the person reading it.
+     */
+    private fun describeFailure(code: Int): String = when {
+        code in 500..599 -> "GitHub is having trouble right now. Try again in a minute."
+        code == 404 -> "That build is no longer on GitHub."
+        code == 429 -> "Too many requests to GitHub. Try again shortly."
+        else -> "The download failed (HTTP $code)."
+    }
+
+    /** Worth another go: a server stumble, a rate limit, or a timeout. */
+    private fun isWorthRetrying(code: Int): Boolean =
+        code in 500..599 || code == 408 || code == 429
 
     /**
      * Hand the file to Android's installer.
@@ -217,5 +289,11 @@ class Updater(private val context: Context) {
 
     private companion object {
         const val BUFFER_BYTES = 64 * 1024
+
+        /** Enough to ride out a stumble, few enough that a real failure is prompt. */
+        const val DOWNLOAD_ATTEMPTS = 4
+
+        /** Multiplied by the attempt, so the gaps widen rather than hammering. */
+        const val RETRY_BACKOFF_MS = 1_500L
     }
 }
