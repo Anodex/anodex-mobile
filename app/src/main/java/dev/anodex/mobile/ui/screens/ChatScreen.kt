@@ -40,9 +40,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import java.time.LocalTime
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.AnodexMark
+import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
@@ -87,6 +90,8 @@ fun ChatScreen(
     model: ModelStatus? = null,
     /** Opens a file a tool touched. Null in previews and where there is no socket. */
     onOpenFile: ((String) -> Unit)? = null,
+    /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
+    hostLine: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -100,13 +105,31 @@ fun ChatScreen(
     Column(modifier = modifier.fillMaxSize().background(colors.bgApp).imePadding()) {
         if (messages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "Ask your computer something.",
-                    style = type.body,
-                    color = colors.textFaint,
-                    textAlign = TextAlign.Center,
+                // Not a void. Two flat planes in the mark's own violet and cyan, then
+                // the mark, then a greeting that names the *computer* — because that
+                // is the thing you came back to, and it is the one fact none of the
+                // other assistants can put on their home screen.
+                FacetField(Modifier.matchParentSize())
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.x4),
                     modifier = Modifier.padding(Spacing.x6),
-                )
+                ) {
+                    AnodexMark(size = 54.dp)
+                    Text(
+                        text = greeting(),
+                        style = type.title,
+                        color = colors.text,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = hostLine ?: "Ask your computer something.",
+                        style = type.meta,
+                        color = colors.textFaint,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         } else {
             LazyColumn(
@@ -217,6 +240,20 @@ private fun MessageRow(message: ChatMessage, onOpenFile: ((String) -> Unit)? = n
             }
         }
     }
+}
+
+/**
+ * "Good afternoon" — by the clock, and nothing else.
+ *
+ * No name. Every other assistant greets you by yours, and it is the one thing this
+ * app cannot know: there is no Anodex account, and the desktop never asked. Guessing
+ * from the Android profile would be a stranger using your first name.
+ */
+private fun greeting(): String = when (LocalTime.now().hour) {
+    in 0..4 -> "Still up"
+    in 5..11 -> "Good morning"
+    in 12..17 -> "Good afternoon"
+    else -> "Good evening"
 }
 
 /**
