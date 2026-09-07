@@ -5,6 +5,9 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /** What came back when a file was asked for. */
@@ -35,6 +38,18 @@ sealed interface FileContent {
  * work rather than a way to do it.
  */
 class Workspace(private val socket: AnodexSocket) {
+
+    /**
+     * Every file in the project, newest first.
+     *
+     * Flattened deliberately. The computer answers with a tree, which is the right
+     * shape for a dock beside an editor and the wrong one for a phone: nobody wants
+     * to tap through four folders on a six-inch screen to reach a file whose path
+     * they already know. The question from away is "what has changed", and a flat
+     * list ordered by modification time answers it in one screen.
+     */
+    suspend fun listFiles(): List<WorkspaceFile> =
+        parseWorkspaceFiles(runCatching { socket.invoke(CHANNEL_LIST) }.getOrNull())
 
     suspend fun read(relativePath: String): FileContent {
         val result = runCatching {
@@ -72,6 +87,7 @@ class Workspace(private val socket: AnodexSocket) {
     }
 
     private companion object {
+        const val CHANNEL_LIST = "workspace:list-files"
         const val CHANNEL_READ = "workspace:read-file-content"
     }
 }
@@ -118,3 +134,67 @@ private val ABSOLUTE_WINDOWS = Regex("^[A-Za-z]:[\\\\/]")
 
 /** `content` on a JSON null is the string "null", which is never what a caller wants. */
 private fun JsonPrimitive.contentOrNull(): String? = if (this is JsonNull) null else content
+
+/** One file in the project the computer has open. */
+data class WorkspaceFile(
+    /** Relative to the workspace root, forward-slashed. Its identity, and how it is read. */
+    val path: String,
+    val name: String,
+    val sizeBytes: Long,
+    /** Last modification, epoch millis. */
+    val modifiedAt: Long,
+    /**
+     * Whether Anodex was the last to touch it.
+     *
+     * The single most useful column from away: it turns a list of files into a
+     * record of what the computer has been doing while nobody was watching.
+     */
+    val editedByAi: Boolean,
+) {
+    /** "src/sim" — where it lives, for the line under the name. */
+    val folder: String get() = path.substringBeforeLast('/', "")
+}
+
+/**
+ * Flatten the computer's tree into files, newest first.
+ *
+ * Folders carry nothing a phone shows, so they are walked rather than rendered.
+ * Depth is bounded: a cycle cannot occur in a filesystem tree the desktop built,
+ * but a bound costs nothing and a stack overflow on a malformed answer costs the
+ * whole app.
+ */
+internal fun parseWorkspaceFiles(element: JsonElement?): List<WorkspaceFile> {
+    val array = when (element) {
+        is JsonArray -> element
+        is JsonObject -> element["value"] as? JsonArray ?: return emptyList()
+        else -> return emptyList()
+    }
+
+    val files = mutableListOf<WorkspaceFile>()
+    walk(array, files, depth = 0)
+    return files.sortedByDescending { it.modifiedAt }
+}
+
+private fun walk(nodes: JsonArray, into: MutableList<WorkspaceFile>, depth: Int) {
+    if (depth > MAX_TREE_DEPTH) return
+
+    for (node in nodes.filterIsInstance<JsonObject>()) {
+        when (node["type"]?.jsonPrimitive?.contentOrNull) {
+            "folder" -> (node["children"] as? JsonArray)?.let { walk(it, into, depth + 1) }
+            "file" -> {
+                val path = node["path"]?.jsonPrimitive?.contentOrNull ?: continue
+                into += WorkspaceFile(
+                    path = path,
+                    name = node["name"]?.jsonPrimitive?.contentOrNull
+                        ?: path.substringAfterLast('/'),
+                    sizeBytes = node["sizeBytes"]?.jsonPrimitive?.longOrNull ?: 0L,
+                    modifiedAt = node["modifiedAt"]?.jsonPrimitive?.longOrNull ?: 0L,
+                    editedByAi = node["editedBy"]?.jsonPrimitive?.contentOrNull == "ai",
+                )
+            }
+        }
+    }
+}
+
+/** Deeper than any real project, and shallow enough that a bad answer cannot blow the stack. */
+private const val MAX_TREE_DEPTH = 32
