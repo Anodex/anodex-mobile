@@ -694,6 +694,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 _projects.value = client.setActive(projectId)
+
+                // The files belong to the project, so changing one changes the other.
+                // Without this, choosing a project from the Workspace screen left it
+                // showing the old project's files — or nothing, which is worse,
+                // because it looks like the choice did not take.
+                refreshWorkspaceFiles()
             } catch (e: Exception) {
                 _projectError.value = e.message ?: "That didn't work."
             } finally {

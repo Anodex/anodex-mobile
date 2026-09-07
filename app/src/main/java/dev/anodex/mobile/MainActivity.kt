@@ -423,7 +423,12 @@ private fun ConnectedScaffold(
     LaunchedEffect(destination) {
         when (destination) {
             AppDestination.AGENTS -> viewModel.refreshAgentRuns()
-            AppDestination.WORKSPACE -> viewModel.refreshWorkspaceFiles()
+            AppDestination.WORKSPACE -> {
+                // Both: the files if a project is open, and the list to choose from
+                // if one is not. Which of the two the screen shows is decided there.
+                viewModel.refreshProjects()
+                viewModel.refreshWorkspaceFiles()
+            }
             AppDestination.SCHEDULER -> viewModel.refreshTasks()
             else -> Unit
         }
@@ -657,6 +662,9 @@ private fun ConnectedScaffold(
                     onOpenFile = viewModel::openWorkspaceFile,
                     projectName = projects.active?.name,
                     error = workspaceError,
+                    projects = projects.projects,
+                    activeProjectId = projects.activeProjectId,
+                    onOpenProject = viewModel::setActiveProject,
                 )
 
                 AppDestination.SCHEDULER -> SchedulerScreen(
