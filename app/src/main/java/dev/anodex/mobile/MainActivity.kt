@@ -363,6 +363,8 @@ private fun ConnectedScaffold(
     val workspaceLoading by viewModel.workspaceLoading.collectAsStateWithLifecycle()
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val tasksLoading by viewModel.tasksLoading.collectAsStateWithLifecycle()
+    val tasksError by viewModel.tasksError.collectAsStateWithLifecycle()
+    val workspaceError by viewModel.workspaceError.collectAsStateWithLifecycle()
 
     val updateState by viewModel.update.collectAsStateWithLifecycle()
     val updateDismissed by viewModel.updateDismissed.collectAsStateWithLifecycle()
@@ -641,11 +643,13 @@ private fun ConnectedScaffold(
                     loading = workspaceLoading,
                     onOpenFile = viewModel::openWorkspaceFile,
                     projectName = projects.active?.name,
+                    error = workspaceError,
                 )
 
                 AppDestination.SCHEDULER -> SchedulerScreen(
                     tasks = tasks,
                     loading = tasksLoading,
+                    error = tasksError,
                 )
             }
         }

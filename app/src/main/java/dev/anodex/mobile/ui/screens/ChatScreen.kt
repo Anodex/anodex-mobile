@@ -60,6 +60,7 @@ import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.AnodexSpinner
+import dev.anodex.mobile.ui.components.AttachmentThumb
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.ToolRow
@@ -147,10 +148,28 @@ fun ChatScreen(
         }
     }
 
-    // Follows the stream only while the reader is already at the end. Yanking the
-    // view down while somebody is reading further up is the rudest thing a chat
-    // screen can do, and it is what an unconditional scroll does.
-    LaunchedEffect(messages.size, messages.lastOrNull()?.text) {
+    /**
+     * Your own message always jumps to the bottom; a streaming reply only follows if
+     * you were already there.
+     *
+     * The distinction was missing, and it is the whole of the bug: pressing send is a
+     * deliberate act, so the thing you just wrote must be on screen afterwards — it
+     * was landing behind the composer, out of sight, with a "Latest" button as the
+     * only clue. Tokens arriving are *not* deliberate, and chasing those while
+     * somebody reads further up is the rudest thing a chat screen can do.
+     *
+     * Keyed on the id rather than the count, because a count is equal again the
+     * moment anything is replaced, and this has to fire once per new message.
+     */
+    val newestId = messages.lastOrNull()?.id
+    LaunchedEffect(newestId) {
+        if (messages.isEmpty()) return@LaunchedEffect
+        // A turn appends the question and its pending answer together, so the newest
+        // being an assistant placeholder still means "you just sent something".
+        listState.animateScrollToItem(messages.lastIndex)
+    }
+
+    LaunchedEffect(messages.lastOrNull()?.text) {
         if (messages.isNotEmpty() && atBottom) listState.animateScrollToItem(messages.lastIndex)
     }
 
@@ -325,18 +344,51 @@ private fun MessageRow(
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         if (isUser) {
-            Box(
-                modifier = Modifier
-                    // Hugs the words. `fillMaxWidth(0.78f)` gave "ok" a box the width
-                    // of a paragraph, so every short reply looked like a long one and
-                    // the column of identical rectangles said nothing about the
-                    // conversation's shape.
-                    .widthIn(max = 300.dp)
-                    .clip(Radii.lg)
-                    .background(colors.bgSurface2)
-                    .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-            ) {
-                Text(message.text, style = type.chatBody, color = colors.text)
+            Column(horizontalAlignment = Alignment.End) {
+                // What was sent with it, above the words. Stored on the message since
+                // attachments landed and never drawn until now, so a picture went to
+                // the computer and left no trace in the conversation it belonged to.
+                for (file in message.attachments) {
+                    Row(
+                        modifier = Modifier
+                            .padding(bottom = Spacing.x2)
+                            .widthIn(max = 300.dp)
+                            .clip(Radii.lg)
+                            .background(colors.bgSurface2)
+                            .padding(Spacing.x2),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                    ) {
+                        AttachmentThumb(
+                            localUri = file.localUri,
+                            isImage = file.isImage,
+                            size = 44.dp,
+                        )
+                        Text(
+                            text = file.name,
+                            style = type.meta,
+                            color = colors.textMuted,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
+                if (message.text.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            // Hugs the words. `fillMaxWidth(0.78f)` gave "ok" a box the
+                            // width of a paragraph, so every short reply looked like a
+                            // long one and a column of identical rectangles said
+                            // nothing about the conversation's shape.
+                            .widthIn(max = 300.dp)
+                            .clip(Radii.lg)
+                            .background(colors.bgSurface2)
+                            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                    ) {
+                        Text(message.text, style = type.chatBody, color = colors.text)
+                    }
+                }
             }
         } else {
             // Assistant turns are unbubbled and full width, as on the desktop: the
@@ -546,11 +598,11 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
-            if (state is UploadState.Sending) {
-                AnodexSpinner(size = 16.dp, thickness = 1.5.dp, tint = colors.accent)
-            } else {
-                AnodexIcon(AnodexIcon.PAPERCLIP, size = 16.dp, tint = colors.textFaint)
-            }
+            AttachmentThumb(
+                localUri = file.uri.toString(),
+                isImage = file.name.substringAfterLast('.', "").lowercase() in IMAGE_EXTENSIONS,
+                size = 40.dp,
+            )
 
             Column(Modifier.weight(1f)) {
                 Text(
@@ -962,3 +1014,6 @@ private fun PreviewChatLight() {
         )
     }
 }
+
+/** What the thumbnail will try to decode. Mirrors what the computer accepts. */
+private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp")
