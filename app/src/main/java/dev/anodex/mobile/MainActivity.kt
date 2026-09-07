@@ -693,6 +693,12 @@ private fun ConnectedScaffold(
                         browsingProjects = false
                     },
                     onBrowseProjects = { browsingProjects = true },
+                    onNewChatHere = projects.activeProjectId?.let { id ->
+                        {
+                            viewModel.newConversation(projectId = id)
+                            destination = AppDestination.CHAT
+                        }
+                    },
                 )
 
                 AppDestination.SCHEDULER -> SchedulerScreen(
