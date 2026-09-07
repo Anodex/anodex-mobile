@@ -429,7 +429,21 @@ private fun ConnectedScaffold(
     // only place it is shown.
     // Read when the screen is opened, not on a timer. Both are only interesting at
     // the moment somebody looks at them.
-    LaunchedEffect(destination) {
+    //
+    // Keyed on the connection as well as the destination, because the destination
+    // alone was not enough and that was the whole bug. Opening Scheduler before the
+    // socket finished coming up read nothing, and nothing ever read again: the
+    // screen was already the current one, so no later change re-ran this. A
+    // connection that dropped and came back under a screen the user was already
+    // looking at failed the same way. Both showed an empty list, which is
+    // indistinguishable from having nothing scheduled — and on the builds where
+    // these screens had no error state yet, that is exactly what it looked like.
+    //
+    // Unlike the lists refreshed on connect, these two stay tied to being looked
+    // at: a phone that never opens Scheduler still never asks about tasks.
+    val connected = state is ConnectionState.Connected
+    LaunchedEffect(destination, connected) {
+        if (!connected) return@LaunchedEffect
         when (destination) {
             AppDestination.AGENTS -> viewModel.refreshAgentRuns()
             AppDestination.WORKSPACE -> {
