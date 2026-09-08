@@ -48,8 +48,18 @@ class Workspace(private val socket: AnodexSocket) {
      * they already know. The question from away is "what has changed", and a flat
      * list ordered by modification time answers it in one screen.
      */
-    suspend fun listFiles(): List<WorkspaceFile> =
-        parseWorkspaceFiles(runCatching { socket.invoke(CHANNEL_LIST) }.getOrNull())
+    /**
+     * The project's files.
+     *
+     * Lets a failure out rather than turning it into an empty list. `getOrNull()`
+     * here meant a computer that could not be reached and a project with no files
+     * produced the same answer — and the screen's error state, which exists to tell
+     * those apart, could never once fire because nothing ever threw.
+     *
+     * This is the third time this shape has cost something in this app: an absence
+     * standing in for a failure, and the failure being the thing worth saying.
+     */
+    suspend fun listFiles(): List<WorkspaceFile> = parseWorkspaceFiles(socket.invoke(CHANNEL_LIST))
 
     suspend fun read(relativePath: String): FileContent {
         val result = runCatching {

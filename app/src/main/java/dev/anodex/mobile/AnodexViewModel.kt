@@ -946,12 +946,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Re-read the conversation list from the computer. */
+    /**
+     * Re-read the conversation list from the computer.
+     *
+     * Keeps what it already had when a read fails, rather than replacing it with an
+     * empty list. The drawer is the app's navigation; blanking it on a dropped
+     * connection loses the way back to everything, and says nothing about why.
+     *
+     * A stale list is honest here in a way an empty one is not: those conversations
+     * do still exist on the computer, and the connection banner already says the
+     * link is down.
+     */
     fun refreshConversations() {
         val reader = conversationReader ?: return
         viewModelScope.launch {
             _loadingConversations.value = true
-            _conversations.value = runCatching { reader.list() }.getOrDefault(emptyList())
+            runCatching { reader.list() }.onSuccess { _conversations.value = it }
             _loadingConversations.value = false
         }
     }
