@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -463,8 +464,13 @@ private fun MessageRow(
                             // long one and a column of identical rectangles said
                             // nothing about the conversation's shape.
                             .widthIn(max = 300.dp)
-                            .clip(Radii.lg)
+                            .clip(UserBubble)
                             .background(colors.bgSurface2)
+                            // The edge the desktop has had all along. Without it the
+                            // bubble is a slightly lighter patch of the page — at these
+                            // near-black values #161616 on #0C0C0C is barely a shape,
+                            // and the border is most of what makes it one.
+                            .border(1.dp, colors.border, UserBubble)
                             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
                     ) {
                         Text(message.text, style = type.chatBody, color = colors.text)
@@ -1067,6 +1073,31 @@ private fun kindColour(kind: String?, colors: dev.anodex.mobile.ui.theme.AnodexC
         "deleted" -> colors.danger
         else -> colors.textFaint
     }
+
+/**
+ * The shape of something you said.
+ *
+ * Rounded on three corners with the trailing one cut sharp — the corner nearest the
+ * edge the message is aligned to. The desktop has drawn user turns this way since
+ * before the phone existed and describes it in one line: the sharper corner points
+ * back at the sender. It is the only thing distinguishing a bubble you wrote from a
+ * panel, and the phone had quietly dropped it.
+ *
+ * Stepped up from the desktop's 8px to 14dp for the same reason `Typography.kt`
+ * re-steps the body size: the desktop scale is read at arm's length on a large
+ * screen, and carried over literally it looks pinched in the hand. The relationship
+ * between the two radii is what matters, and that is preserved.
+ *
+ * Assistant turns get none of this, deliberately. The reply is the page rather than
+ * a card sitting on it, and bubbling both sides would make a conversation look like
+ * two people texting instead of somebody working.
+ */
+private val UserBubble = RoundedCornerShape(
+    topStart = 14.dp,
+    topEnd = 14.dp,
+    bottomStart = 14.dp,
+    bottomEnd = 4.dp,
+)
 
 @Composable
 private fun ThinkingLine() {
