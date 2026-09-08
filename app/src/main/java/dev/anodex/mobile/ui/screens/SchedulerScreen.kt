@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,8 @@ fun SchedulerScreen(
     modifier: Modifier = Modifier,
     /** Why the list is empty, when the reason is not "nothing is scheduled". */
     error: String? = null,
+    /** Open one task to read its run log. */
+    onOpenTask: ((String) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -92,13 +95,15 @@ fun SchedulerScreen(
             contentPadding = PaddingValues(Spacing.x3),
             verticalArrangement = Arrangement.spacedBy(Spacing.x3),
         ) {
-            items(tasks, key = { it.id }) { task -> TaskCard(task) }
+            items(tasks, key = { it.id }) { task ->
+                TaskCard(task, onClick = onOpenTask?.let { open -> { open(task.id) } })
+            }
         }
     }
 }
 
 @Composable
-private fun TaskCard(task: ScheduledTask) {
+private fun TaskCard(task: ScheduledTask, onClick: (() -> Unit)? = null) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
@@ -107,6 +112,7 @@ private fun TaskCard(task: ScheduledTask) {
             .fillMaxWidth()
             .clip(Radii.xl)
             .background(colors.bgSurface)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(Spacing.x4),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
