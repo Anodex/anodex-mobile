@@ -749,12 +749,21 @@ private fun ConnectedScaffold(
                     },
                 )
 
-                AppDestination.SCHEDULER -> SchedulerScreen(
-                    tasks = tasks,
-                    loading = tasksLoading,
-                    error = tasksError,
-                    onOpenTask = { openTaskId = it },
-                )
+                AppDestination.SCHEDULER -> {
+                    val parsedWhen by viewModel.draftWhen.collectAsStateWithLifecycle()
+                    val creatingTask by viewModel.creatingTask.collectAsStateWithLifecycle()
+
+                    SchedulerScreen(
+                        tasks = tasks,
+                        loading = tasksLoading,
+                        error = tasksError,
+                        onOpenTask = { openTaskId = it },
+                        onDraftChanged = viewModel::parseWhen,
+                        parsed = parsedWhen,
+                        creating = creatingTask,
+                        onCreate = { prompt -> viewModel.createTask(prompt) {} },
+                    )
+                }
             }
         }
     }
