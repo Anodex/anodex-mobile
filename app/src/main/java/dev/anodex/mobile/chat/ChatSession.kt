@@ -2,21 +2,28 @@ package dev.anodex.mobile.chat
 
 import dev.anodex.mobile.transport.AnodexSocket
 import dev.anodex.mobile.transport.ServerFrame
+import java.util.UUID
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.util.UUID
 
 /**
  * One tool the model ran, collapsed to a line.
@@ -223,11 +230,48 @@ class ChatSession(
             )
 
         scope.launch {
+            // A turn is answered when it is finished, and a real one reads files,
+            // searches, and thinks between them. The default sixty seconds is a
+            // sensible bound for a question with an answer and a hopeless one for a
+            // turn doing work — it killed turns that were visibly still going, while
+            // tokens were arriving on screen.
+            //
+            // What matters is not how long it takes but whether anything is still
+            // happening, so the bound is on silence instead. Every token and every
+            // tool call resets it; nothing for IDLE_LIMIT means the far end really
+            // has stopped.
+            lastActivityAt = System.currentTimeMillis()
+            var wentQuiet = false
+
+            val call = async { socket.invoke(CHANNEL_SEND, listOf(payload), TURN_CAP) }
+
+            val watchdog = launch {
+                while (isActive) {
+                    delay(IDLE_POLL)
+                    if (System.currentTimeMillis() - lastActivityAt > IDLE_LIMIT.inWholeMilliseconds) {
+                        wentQuiet = true
+                        call.cancel()
+                        break
+                    }
+                }
+            }
+
             try {
-                socket.invoke(CHANNEL_SEND, listOf(payload))
+                call.await()
+            } catch (e: CancellationException) {
+                // Only ours is worth reporting. A cancellation from the scope going
+                // away means the screen is gone and there is nobody to tell.
+                if (wentQuiet) {
+                    _error.value = "Your computer went quiet for " +
+                        "${IDLE_LIMIT.inWholeMinutes} minutes. The turn may still be " +
+                        "running there."
+                } else {
+                    throw e
+                }
             } catch (e: Exception) {
                 _error.value = e.message ?: "That didn't reach your computer."
             } finally {
+                watchdog.cancel()
                 _sending.value = false
                 finishStreaming()
                 persist()
@@ -345,11 +389,20 @@ class ChatSession(
         }
     }
 
+    /**
+     * When this conversation last heard anything from the computer.
+     *
+     * The send watchdog reads it. A turn is allowed to take as long as it takes,
+     * provided it is still saying something.
+     */
+    private var lastActivityAt = 0L
+
     private fun onEvent(event: ServerFrame.Event) {
         when (event.channel) {
             CHANNEL_STREAM -> {
                 val payload = event.payload?.jsonObject ?: return
                 if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
+                lastActivityAt = System.currentTimeMillis()
                 appendToken(payload["token"]?.jsonPrimitive?.content ?: return)
             }
 
@@ -357,6 +410,7 @@ class ChatSession(
                 val payload = event.payload?.jsonObject ?: return
                 if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
                 val call = payload["call"]?.jsonObject ?: return
+                lastActivityAt = System.currentTimeMillis()
                 onToolCall(call)
             }
 
@@ -544,6 +598,26 @@ class ChatSession(
         const val CHANNEL_CONFIRM_RESPONSE = "tools:confirm-response"
         const val CHANNEL_SAVE = "conversations:save"
         const val CHANNEL_STOP = "chat:stop"
+
+        /**
+         * How long the computer may say nothing before the turn is given up on.
+         *
+         * Generous, because thinking is silent: a large model on a long context can
+         * be a couple of minutes between one tool finishing and the first token of
+         * what it decided.
+         */
+        val IDLE_LIMIT = 5.minutes
+
+        /** How often the watchdog looks. Cheap, so it can be often enough to feel prompt. */
+        val IDLE_POLL = 10.seconds
+
+        /**
+         * A ceiling regardless, so a turn cannot be waited on for ever.
+         *
+         * The idle bound is the one that fires in practice; this only catches a turn
+         * that keeps producing output and never finishes.
+         */
+        val TURN_CAP = 2.hours
     }
 }
 

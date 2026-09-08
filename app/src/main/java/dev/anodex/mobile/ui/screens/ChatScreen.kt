@@ -8,72 +8,74 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.text.style.TextOverflow
-import kotlinx.coroutines.launch
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import java.time.LocalTime
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.chat.ToolActivity
+import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
-import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.AttachmentThumb
+import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.ImageViewer
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.PersonalityAvatar
-import dev.anodex.mobile.ui.components.ToolRow
-import dev.anodex.mobile.ui.theme.LocalReducedMotion
-import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.ui.components.ToolApprovalCard
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import java.time.LocalTime
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The conversation.
@@ -167,11 +169,11 @@ fun ChatScreen(
         if (messages.isEmpty()) return@LaunchedEffect
         // A turn appends the question and its pending answer together, so the newest
         // being an assistant placeholder still means "you just sent something".
-        listState.animateScrollToItem(messages.lastIndex)
+        listState.showEndOf(messages.lastIndex)
     }
 
     LaunchedEffect(messages.lastOrNull()?.text) {
-        if (messages.isNotEmpty() && atBottom) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isNotEmpty() && atBottom) listState.showEndOf(messages.lastIndex)
     }
 
     /**
@@ -279,7 +281,7 @@ fun ChatScreen(
 
                 if (!atBottom) {
                     JumpToBottom(
-                        onClick = { scope.launch { listState.animateScrollToItem(messages.lastIndex) } },
+                        onClick = { scope.launch { listState.showEndOf(messages.lastIndex) } },
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = Spacing.x3),
                     )
                 }
@@ -454,6 +456,16 @@ private fun MessageRow(
                 // gives every row back — the summary is a door, not a redaction.
                 val summary = remember(message.tools) { toolSummary(message.tools) }
                 var toolsExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
+
+                // What it is doing *now*, while it is still doing it. The collapsed
+                // summary is written for reading a turn back afterwards — it counts
+                // what happened. Mid-turn that is the wrong question: the screen has
+                // to say the computer is working and what on, or a long tool run
+                // looks exactly like a stall.
+                val running = message.tools.lastOrNull { it.status == ToolActivity.Status.RUNNING }
+                if (message.streaming && running != null) {
+                    RunningLine(running.title)
+                }
 
                 if (summary != null && !toolsExpanded) {
                     ActivityLine(summary, expanded = false) { toolsExpanded = true }
@@ -839,6 +851,58 @@ private fun ActivityLine(summary: String, expanded: Boolean, onToggle: () -> Uni
  *
  * Both stop the moment a token lands.
  */
+/**
+ * The tool running right now, named.
+ *
+ * The desktop shows work as it happens; the phone only had a count of what had
+ * already finished, so a turn spending two minutes in one search looked identical
+ * to a turn that had died. Saying "Reading parser.py" is the difference between
+ * waiting and wondering.
+ *
+ * The title comes from the computer — the same string its own transcript shows —
+ * so the two never word one action differently.
+ */
+@Composable
+private fun RunningLine(title: String) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        modifier = Modifier.padding(vertical = Spacing.x1),
+    ) {
+        AnodexSpinner(size = 13.dp, thickness = 1.5.dp, tint = colors.accent)
+        Text(
+            text = title,
+            style = type.meta,
+            color = colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * Put the *end* of an item on screen, not its top.
+ *
+ * `animateScrollToItem` aligns an item's top edge with the viewport, which is right
+ * for a list of short rows and wrong for a chat: a reply taller than the screen
+ * landed with its first line showing and the rest below the fold, so following a
+ * long answer meant scrolling by hand every few seconds.
+ *
+ * Two steps because the second is unknowable before the first: the item has to be
+ * laid out before there is anything to measure.
+ */
+private suspend fun LazyListState.showEndOf(index: Int) {
+    if (index < 0) return
+    animateScrollToItem(index)
+
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val past = (item.offset + item.size) - layoutInfo.viewportEndOffset
+    if (past > 0) animateScrollBy(past.toFloat())
+}
+
 @Composable
 private fun ThinkingLine() {
     val colors = AnodexTheme.colors
