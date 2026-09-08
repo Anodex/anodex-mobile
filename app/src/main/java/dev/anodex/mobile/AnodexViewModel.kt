@@ -10,6 +10,8 @@ import dev.anodex.mobile.connection.ConnectionService
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.workspace.FileContent
+import dev.anodex.mobile.memory.Memory
+import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
@@ -221,6 +223,65 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     _workspaceError.value = it.message ?: "Your computer would not answer."
                 }
             _workspaceLoading.value = false
+        }
+    }
+
+    private var memoryClient: Memory? = null
+
+    private val _memories = MutableStateFlow<List<MemoryEntry>>(emptyList())
+
+    /** What the computer remembers. Read only — nothing here can write one. */
+    val memories: StateFlow<List<MemoryEntry>> = _memories.asStateFlow()
+
+    private val _memoryLoading = MutableStateFlow(false)
+    val memoryLoading: StateFlow<Boolean> = _memoryLoading.asStateFlow()
+
+    private val _memoryError = MutableStateFlow<String?>(null)
+    val memoryError: StateFlow<String?> = _memoryError.asStateFlow()
+
+    /** Re-read what the computer remembers, for the project currently open. */
+    fun refreshMemories() {
+        val client = memoryClient
+        if (client == null) {
+            _memoryError.value = "Not connected to your computer."
+            return
+        }
+
+        _memoryLoading.value = true
+        _memoryError.value = null
+
+        viewModelScope.launch {
+            runCatching { client.list(_projects.value.activeProjectId) }
+                .onSuccess { _memories.value = it }
+                .onFailure {
+                    _memories.value = emptyList()
+                    _memoryError.value = it.message ?: "Your computer would not answer."
+                }
+            _memoryLoading.value = false
+        }
+    }
+
+    /**
+     * Forget one line.
+     *
+     * Removed from the list straight away rather than after a re-read: the request
+     * either succeeds or reports, and leaving a line the user has just told the app
+     * to forget sitting on screen while a round trip completes reads as the tap
+     * having done nothing.
+     */
+    fun forgetMemory(entry: MemoryEntry) {
+        val client = memoryClient ?: return
+        val before = _memories.value
+        _memories.value = before.filterNot { it.id == entry.id }
+
+        viewModelScope.launch {
+            runCatching { client.forget(entry) }
+                .onFailure {
+                    // Put it back. A memory that is still on the computer must not
+                    // look gone on the phone.
+                    _memories.value = before
+                    _memoryError.value = it.message ?: "Your computer would not forget it."
+                }
         }
     }
 
@@ -974,6 +1035,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 personalityClient = Personalities(candidate)
                 uploads = Uploads(candidate, getApplication<Application>().contentResolver)
                 schedulerClient = Scheduler(candidate)
+                memoryClient = Memory(candidate)
                 modelClient = Models(candidate)
                 _chat.value = ChatSession(
                     socket = candidate,
