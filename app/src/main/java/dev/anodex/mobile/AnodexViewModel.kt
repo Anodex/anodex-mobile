@@ -799,11 +799,72 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _openThread.value = null
     }
 
+    private val _agentsError = MutableStateFlow<String?>(null)
+
+    /** Why a run could not be started, or the list could not be read. */
+    val agentsError: StateFlow<String?> = _agentsError.asStateFlow()
+
+    private val _startingRun = MutableStateFlow(false)
+    val startingRun: StateFlow<Boolean> = _startingRun.asStateFlow()
+
+    /**
+     * Set a build going on the computer, from wherever you are.
+     *
+     * Runs against whichever project is open, because a run with no project has no
+     * files to work on — and picking one from here would be choosing where real
+     * edits land from a screen that cannot show the folder.
+     *
+     * The computer forces the plan gate on for anything started remotely, so this
+     * does not begin work: it begins a plan, which then waits on the Agents screen
+     * for a yes. That is the whole reason it is safe to offer from a phone.
+     */
+    fun startAgentRun(goal: String, lookOnly: Boolean, onStarted: () -> Unit) {
+        val client = agentClient
+        val projectId = _projects.value.activeProjectId
+
+        if (client == null) {
+            _agentsError.value = "Not connected to your computer."
+            return
+        }
+        if (projectId == null) {
+            _agentsError.value = "Open a project first — a run needs files to work on."
+            return
+        }
+        if (goal.isBlank()) return
+
+        _startingRun.value = true
+        _agentsError.value = null
+
+        viewModelScope.launch {
+            runCatching { client.start(goal.trim(), projectId, lookOnly) }
+                .onSuccess { onStarted() }
+                .onFailure {
+                    _agentsError.value = it.message ?: "Your computer would not start it."
+                }
+            _startingRun.value = false
+            refreshAgentRuns()
+        }
+    }
+
     fun refreshAgentRuns() {
-        val client = agentClient ?: return
+        val client = agentClient
+        if (client == null) {
+            _agentsError.value = "Not connected to your computer."
+            return
+        }
+
         viewModelScope.launch {
             _agentsLoading.value = true
-            _agentRuns.value = runCatching { client.list() }.getOrDefault(emptyList())
+            _agentsError.value = null
+            runCatching { client.list() }
+                .onSuccess { _agentRuns.value = it }
+                .onFailure {
+                    // Was `getOrDefault(emptyList())`, which turned every failure
+                    // into "no agent runs" — a computer that could not be reached
+                    // and one with nothing running looked exactly alike.
+                    _agentRuns.value = emptyList()
+                    _agentsError.value = it.message ?: "Your computer would not answer."
+                }
             _agentsLoading.value = false
         }
     }
