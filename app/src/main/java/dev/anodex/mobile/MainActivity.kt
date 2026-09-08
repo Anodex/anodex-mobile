@@ -747,18 +747,29 @@ private fun ConnectedScaffold(
                         hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
                     )
 
-                    AppDestination.AGENTS -> AgentsScreen(
-                        runs = agentRuns,
-                        loading = agentsLoading,
-                        busyRunId = busyRunId,
-                        onApprove = viewModel::approvePlan,
-                        onReject = viewModel::rejectPlan,
-                        onStop = viewModel::stopAgentRun,
-                        onOpenConversation = {
-                            viewModel.openConversation(it)
-                            destination = AppDestination.CHAT
-                        },
-                    )
+                    AppDestination.AGENTS -> {
+                        val startingRun by viewModel.startingRun.collectAsStateWithLifecycle()
+                        val agentsError by viewModel.agentsError.collectAsStateWithLifecycle()
+
+                        AgentsScreen(
+                            runs = agentRuns,
+                            loading = agentsLoading,
+                            busyRunId = busyRunId,
+                            onApprove = viewModel::approvePlan,
+                            onReject = viewModel::rejectPlan,
+                            onStop = viewModel::stopAgentRun,
+                            onOpenConversation = {
+                                viewModel.openConversation(it)
+                                destination = AppDestination.CHAT
+                            },
+                            onStart = { goal, lookOnly ->
+                                viewModel.startAgentRun(goal, lookOnly) {}
+                            },
+                            starting = startingRun,
+                            projectName = projects.active?.name,
+                            error = agentsError,
+                        )
+                    }
 
                     AppDestination.EMAIL -> EmailPane(viewModel)
 
