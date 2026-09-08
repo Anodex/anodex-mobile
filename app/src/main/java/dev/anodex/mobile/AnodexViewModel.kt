@@ -170,6 +170,18 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _emailConfigured = MutableStateFlow<Boolean?>(null)
     val emailConfigured: StateFlow<Boolean?> = _emailConfigured.asStateFlow()
 
+    /**
+     * Why the mailbox could not be read, when that is the reason it looks empty.
+     *
+     * Needed because `emailConfigured` is a three-state answer — unknown, no
+     * account, an account — and a failure is none of the three. Folding it into
+     * "no account" produced the most confident wrong sentence in the app: *No email
+     * account is connected on your computer*, said to somebody whose account is
+     * connected and whose phone simply could not ask.
+     */
+    private val _emailError = MutableStateFlow<String?>(null)
+    val emailError: StateFlow<String?> = _emailError.asStateFlow()
+
     private val _openThread = MutableStateFlow<List<EmailNote>?>(null)
 
     /** The thread being read, or null while the list is showing. */
@@ -521,7 +533,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private fun refreshModels() {
         val client = modelClient ?: return
         viewModelScope.launch {
-            _installedModels.value = runCatching { client.list() }.getOrDefault(emptyList())
+            // Keeps the list it had on a failure. An empty model picker reads as "you
+            // have no models installed", which is a claim about the computer's disk
+            // made on the strength of a request that did not arrive.
+            runCatching { client.list() }.onSuccess { _installedModels.value = it }
         }
     }
 
@@ -775,8 +790,23 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Asked first, so an empty result can be reported as "no account" rather
             // than as "no mail" -- the two look identical in a list and mean opposite
             // things to somebody waiting on a message.
-            _emailConfigured.value = runCatching { client.isConfigured() }.getOrDefault(false)
-            _emailThreads.value = runCatching { client.threads() }.getOrDefault(emptyList())
+            _emailError.value = null
+
+            runCatching { client.isConfigured() }
+                .onSuccess { _emailConfigured.value = it }
+                .onFailure {
+                    // Left as it was rather than set to false. Whether an account
+                    // exists is a fact about the computer, and failing to ask is not
+                    // evidence either way.
+                    _emailError.value = it.message ?: "Your computer would not answer."
+                }
+
+            runCatching { client.threads() }
+                .onSuccess { _emailThreads.value = it }
+                .onFailure {
+                    _emailError.value = it.message ?: "Your computer would not answer."
+                }
+
             _emailLoading.value = false
             // Re-read after listing, so acting on mail at the computer is reflected
             // here rather than leaving a badge that outlives what it counted.
@@ -788,9 +818,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val client = emailClient ?: return
         viewModelScope.launch {
             _threadLoading.value = true
-            _openThread.value = runCatching {
+            runCatching {
                 client.messages(thread.id, thread.accountId.takeIf { it.isNotBlank() })
-            }.getOrDefault(emptyList())
+            }
+                .onSuccess { _openThread.value = it }
+                .onFailure {
+                    // An empty thread would read as a message with no content, which
+                    // is a thing that cannot happen and so gets believed.
+                    _openThread.value = emptyList()
+                    _emailError.value = it.message ?: "That thread would not open."
+                }
             _threadLoading.value = false
         }
     }
