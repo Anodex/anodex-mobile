@@ -155,6 +155,13 @@ fun AppDrawer(
             // than which section it belonged to. The section rows above open the full
             // index of each; this is the shortcut back into the two or three things
             // anybody actually returns to.
+            // Only what a person started. A scheduled run and a benchmark script write
+            // conversations exactly like a real one, so ordering by last write showed the
+            // computer's activity rather than the user's — one chat they had actually
+            // used, surrounded by eleven they had never opened.
+            val mine = conversations.filter { it.isMine }
+            val machineMade = conversations.size - mine.size
+
             LazyColumn(Modifier.weight(1f)) {
                 val openProject = projects.firstOrNull { it.id == activeProjectId }
                 if (openProject != null) {
@@ -191,11 +198,11 @@ fun AppDrawer(
                     }
                 }
 
-                if (conversations.isNotEmpty()) {
+                if (mine.isNotEmpty()) {
                     item(key = "kind-chats") { KindLabel("CHATS") }
                 }
 
-                items(conversations.take(RECENT_LIMIT), key = { it.id }) { conversation ->
+                items(mine.take(RECENT_LIMIT), key = { it.id }) { conversation ->
                     Text(
                         text = conversation.title,
                         style = type.body,
@@ -217,10 +224,10 @@ fun AppDrawer(
                 // Recents are a shortcut, not the archive. Without this the older
                 // conversations would simply have nowhere to be reached from, which
                 // the bottom bar's Chats tab used to provide.
-                if (conversations.size > RECENT_LIMIT) {
+                if (mine.size > RECENT_LIMIT) {
                     item(key = "all") {
                         Text(
-                            text = "All ${conversations.size} conversations",
+                            text = "All ${mine.size} conversations",
                             style = type.label,
                             color = colors.accent,
                             modifier = Modifier
@@ -228,6 +235,24 @@ fun AppDrawer(
                                 .heightIn(min = Touch.minTarget)
                                 .clickable(onClick = onOpenAllConversations)
                                 .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                        )
+                    }
+                }
+
+                // Said out loud, because a filtered list and a lost one look identical.
+                // It also points at where those runs actually are, rather than leaving
+                // somebody to wonder whether the computer threw them away.
+                if (machineMade > 0) {
+                    item(key = "machine-made") {
+                        Text(
+                            text = "$machineMade scheduled and agent runs are kept out of " +
+                                "this list. They are in Scheduler and Agents.",
+                            style = type.meta,
+                            color = colors.textFaint,
+                            modifier = Modifier.padding(
+                                horizontal = Spacing.x4,
+                                vertical = Spacing.x3,
+                            ),
                         )
                     }
                 }
@@ -397,7 +422,14 @@ private fun HostFooter(
 }
 
 /** Enough to recognise a conversation you were in; the full list lives in Chat. */
-private const val RECENT_LIMIT = 12
+/**
+ * Six.
+ *
+ * This list is described a few lines up as "the two or three things anybody actually
+ * returns to", and then took twelve — most of a phone screen, and more than the
+ * sentence claims. Six leaves room for the shortcut to still be a shortcut.
+ */
+private const val RECENT_LIMIT = 6
 
 @Preview(name = "Drawer", showBackground = true, backgroundColor = 0xFF080808, heightDp = 700)
 @Composable

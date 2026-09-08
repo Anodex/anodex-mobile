@@ -73,6 +73,7 @@ import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.screens.SchedulerScreen
+import dev.anodex.mobile.ui.screens.TaskScreen
 import dev.anodex.mobile.ui.screens.WorkspaceScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.screens.ThemeMode
@@ -334,6 +335,10 @@ private fun ConnectedScaffold(
     // drawer, so there is no list/detail stack to unwind here any more.
     var choosingProject by rememberSaveable { mutableStateOf(false) }
     var showingHost by rememberSaveable { mutableStateOf(false) }
+
+    /** The task being read, by id. Held by id rather than by value so a refresh
+     *  while it is open shows the new run rather than the one from when it opened. */
+    var openTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showingAllConversations by rememberSaveable { mutableStateOf(false) }
 
     /**
@@ -502,6 +507,24 @@ private fun ConnectedScaffold(
             error = projectError,
             onSelect = viewModel::setActiveProject,
             onClose = { choosingProject = false },
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
+    }
+
+    // Read by id every recomposition, so a refresh that lands while this is open
+    // redraws with the new run instead of the snapshot taken when it was tapped.
+    val openTask = openTaskId?.let { id -> tasks.firstOrNull { it.id == id } }
+    if (openTask != null) {
+        val runningId by viewModel.taskRunning.collectAsStateWithLifecycle()
+
+        BackHandler { openTaskId = null }
+
+        TaskScreen(
+            task = openTask,
+            running = runningId == openTask.id,
+            error = tasksError,
+            onRunNow = { viewModel.runTaskNow(openTask.id) },
             modifier = Modifier.safeDrawingPadding(),
         )
         return
@@ -730,6 +753,7 @@ private fun ConnectedScaffold(
                     tasks = tasks,
                     loading = tasksLoading,
                     error = tasksError,
+                    onOpenTask = { openTaskId = it },
                 )
             }
         }
