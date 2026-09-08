@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -88,7 +90,9 @@ fun AppDrawer(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Box(modifier.fillMaxSize().background(colors.bgBase)) {
+    // fillMaxHeight, not fillMaxSize: the caller decides the width now, because
+    // this is a panel sliding over the app rather than a screen replacing it.
+    Box(modifier.fillMaxHeight().background(colors.bgBase)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
@@ -255,6 +259,13 @@ fun AppDrawer(
                             ),
                         )
                     }
+                }
+
+                // Room for the floating button, which is drawn over this list rather
+                // than in it. Without this the last line sits underneath the button —
+                // and the last line is the one explaining where everything else went.
+                item(key = "fab-clearance") {
+                    Spacer(Modifier.height(FAB_CLEARANCE))
                 }
             }
 
@@ -430,6 +441,14 @@ private fun HostFooter(
  * sentence claims. Six leaves room for the shortcut to still be a shortcut.
  */
 private const val RECENT_LIMIT = 6
+
+/**
+ * How much room the list leaves under itself for the floating button.
+ *
+ * The button's own bottom offset plus its height and a little air. It is drawn in
+ * the same Box as the list, so nothing else keeps them apart.
+ */
+private val FAB_CLEARANCE = 140.dp
 
 @Preview(name = "Drawer", showBackground = true, backgroundColor = 0xFF080808, heightDp = 700)
 @Composable
