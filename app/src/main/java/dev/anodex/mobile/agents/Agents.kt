@@ -3,7 +3,11 @@ package dev.anodex.mobile.agents
 import dev.anodex.mobile.transport.AnodexSocket
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.contentOrNull
 
 /** One long-running agent run on the computer. */
@@ -83,6 +87,48 @@ class Agents(private val socket: AnodexSocket) {
         socket.invoke(CHANNEL_REJECT, listOf(JsonPrimitive(runId)))
     }
 
+    /**
+     * Start a run on the computer.
+     *
+     * The goal and the project travel; the tool set does not. The computer clamps
+     * whatever is asked for to the same vetted list its own editor offers, and
+     * forces the plan gate on for anything started from here — so a run begun from
+     * a phone always stops and shows its plan before touching a file.
+     *
+     * [lookOnly] asks for a run that reads and reports without changing anything.
+     * It is a subset of the same list, so it needs no special permission: the
+     * computer will narrow it, never widen it.
+     */
+    suspend fun start(goal: String, projectId: String?, lookOnly: Boolean) {
+        val request = buildJsonObject {
+            put("goal", goal)
+            put("projectId", projectId?.let(::JsonPrimitive) ?: JsonNull)
+            // Whatever is loaded on the computer. Choosing a cloud model from here
+            // would be picking something to spend money with, from a screen that
+            // does not show what it costs.
+            put("provider", "local")
+            put("model", JsonNull)
+            put("requirePlan", true)
+            put(
+                "enabledTools",
+                buildJsonArray { for (name in toolsFor(lookOnly)) add(JsonPrimitive(name)) },
+            )
+        }
+        socket.invoke(CHANNEL_CREATE, listOf(request))
+    }
+
+    /**
+     * What to ask for.
+     *
+     * Deliberately coarse. The desktop has a checklist of every tool; a phone
+     * offering the same thing would be a long list of names nobody can weigh while
+     * standing up. Two intentions — look, or build — cover what somebody away from
+     * their computer actually means, and the computer narrows either one to what it
+     * considers safe regardless of what arrives.
+     */
+    private fun toolsFor(lookOnly: Boolean): List<String> =
+        if (lookOnly) LOOK_ONLY_TOOLS else emptyList()
+
     suspend fun stop(runId: String) {
         socket.invoke(CHANNEL_STOP, listOf(JsonPrimitive(runId)))
     }
@@ -134,7 +180,36 @@ class Agents(private val socket: AnodexSocket) {
 
     private companion object {
         const val CHANNEL_LIST = "agent:list"
+        const val CHANNEL_CREATE = "agent:create"
         const val CHANNEL_APPROVE = "agent:approve-plan"
+
+        /**
+         * A run that only reads.
+         *
+         * Named here rather than derived, because the phone has no copy of the tool
+         * catalogue. Anything in this list the computer does not recognise is
+         * dropped by the same clamp that refuses everything else, so a name going
+         * stale costs a slightly smaller run rather than a failure.
+         *
+         * An empty ask means "whatever you would have offered" — the computer's own
+         * default build set.
+         */
+        val LOOK_ONLY_TOOLS = listOf(
+            "read_file",
+            "read_multiple_files",
+            "read_file_range",
+            "find_files",
+            "list_directory",
+            "search_files",
+            "search_code",
+            "code_outline",
+            "git_status",
+            "git_diff",
+            "list_changes",
+            "get_file_info",
+            "web_search",
+            "fetch_url",
+        )
         const val CHANNEL_REJECT = "agent:reject-plan"
         const val CHANNEL_STOP = "agent:stop"
     }
