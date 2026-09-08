@@ -159,18 +159,19 @@ internal fun parseTasks(element: JsonElement?): List<ScheduledTask> {
                 .orEmpty(),
         )
     }
+}
 
-    private fun JsonObject.asRun(): TaskRun? {
-        val id = this["id"]?.jsonPrimitive?.contentOrNull ?: return null
-        return TaskRun(
-            id = id,
-            startedAtEpochMs = this["startedAt"]?.jsonPrimitive?.longOrNull,
-            durationMs = this["durationMs"]?.jsonPrimitive?.longOrNull ?: 0L,
-            status = this["status"]?.jsonPrimitive?.contentOrNull,
-            summary = this["summary"]?.jsonPrimitive?.contentOrNull,
-            delayedMs = this["delayedMs"]?.jsonPrimitive?.longOrNull ?: 0L,
-        )
-    }
+/** One entry from a task's `runs` array, or null when it carries no id. */
+private fun JsonObject.asRun(): TaskRun? {
+    val id = this["id"]?.jsonPrimitive?.contentOrNull ?: return null
+    return TaskRun(
+        id = id,
+        startedAtEpochMs = this["startedAt"]?.jsonPrimitive?.longOrNull,
+        durationMs = this["durationMs"]?.jsonPrimitive?.longOrNull ?: 0L,
+        status = this["status"]?.jsonPrimitive?.contentOrNull,
+        summary = this["summary"]?.jsonPrimitive?.contentOrNull,
+        delayedMs = this["delayedMs"]?.jsonPrimitive?.longOrNull ?: 0L,
+    )
 }
 
 /**
