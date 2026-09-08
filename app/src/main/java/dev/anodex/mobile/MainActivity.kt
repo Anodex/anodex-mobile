@@ -579,8 +579,21 @@ private fun ConnectedScaffold(
     }
 
     if (showingSettings) {
+        val memories by viewModel.memories.collectAsStateWithLifecycle()
+        val memoryLoading by viewModel.memoryLoading.collectAsStateWithLifecycle()
+        val memoryError by viewModel.memoryError.collectAsStateWithLifecycle()
+
+        // Read when Settings opens rather than when the Memory section is reached:
+        // the section is chosen inside that screen, and threading a callback back
+        // out for one list costs more than the read it would save.
+        LaunchedEffect(Unit) { viewModel.refreshMemories() }
+
         SettingsScreen(
             installedVersion = BuildConfig.VERSION_NAME,
+            memories = memories,
+            memoryLoading = memoryLoading,
+            memoryError = memoryError,
+            onForgetMemory = viewModel::forgetMemory,
             onClose = { showingSettings = false },
             personalities = personalityState.personalities,
             activePersonalityId = personalityState.active,

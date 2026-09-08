@@ -39,6 +39,7 @@ import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.theme.AnodexColors
+import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -85,6 +86,11 @@ fun SettingsScreen(
     /** How this app picks its palette \u2014 the one phone-local setting here. */
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     onSelectTheme: (ThemeMode) -> Unit = {},
+    /** What the computer remembers. Read and forget only; nothing here writes one. */
+    memories: List<MemoryEntry> = emptyList(),
+    memoryLoading: Boolean = false,
+    memoryError: String? = null,
+    onForgetMemory: ((MemoryEntry) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
 
@@ -112,6 +118,9 @@ fun SettingsScreen(
                 onOpen = { section = it },
             )
 
+            // Still at the computer, and this one is right: a profile is a setting,
+            // and the `settings:` prefix carries the permission mode and the model
+            // directory beside it.
             SettingsSection.PROFILE -> AtTheComputer(
                 what = "Your name, avatar and account",
                 why = "A phone cannot reach the computer's settings. That prefix carries " +
@@ -120,11 +129,22 @@ fun SettingsScreen(
                     "it connect at all.",
             )
 
-            SettingsSection.MEMORY -> AtTheComputer(
-                what = "What Anodex remembers about you and your work",
-                why = "Memory is denied to a paired phone on purpose. Reading it from away " +
-                    "would put the contents of every note on a device that gets left on " +
-                    "tables.",
+            // Reading was previously refused here on the grounds that it would put
+            // the contents of every note on a device that gets left on tables. That
+            // argument does not survive contact with the rest of the app: this phone
+            // already shows whole conversations, the mailbox and the project's files,
+            // all of which say considerably more than a memory note does. Memory was
+            // being held to a standard nothing beside it meets.
+            //
+            // What genuinely does not belong here is *writing* one. A memory is fed
+            // into later prompts, so adding one from a phone steers every future
+            // conversation — which is why `memory:create` and `memory:update` are
+            // still denied, and why this screen has no control that would call them.
+            SettingsSection.MEMORY -> MemoryScreen(
+                entries = memories,
+                loading = memoryLoading,
+                error = memoryError,
+                onForget = onForgetMemory,
             )
 
             SettingsSection.APPEARANCE -> AppearanceSection(themeMode, onSelectTheme)
