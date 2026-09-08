@@ -7,7 +7,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
@@ -34,6 +37,22 @@ data class ScheduledTask(
      * the wire — it simply had nowhere to be shown.
      */
     val runs: List<TaskRun> = emptyList(),
+)
+
+/**
+ * A phrase the computer understood, and what it made of it.
+ *
+ * [recurrence] is kept as raw JSON on purpose — the phone hands it straight back
+ * when creating the task and never looks inside.
+ */
+data class ParsedWhen(
+    val recurrence: JsonObject,
+    /** "Weekdays at 7:00 AM" — the computer's own wording, so the preview and the
+     *  task card can never describe one schedule two different ways. */
+    val label: String,
+    /** Set when the input was accepted but adjusted, e.g. an interval raised to its
+     *  minimum. Null when it was taken literally. */
+    val note: String?,
 )
 
 /** One time a task ran. */
@@ -114,9 +133,62 @@ class Scheduler(private val socket: AnodexSocket) {
         socket.invoke(CHANNEL_RUN_NOW, listOf(JsonPrimitive(id)))
     }
 
+    /**
+     * Read a typed phrase into a schedule, on the computer.
+     *
+     * The parser is TypeScript and lives on the desktop, so the phone sends the
+     * words rather than carrying a second implementation of the same rules in
+     * Kotlin. Two parsers would agree on the day they were written and disagree
+     * after that, and the disagreement would be invisible until a task ran at the
+     * wrong hour.
+     *
+     * Null for anything it cannot read, which is the ordinary state of a field
+     * somebody is halfway through typing.
+     */
+    suspend fun parseWhen(text: String): ParsedWhen? {
+        val answer = socket.invoke(CHANNEL_PARSE_WHEN, listOf(JsonPrimitive(text)))
+        val obj = answer as? JsonObject ?: return null
+        val recurrence = obj["recurrence"] as? JsonObject ?: return null
+        val label = obj["label"]?.jsonPrimitive?.contentOrNull ?: return null
+        return ParsedWhen(
+            recurrence = recurrence,
+            label = label,
+            note = obj["note"]?.jsonPrimitive?.contentOrNull,
+        )
+    }
+
+    /**
+     * Create a task.
+     *
+     * The recurrence goes back exactly as [parseWhen] returned it. The phone never
+     * builds one itself and has no Kotlin model of its shape — which is deliberate:
+     * a recurrence the phone assembled would be a third opinion about a format only
+     * the computer stores.
+     */
+    suspend fun create(
+        prompt: String,
+        name: String?,
+        recurrence: JsonObject,
+        projectId: String?,
+    ) {
+        val request = buildJsonObject {
+            put("prompt", prompt)
+            name?.takeIf { it.isNotBlank() }?.let { put("name", it) }
+            put("projectId", projectId?.let(::JsonPrimitive) ?: JsonNull)
+            put("recurrence", recurrence)
+            // Nothing, deliberately. A task made from a phone should not quietly get
+            // file or shell access the person could not see themselves granting; a
+            // task that needs tools is made at the computer where the list is shown.
+            put("enabledTools", buildJsonArray { })
+        }
+        socket.invoke(CHANNEL_CREATE, listOf(request))
+    }
+
     private companion object {
         const val CHANNEL_LIST = "scheduler:list"
         const val CHANNEL_RUN_NOW = "scheduler:run-now"
+        const val CHANNEL_PARSE_WHEN = "scheduler:parse-when"
+        const val CHANNEL_CREATE = "scheduler:create"
     }
 }
 
