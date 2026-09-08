@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -176,7 +177,18 @@ fun ChatScreen(
     }
 
     LaunchedEffect(messages.lastOrNull()?.text) {
-        if (messages.isNotEmpty() && atBottom) listState.showEndOf(messages.lastIndex)
+        // Snapped, not animated. This fires on every token — thirty times a second
+        // on a fast reply — and an animation started that often spends its whole
+        // life being cancelled and restarted by the next one. The result reads as
+        // stutter rather than motion, and costs the most exactly when the screen is
+        // busiest.
+        //
+        // Following text as it arrives should feel like the page staying still under
+        // a growing message, which is what an instant scroll of a few pixels per
+        // token actually looks like. The animated version is kept for the deliberate
+        // jumps below, where there is a real distance to travel and a reason to show
+        // it being travelled.
+        if (messages.isNotEmpty() && atBottom) listState.showEndOf(messages.lastIndex, smooth = false)
     }
 
     /**
@@ -905,13 +917,16 @@ private fun RunningLine(title: String) {
  * Two steps because the second is unknowable before the first: the item has to be
  * laid out before there is anything to measure.
  */
-private suspend fun LazyListState.showEndOf(index: Int) {
+private suspend fun LazyListState.showEndOf(index: Int, smooth: Boolean = true) {
     if (index < 0) return
-    animateScrollToItem(index)
+
+    if (smooth) animateScrollToItem(index) else scrollToItem(index)
 
     val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
     val past = (item.offset + item.size) - layoutInfo.viewportEndOffset
-    if (past > 0) animateScrollBy(past.toFloat())
+    if (past <= 0) return
+
+    if (smooth) animateScrollBy(past.toFloat()) else scrollBy(past.toFloat())
 }
 
 /**
