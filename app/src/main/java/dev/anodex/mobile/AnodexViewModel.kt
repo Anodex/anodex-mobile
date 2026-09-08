@@ -23,6 +23,7 @@ import dev.anodex.mobile.chat.Projects
 import dev.anodex.mobile.chat.ProjectsState
 import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.Uploads
+import dev.anodex.mobile.chat.parseProjectsState
 import dev.anodex.mobile.connection.ConnectionController
 import dev.anodex.mobile.connection.ConnectionService
 import dev.anodex.mobile.connection.ConnectionState
@@ -88,6 +89,12 @@ private const val CHANNEL_AGENT_RUNS = "agent:runs-changed"
 
 /** Same, for scheduled tasks: created, edited, run, deleted. */
 private const val CHANNEL_TASKS_CHANGED = "scheduler:tasks-changed"
+
+/** The engine: which model is loaded and how full its context is. */
+private const val CHANNEL_MODEL_STATE = "models:state-changed"
+
+/** Which projects exist on the computer, and which one it has open. */
+private const val CHANNEL_PROJECTS_CHANGED = "projects:changed"
 
 class AnodexViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -1254,8 +1261,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * version looked for `modelName`, which does not exist, so the header would
      * have stayed blank however well everything else worked.
      */
-    private suspend fun readModelState(open: AnodexSocket): ModelStatus? {
-        val state = open.invoke("models:get-state") as? JsonObject ?: return null
+    private suspend fun readModelState(open: AnodexSocket): ModelStatus? =
+        modelStatusFrom(open.invoke("models:get-state"))
+
+    /**
+     * The computer's engine state, however it arrived.
+     *
+     * `models:get-state` answers with it and `models:state-changed` pushes the same
+     * shape, so both go through here. Two readers for one shape is how the header
+     * ends up showing a different context figure depending on whether the phone
+     * asked or was told.
+     */
+    private fun modelStatusFrom(element: JsonElement?): ModelStatus? {
+        val state = element as? JsonObject ?: return null
         val name = (state["model"] as? JsonObject)
             ?.get("name")
             ?.let { (it as? JsonPrimitive)?.content }
@@ -1673,6 +1691,18 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             CHANNEL_TASKS_CHANGED -> {
                 _tasks.value = parseTasks(event.payload)
                 _tasksError.value = null
+            }
+
+            // The header's model and context meter. Read once at connect and then
+            // frozen, so the bar sat still through a turn that was visibly filling
+            // it — the one number on that bar worth watching, not moving.
+            CHANNEL_MODEL_STATE -> modelStatusFrom(event.payload)?.let(controller::onModelUpdated)
+
+            // Which projects exist and which one is open. The computer switching
+            // project is exactly the sort of thing that happens while somebody is
+            // holding the phone and not the mouse.
+            CHANNEL_PROJECTS_CHANGED -> parseProjectsState(event.payload)?.let {
+                _projects.value = it
             }
         }
     }
