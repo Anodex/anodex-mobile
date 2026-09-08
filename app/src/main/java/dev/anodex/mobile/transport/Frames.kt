@@ -47,6 +47,14 @@ sealed interface ServerFrame {
          * handshake. An update notice is not worth breaking a connection over.
          */
         val mobileVersion: String = "",
+        /**
+         * What the computer calls itself.
+         *
+         * Defaulted to empty for the same reason as [mobileVersion]: a desktop that
+         * predates this does not send it, and that is a thing to shrug at rather than
+         * a frame to reject.
+         */
+        val hostName: String = "",
     ) : ServerFrame
 
     /** Pairing completed. [deviceKey] is the long-lived credential — store it, never log it. */
@@ -58,6 +66,7 @@ sealed interface ServerFrame {
         val protocolVersion: String,
         val addresses: List<String> = emptyList(),
         val mobileVersion: String = "",
+        val hostName: String = "",
     ) : ServerFrame
 
     /** A reply to one invoke. */
@@ -113,19 +122,36 @@ val AnodexJson: Json = Json {
 /** Frames the phone sends. Built by hand so the shapes stay obvious at the call site. */
 object ClientFrames {
 
-    fun hello(deviceKey: String, deviceName: String): String = buildJsonObject {
-        put("type", "hello")
-        put("protocolVersion", PROTOCOL_VERSION)
-        put("deviceKey", deviceKey)
-        put("deviceName", deviceName)
-    }.toString()
+    /**
+     * [reachedAt] is the address this phone dialled to get there.
+     *
+     * A computer behind a router cannot see its own public address — the router
+     * rewrites the packets, and everything that end observes is the private side.
+     * This phone knows it, because somebody typed it. Telling the computer lets it
+     * hand that address to itself on later connections instead of the user having to
+     * enter it in two places, and it needs no outside service to work it out.
+     *
+     * Sent whatever the address is; the computer ignores anything private. Deciding
+     * here which addresses are worth mentioning would be two implementations of one
+     * rule, and the far end has to check regardless.
+     */
+    fun hello(deviceKey: String, deviceName: String, reachedAt: String): String =
+        buildJsonObject {
+            put("type", "hello")
+            put("protocolVersion", PROTOCOL_VERSION)
+            put("deviceKey", deviceKey)
+            put("deviceName", deviceName)
+            put("reachedAt", reachedAt)
+        }.toString()
 
-    fun pair(secret: String, deviceName: String): String = buildJsonObject {
-        put("type", "pair")
-        put("protocolVersion", PROTOCOL_VERSION)
-        put("secret", secret)
-        put("deviceName", deviceName)
-    }.toString()
+    fun pair(secret: String, deviceName: String, reachedAt: String): String =
+        buildJsonObject {
+            put("type", "pair")
+            put("protocolVersion", PROTOCOL_VERSION)
+            put("secret", secret)
+            put("deviceName", deviceName)
+            put("reachedAt", reachedAt)
+        }.toString()
 
     fun invoke(id: String, channel: String, args: List<JsonElement>): String = buildJsonObject {
         put("type", "invoke")
