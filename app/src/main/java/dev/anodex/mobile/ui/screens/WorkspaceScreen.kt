@@ -15,6 +15,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.SearchField
+import dev.anodex.mobile.ui.components.matchesQuery
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -64,6 +71,15 @@ fun WorkspaceScreen(
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+
+    var query by rememberSaveable { mutableStateOf("") }
+
+    // Matched on the whole path, not just the name: from a phone you are usually
+    // looking for "the parser one" or "something under src/sim", and a project has
+    // four files called index.
+    val shown = remember(files, query) {
+        if (query.isBlank()) files else files.filter { matchesQuery(it.path, query) }
+    }
 
     Column(modifier.fillMaxSize().background(colors.bgApp)) {
         // Two ways in, one screen. Opened from the drawer it is the index of
@@ -112,6 +128,15 @@ fun WorkspaceScreen(
                     )
                 }
             }
+        }
+
+        if (files.size >= SEARCH_WORTH_IT) {
+            SearchField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = "Search files",
+                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+            )
         }
 
         if (files.isEmpty()) {
@@ -163,7 +188,18 @@ fun WorkspaceScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = Spacing.x2),
         ) {
-            items(files, key = { it.path }) { file ->
+            if (query.isNotBlank() && shown.isEmpty()) {
+                item(key = "no-match") {
+                    Text(
+                        text = "No file matches “$query”.",
+                        style = type.meta,
+                        color = colors.textFaint,
+                        modifier = Modifier.padding(Spacing.x4),
+                    )
+                }
+            }
+
+            items(shown, key = { it.path }) { file ->
                 FileRow(file, onClick = { onOpenFile(file.path) })
             }
         }
@@ -259,6 +295,15 @@ private fun ProjectPicker(
         }
     }
 }
+
+/**
+ * Twenty.
+ *
+ * A project has more files than a chat has conversations, and the list is already
+ * newest-first — so the top of it is usually what you came for. The field earns its
+ * place a bit later here than it does for conversations.
+ */
+private const val SEARCH_WORTH_IT = 20
 
 @Composable
 private fun FileRow(file: WorkspaceFile, onClick: () -> Unit) {
