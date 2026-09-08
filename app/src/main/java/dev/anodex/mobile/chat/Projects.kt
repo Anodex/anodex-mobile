@@ -2,6 +2,7 @@ package dev.anodex.mobile.chat
 
 import dev.anodex.mobile.transport.AnodexSocket
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -38,10 +39,7 @@ data class ProjectsState(
  */
 class Projects(private val socket: AnodexSocket) {
 
-    suspend fun state(): ProjectsState {
-        val result = socket.invoke(CHANNEL_LIST) as? JsonObject ?: return EMPTY
-        return result.toState()
-    }
+    suspend fun state(): ProjectsState = parseProjectsState(socket.invoke(CHANNEL_LIST)) ?: EMPTY
 
     /**
      * Change the active project on the computer.
@@ -56,36 +54,49 @@ class Projects(private val socket: AnodexSocket) {
         return result?.toState() ?: EMPTY
     }
 
-    private fun JsonObject.toState(): ProjectsState {
-        val list = (this["projects"] as? JsonArray)
-            ?.filterIsInstance<JsonObject>()
-            ?.mapNotNull { it.toProject() }
-            .orEmpty()
-
-        return ProjectsState(
-            projects = list,
-            activeProjectId = (this["activeProjectId"] as? JsonPrimitive)
-                ?.takeIf { it !is JsonNull }
-                ?.content,
-        )
-    }
-
-    private fun JsonObject.toProject(): Project? {
-        // Archived projects are still returned by the desktop's list; they are not
-        // somewhere to start work from.
-        if ((this["archived"] as? JsonPrimitive)?.content == "true") return null
-
-        val id = (this["id"] as? JsonPrimitive)?.content ?: return null
-        return Project(
-            id = id,
-            name = (this["name"] as? JsonPrimitive)?.content ?: "Untitled project",
-            folderPath = (this["folderPath"] as? JsonPrimitive)?.content ?: "",
-        )
-    }
-
     private companion object {
         const val CHANNEL_LIST = "projects:list"
         const val CHANNEL_SET_ACTIVE = "projects:set-active"
         val EMPTY = ProjectsState(emptyList(), null)
     }
+}
+
+
+/**
+ * The computer's projects, from a reply or from a broadcast.
+ *
+ * `projects:list` answers with this shape and `projects:changed` pushes it, so both
+ * read it here. Null when the payload is not that shape at all, which lets a caller
+ * tell "the computer has no projects" from "that was not an answer" — the two look
+ * identical once you have turned the second into an empty list.
+ */
+internal fun parseProjectsState(element: JsonElement?): ProjectsState? {
+    val root = element as? JsonObject ?: return null
+    return root.toState()
+}
+    private fun JsonObject.toState(): ProjectsState {
+    val list = (this["projects"] as? JsonArray)
+        ?.filterIsInstance<JsonObject>()
+        ?.mapNotNull { it.toProject() }
+        .orEmpty()
+
+    return ProjectsState(
+        projects = list,
+        activeProjectId = (this["activeProjectId"] as? JsonPrimitive)
+            ?.takeIf { it !is JsonNull }
+            ?.content,
+    )
+}
+
+private fun JsonObject.toProject(): Project? {
+    // Archived projects are still returned by the desktop's list; they are not
+    // somewhere to start work from.
+    if ((this["archived"] as? JsonPrimitive)?.content == "true") return null
+
+    val id = (this["id"] as? JsonPrimitive)?.content ?: return null
+    return Project(
+        id = id,
+        name = (this["name"] as? JsonPrimitive)?.content ?: "Untitled project",
+        folderPath = (this["folderPath"] as? JsonPrimitive)?.content ?: "",
+    )
 }
