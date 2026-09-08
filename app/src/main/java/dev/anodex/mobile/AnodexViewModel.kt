@@ -235,6 +235,39 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _tasksError = MutableStateFlow<String?>(null)
     val tasksError: StateFlow<String?> = _tasksError.asStateFlow()
 
+    private val _taskRunning = MutableStateFlow<String?>(null)
+
+    /** The task a run was started for from here, while it is still going. */
+    val taskRunning: StateFlow<String?> = _taskRunning.asStateFlow()
+
+    /**
+     * Start a task now, whatever its schedule says.
+     *
+     * The list is re-read afterwards rather than patched locally: the run writes a
+     * new entry, a duration and an outcome on the computer, and inventing a local
+     * version of any of that would be a second copy of the truth that is wrong the
+     * moment the run ends differently than expected.
+     */
+    fun runTaskNow(id: String) {
+        val client = schedulerClient
+        if (client == null) {
+            _tasksError.value = "Not connected to your computer."
+            return
+        }
+
+        _taskRunning.value = id
+        _tasksError.value = null
+
+        viewModelScope.launch {
+            runCatching { client.runNow(id) }
+                .onFailure {
+                    _tasksError.value = it.message ?: "Your computer would not run it."
+                }
+            _taskRunning.value = null
+            refreshTasks()
+        }
+    }
+
     fun refreshTasks() {
         val client = schedulerClient
         if (client == null) {

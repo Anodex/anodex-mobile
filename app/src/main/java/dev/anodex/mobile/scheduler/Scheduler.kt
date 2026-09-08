@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
@@ -25,6 +26,32 @@ data class ScheduledTask(
     val lastRunSummary: String?,
     /** Total runs ever, including ones aged out of the retained history. */
     val runCount: Int,
+    /**
+     * The runs the computer still keeps, newest first.
+     *
+     * "Did the 6am run go through, and what did it say" is the whole reason to open
+     * a task from a phone, and the answer was already stored and already crossing
+     * the wire — it simply had nowhere to be shown.
+     */
+    val runs: List<TaskRun> = emptyList(),
+)
+
+/** One time a task ran. */
+data class TaskRun(
+    val id: String,
+    val startedAtEpochMs: Long?,
+    val durationMs: Long,
+    /** `success`, `failed`, `skipped`… straight from the computer. */
+    val status: String?,
+    val summary: String?,
+    /**
+     * How late it started, in millis.
+     *
+     * Worth showing because a task that runs twenty seconds after its slot is fine
+     * and one that runs forty minutes late is a sleeping computer, and those look
+     * identical if all you see is that it succeeded.
+     */
+    val delayedMs: Long,
 )
 
 /**
@@ -75,8 +102,21 @@ class Scheduler(private val socket: AnodexSocket) {
         }
     }
 
+    /**
+     * Run a task now, regardless of its schedule.
+     *
+     * Starts real work on a machine nobody is watching, which is why it is a
+     * deliberate tap at the bottom of a task rather than anything reachable by
+     * accident. The computer answers nothing on success and throws with its own
+     * message on failure, which is exactly what the caller needs.
+     */
+    suspend fun runNow(id: String) {
+        socket.invoke(CHANNEL_RUN_NOW, listOf(JsonPrimitive(id)))
+    }
+
     private companion object {
         const val CHANNEL_LIST = "scheduler:list"
+        const val CHANNEL_RUN_NOW = "scheduler:run-now"
     }
 }
 
@@ -110,8 +150,40 @@ internal fun parseTasks(element: JsonElement?): List<ScheduledTask> {
             lastRunStatus = entry["lastRunStatus"]?.jsonPrimitive?.contentOrNull,
             lastRunSummary = entry["lastRunSummary"]?.jsonPrimitive?.contentOrNull,
             runCount = entry["runCount"]?.jsonPrimitive?.intOrNull ?: 0,
+            // Newest first: a run log is read from the top, and the computer stores
+            // it oldest first because that is the order it happened in.
+            runs = (entry["runs"] as? JsonArray)
+                ?.filterIsInstance<JsonObject>()
+                ?.mapNotNull { it.asRun() }
+                ?.asReversed()
+                .orEmpty(),
         )
     }
+
+    private fun JsonObject.asRun(): TaskRun? {
+        val id = this["id"]?.jsonPrimitive?.contentOrNull ?: return null
+        return TaskRun(
+            id = id,
+            startedAtEpochMs = this["startedAt"]?.jsonPrimitive?.longOrNull,
+            durationMs = this["durationMs"]?.jsonPrimitive?.longOrNull ?: 0L,
+            status = this["status"]?.jsonPrimitive?.contentOrNull,
+            summary = this["summary"]?.jsonPrimitive?.contentOrNull,
+            delayedMs = this["delayedMs"]?.jsonPrimitive?.longOrNull ?: 0L,
+        )
+    }
+}
+
+/**
+ * "19.4s", "1m 20s", "under a second".
+ *
+ * Seconds to one decimal below a minute: the difference between a run that took
+ * 2.1s and one that took 19.4s is the interesting part, and rounding both to
+ * "seconds" throws it away.
+ */
+fun formatDuration(ms: Long): String = when {
+    ms < 1_000 -> "under a second"
+    ms < 60_000 -> "%.1fs".format(ms / 1000.0)
+    else -> "${ms / 60_000}m ${(ms % 60_000) / 1000}s"
 }
 
 /**

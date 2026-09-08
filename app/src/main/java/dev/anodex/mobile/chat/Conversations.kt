@@ -33,7 +33,24 @@ data class ConversationSummary(
      * tell them apart.
      */
     val projectId: String? = null,
-)
+    /**
+     * What made this conversation, when it was not a person.
+     *
+     * Null means somebody typed it, which is the only kind worth putting in a
+     * recents list. A scheduled task's run and a benchmark script both write
+     * conversations exactly like a real one, so a list ordered by last write shows
+     * the computer's activity rather than yours — which is how one chat the user
+     * actually had ended up surrounded by eleven they had never opened.
+     *
+     * Unknown values are kept as-is rather than folded into null: a kind this build
+     * has not heard of is still not a person, and guessing otherwise would put it
+     * back in the list this exists to keep clean.
+     */
+    val origin: String? = null,
+) {
+    /** True when a person started this, which is the only kind recents should show. */
+    val isMine: Boolean get() = origin == null
+}
 
 /**
  * Reading the desktop's conversation store.
@@ -108,6 +125,7 @@ class Conversations(private val socket: AnodexSocket) {
                 ?.toDoubleOrNull()?.toLong() ?: 0L,
             messageCount = messages,
             projectId = fields["projectId"]?.jsonPrimitive?.contentOrNull(),
+            origin = fields["origin"]?.jsonPrimitive?.contentOrNull(),
         )
     }
 
