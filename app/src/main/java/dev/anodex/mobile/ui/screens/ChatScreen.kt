@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
@@ -1131,10 +1132,33 @@ private fun Composer(
             AttachmentChip(attachment, onRemove = { onRemoveAttachment(attachment) })
         }
 
+        // One surface, not three sitting beside each other. The attach control, the
+        // field and Send used to be separate shapes in a row, which reads as a
+        // toolbar that happens to contain somewhere to type — and the field itself
+        // ended up the smallest thing in it.
+        //
+        // Wrapping them in a single pill puts the weight where the writing happens
+        // and gives both controls a bigger target than they had loose.
+        //
+        // The edge is the Anodex part rather than a borrowed one: it lifts to the
+        // accent the moment there is something to send. Elsewhere in this app a
+        // border means state — the blocked agent run wears one — so it means state
+        // here too, instead of being a line drawn for the look of it.
+        val hasSomethingToSend = draft.isNotBlank() || attachments.isNotEmpty()
+
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(Radii.pill)
+                .background(colors.bgInput)
+                .border(
+                    width = 1.dp,
+                    color = if (hasSomethingToSend) colors.accent else colors.border,
+                    shape = Radii.pill,
+                )
+                .padding(Spacing.x1),
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
         ) {
             if (onAttach != null) {
                 // One control, not two. A `+` and a paperclip side by side is two
@@ -1153,9 +1177,15 @@ private fun Composer(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(Radii.lg)
-                    .background(colors.bgInput)
-                    .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
+                    // Enough height that a one-line message still looks like somewhere
+                    // to write rather than a slot to fill in.
+                    .heightIn(min = Touch.minTarget)
+                    .padding(
+                        start = if (onAttach != null) 0.dp else Spacing.x3,
+                        end = Spacing.x2,
+                        top = Spacing.x3,
+                        bottom = Spacing.x3,
+                    ),
             ) {
                 if (draft.isEmpty()) {
                     Text(
