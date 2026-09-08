@@ -113,6 +113,15 @@ fun ChatScreen(
     /** Null where attaching is not possible — previews, and no socket. */
     onAttach: (() -> Unit)? = null,
     onRemoveAttachment: (UploadState) -> Unit = {},
+    /**
+     * Things worth asking, drawn from what is actually true on the computer now.
+     *
+     * Not a list of what Anodex can do — every assistant has one of those and
+     * nobody reads it. These name the project that is open, the mail that is
+     * unread, the task that ran: questions somebody would have asked anyway, which
+     * is the only kind worth putting in front of them.
+     */
+    openers: List<String> = emptyList(),
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -251,6 +260,25 @@ fun ChatScreen(
                         color = colors.textFaint,
                         textAlign = TextAlign.Center,
                     )
+
+                    // Filled into the composer rather than sent. The wording is a
+                    // starting point and the person tapping it usually has a version
+                    // of their own in mind — sending outright takes that away, and
+                    // the edit is the cheap half of asking.
+                    for (opener in openers) {
+                        Text(
+                            text = opener,
+                            style = type.body,
+                            color = colors.textMuted,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .heightIn(min = Touch.minTarget)
+                                .clip(Radii.pill)
+                                .background(colors.bgSurface)
+                                .clickable { draft = opener }
+                                .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                        )
+                    }
                 }
             }
         } else {
