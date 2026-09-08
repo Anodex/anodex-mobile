@@ -38,13 +38,22 @@ import dev.anodex.mobile.ui.theme.Spacing
  *    and naming it turns a generic failure into something the user can act on. Note the wording:
  *    it says the network *changed*, not what it changed to — reading the SSID would cost a
  *    location permission this app deliberately does not ask for (§6.1).
- * 3. **Not be a dead end.** Retry, and a way into pairing, both reachable without a connection.
+ * 3. **Not be a dead end.** Retry, and a way to pair a different computer, both
+ *    reachable without a connection.
  */
 @Composable
 fun OfflineScreen(
     state: ConnectionState.Offline,
     onRetry: () -> Unit,
-    onOpenPairing: () -> Unit,
+    /**
+     * Asked for a *replacement* pairing — not given one.
+     *
+     * Named for what it requests rather than what it does, because the caller owns
+     * the consequence: on this screen it must confirm first, in the design harness it
+     * is only a way back out. A callback named `onOpenPairing` that unpaired is how
+     * the original defect survived review.
+     */
+    onReplacePairing: () -> Unit,
     modifier: Modifier = Modifier,
     nowEpochMs: Long = System.currentTimeMillis(),
     /**
@@ -109,8 +118,15 @@ fun OfflineScreen(
             )
         } else if (state.networkChanged) {
             Text(
+                // Not "Anodex only connects over your local network" — that was never
+                // true, and this is the screen it was least true on. The phone reaches
+                // the desktop over the LAN, a private VPN, or a configured remote
+                // address, and the address list on the host screen is what decides
+                // which. Telling somebody sitting on a train that the product is
+                // LAN-only turns a solvable problem into a closed door.
                 text = "You're on a different network than the one you paired on. " +
-                    "Anodex only connects over your local network.",
+                    "This phone can still reach it over a VPN or a remote address " +
+                    "you've added.",
                 style = type.body,
                 color = colors.warn,
                 textAlign = TextAlign.Center,
@@ -136,7 +152,12 @@ fun OfflineScreen(
             modifier = Modifier.padding(top = Spacing.x8),
             horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
         ) {
-            SecondaryButton(label = "Pairing", onClick = onOpenPairing)
+            // The ellipsis is load-bearing. This button used to say "Pairing" and
+            // wire straight to unpair(), so the word promised a screen and delivered
+            // the destruction of the credential — on the one screen where a user is
+            // already casting about for something to press. The trailing dots are the
+            // standard signal that a further step follows, and one does.
+            SecondaryButton(label = "Pair another…", onClick = onReplacePairing)
             PrimaryButton(label = "Retry", onClick = onRetry)
         }
     }
@@ -180,7 +201,7 @@ private fun PreviewOfflineNetworkChanged() {
                 networkChanged = true,
             ),
             onRetry = {},
-            onOpenPairing = {},
+            onReplacePairing = {},
             nowEpochMs = PREVIEW_NOW,
         )
     }
@@ -197,7 +218,7 @@ private fun PreviewOfflineSameNetwork() {
                 networkChanged = false,
             ),
             onRetry = {},
-            onOpenPairing = {},
+            onReplacePairing = {},
             nowEpochMs = PREVIEW_NOW,
         )
     }

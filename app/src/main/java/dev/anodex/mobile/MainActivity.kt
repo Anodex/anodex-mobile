@@ -64,6 +64,7 @@ import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AppDestination
 import dev.anodex.mobile.ui.components.AppDrawer
+import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
@@ -255,6 +256,10 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     val pairingError by viewModel.pairingError.collectAsStateWithLifecycle()
     var scanning by remember { mutableStateOf(false) }
     var typing by remember { mutableStateOf(false) }
+    // Plain `remember`, not `rememberSaveable`: a rotation should not restore a
+    // half-answered question about destroying the pairing. Dismissed is the safe
+    // resting state, so losing it is the right way to lose it.
+    var replacingPairing by remember { mutableStateOf(false) }
     val manualState by viewModel.manualState.collectAsStateWithLifecycle()
 
     // Pairing succeeds on a background coroutine, so the screen that started it has
@@ -308,12 +313,33 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
             error = pairingError,
         )
 
-        is ConnectionState.Offline -> OfflineScreen(
-            state = current,
-            onRetry = viewModel::retry,
-            onOpenPairing = viewModel::unpair,
-            hint = connectionHint,
-        )
+        is ConnectionState.Offline -> {
+            OfflineScreen(
+                state = current,
+                onRetry = viewModel::retry,
+                onReplacePairing = { replacingPairing = true },
+                hint = connectionHint,
+            )
+
+            // Asked before unpairing, because the phone cannot undo it. Re-pairing
+            // needs a QR code only the desktop can show, so a mis-tap here does not
+            // cost a step — it costs however long it takes to get back to the
+            // computer, which on this screen is by definition "not now".
+            if (replacingPairing) {
+                ConfirmDialog(
+                    title = "Pair with a different computer?",
+                    body = "${current.host.displayName} will stop accepting this phone. " +
+                        "You'll need a new pairing code from the computer you want to " +
+                        "use, so do this only when you can get to it.",
+                    confirmLabel = "Unpair",
+                    onConfirm = {
+                        replacingPairing = false
+                        viewModel.unpair()
+                    },
+                    onDismiss = { replacingPairing = false },
+                )
+            }
+        }
 
         else -> ConnectedScaffold(current, chat, viewModel)
     }
@@ -1118,7 +1144,7 @@ private fun DesignStateHarness(onExit: () -> Unit) {
     Box(Modifier.fillMaxSize().background(colors.bgApp)) {
         when (val state = states[index]) {
             is ConnectionState.Offline ->
-                OfflineScreen(state = state, onRetry = advance, onOpenPairing = onExit)
+                OfflineScreen(state = state, onRetry = advance, onReplacePairing = onExit)
 
             else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 ConnectionHeader(state)
