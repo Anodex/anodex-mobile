@@ -67,7 +67,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    sha = args.sha or run("git", "rev-parse", "HEAD")
+    # Resolved through git rather than used as typed, so a short sha, a tag or a
+    # branch name all work. `gh` reports full shas, and comparing one of those to
+    # "ea0d9e9" matches nothing — which reads exactly like "CI has not finished".
+    sha = run("git", "rev-parse", args.sha or "HEAD")
     print(f"commit   {sha[:7]}")
 
     # By sha, never by recency. This is the line the incident was about.
