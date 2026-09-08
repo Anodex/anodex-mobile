@@ -324,7 +324,6 @@ internal fun groupConversations(
     return groups
 }
 
-@Composable
 /**
  * Twelve.
  *
@@ -334,6 +333,7 @@ internal fun groupConversations(
  */
 private const val SEARCH_WORTH_IT = 12
 
+@Composable
 private fun Centred(text: String, color: androidx.compose.ui.graphics.Color) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
