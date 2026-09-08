@@ -4,6 +4,7 @@ import dev.anodex.mobile.transport.AnodexSocket
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /** One long-running agent run on the computer. */
 data class AgentRun(
@@ -114,9 +115,22 @@ class Agents(private val socket: AnodexSocket) {
             .orEmpty(),
     )
 
-    private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.content
+    /**
+     * A string field, or null when the computer sent null.
+     *
+     * `contentOrNull`, not `content`: `JsonNull` *is* a `JsonPrimitive`, and its
+     * `content` is the four-character string "null". So a field the desktop
+     * deliberately left empty arrived as the word null, survived `isNotBlank()`,
+     * and a finished run showed "null" in red where its error would go.
+     *
+     * The same read fed `goal`, `status` and `conversationId`, where a null would
+     * have been just as wrong and considerably quieter.
+     */
+    private fun JsonObject.str(key: String): String? =
+        (this[key] as? JsonPrimitive)?.contentOrNull
+
     private fun JsonObject.num(key: String): Int =
-        (this[key] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: 0
+        (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: 0
 
     private companion object {
         const val CHANNEL_LIST = "agent:list"
