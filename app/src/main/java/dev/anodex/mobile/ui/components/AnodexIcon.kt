@@ -240,4 +240,20 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
 
     /** "This row opens something." `Icon.tsx` `chevron-right`. */
     CHEVRON_RIGHT(listOf("m9 18 6-6-6-6")),
+
+    /**
+     * The magnifier, round rather than a facet.
+     *
+     * The house set draws a hexagon where a shape stands for something Anodex owns
+     * — its clock, its gear, its mark. Searching is not one of those: it is the
+     * plainest control on any screen, and a hexagonal lens would be decoration
+     * pretending to be identity. The circle is written as two arcs because a path
+     * parser has no ellipse, the same way SETTINGS does it.
+     */
+    SEARCH(
+        listOf(
+            "M11 4a7 7 0 0 1 0 14 7 7 0 0 1 0-14z",
+            "m16.2 16.2 4.3 4.3",
+        )
+    ),
 }

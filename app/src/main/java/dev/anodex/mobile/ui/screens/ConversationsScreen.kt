@@ -14,6 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +28,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.SearchField
+import dev.anodex.mobile.ui.components.matchesQuery
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -53,6 +60,21 @@ fun ConversationsScreen(
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    var query by rememberSaveable { mutableStateOf("") }
+
+    // Matched against the project name too, so "sandbox" finds everything filed
+    // there — the way somebody actually remembers a conversation is often by where
+    // the work was, not by what the title ended up saying.
+    val shown = remember(conversations, query, projectNames) {
+        if (query.isBlank()) {
+            conversations
+        } else {
+            conversations.filter { conversation ->
+                val project = conversation.projectId?.let { projectNames[it] }.orEmpty()
+                matchesQuery("${conversation.title} $project", query)
+            }
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize().background(colors.bgApp)) {
         Row(
@@ -64,6 +86,27 @@ fun ConversationsScreen(
         ) {
             Text("Conversations", style = type.heading, color = colors.text)
             PrimaryButton(label = "New", onClick = onNewChat)
+        }
+
+        // Offered once there are enough of them to be worth searching. Below that
+        // the field is a control taking up room above a list you can already see
+        // all of.
+        if (conversations.size >= SEARCH_WORTH_IT) {
+            SearchField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = "Search conversations",
+                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x1),
+            )
+        }
+
+        if (query.isNotBlank() && shown.isEmpty()) {
+            Text(
+                text = "Nothing matches “$query”.",
+                style = type.meta,
+                color = colors.textFaint,
+                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x4),
+            )
         }
 
         // Which project the *computer* has open — for the workspace and for agent
@@ -103,7 +146,7 @@ fun ConversationsScreen(
                 Centred("No conversations yet. Start one.", colors.textFaint)
 
             else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                for (group in groupConversations(conversations, activeId, projectNames)) {
+                for (group in groupConversations(shown, activeId, projectNames)) {
                     item(key = "group-${group.label}") { GroupLabel(group.label) }
 
                     items(group.conversations, key = { it.id }) { conversation ->
@@ -280,6 +323,15 @@ internal fun groupConversations(
 
     return groups
 }
+
+/**
+ * Twelve.
+ *
+ * Below this the whole list is a scroll away, and a search field is a control
+ * sitting above something you can already see all of. Above it, finding one
+ * conversation by scrolling stops being reasonable.
+ */
+private const val SEARCH_WORTH_IT = 12
 
 @Composable
 private fun Centred(text: String, color: androidx.compose.ui.graphics.Color) {
