@@ -6,27 +6,33 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,50 +44,50 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
-import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AppDestination
 import dev.anodex.mobile.ui.components.AppDrawer
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
-import dev.anodex.mobile.agents.AgentRun
+import dev.anodex.mobile.ui.components.UpdateBanner
 import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.ConversationsScreen
 import dev.anodex.mobile.ui.screens.EmailPane
 import dev.anodex.mobile.ui.screens.FileScreen
-import dev.anodex.mobile.ui.components.UpdateBanner
 import dev.anodex.mobile.ui.screens.HostScreen
-import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.ManualPairScreen
+import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.screens.SchedulerScreen
-import dev.anodex.mobile.ui.screens.TaskScreen
-import dev.anodex.mobile.ui.screens.WorkspaceScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
+import dev.anodex.mobile.ui.screens.TaskScreen
 import dev.anodex.mobile.ui.screens.ThemeMode
+import dev.anodex.mobile.ui.screens.WorkspaceScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.AppearanceStore
 import dev.anodex.mobile.ui.theme.Radii
-import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.ui.theme.Spacing
+import dev.anodex.mobile.ui.theme.Touch
 import kotlinx.coroutines.delay
 
 /**
@@ -617,7 +623,19 @@ private fun ConnectedScaffold(
         return
     }
 
-    if (drawerOpen) {
+    /**
+     * The drawer, as a panel over the app rather than a screen instead of it.
+     *
+     * It used to return early and replace everything, so opening it tore down the
+     * conversation and built it again on the way back — and the app appeared to jump
+     * somewhere else to answer a question about where you already were. Sliding it
+     * over keeps the chat on screen behind, which is what makes it read as a menu
+     * belonging to this page instead of a page of its own.
+     *
+     * Declared here and drawn at the bottom of the Box below, so it sits above the
+     * content in the layer order.
+     */
+    val drawer: @Composable () -> Unit = {
         AppDrawer(
             destination = destination,
             onSelect = { chosen ->
@@ -673,114 +691,155 @@ private fun ConnectedScaffold(
             },
             agentBadge = waitingAgents,
             emailBadge = unreadEmail,
-            modifier = Modifier.safeDrawingPadding(),
+            modifier = Modifier
+                // Not the full width. Leaving the app visible down the side is most
+                // of what tells you it is still there, waiting, rather than closed.
+                .fillMaxWidth(DRAWER_WIDTH_FRACTION)
+                .safeDrawingPadding(),
         )
-        return
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
-        // Inside a conversation the title takes the top line and the host shrinks to
-        // its dot: you already know which computer, and what you are reading is the
-        // conversation. Everywhere else the host bar is the most useful thing there.
-        val conversationTitle = chat?.let { session ->
-            session.existingTitle?.takeIf { it.isNotBlank() }
-                ?: messagesTitle(session)
-        }
+    Box(Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
+            // Inside a conversation the title takes the top line and the host shrinks to
+            // its dot: you already know which computer, and what you are reading is the
+            // conversation. Everywhere else the host bar is the most useful thing there.
+            val conversationTitle = chat?.let { session ->
+                session.existingTitle?.takeIf { it.isNotBlank() }
+                    ?: messagesTitle(session)
+            }
 
-        if (destination == AppDestination.CHAT && conversationTitle != null) {
-            ChatHeader(
-                title = conversationTitle,
-                connected = state is ConnectionState.Connected,
-                onOpenDrawer = { drawerOpen = true },
-            )
-        } else {
-            ConnectionHeader(
-                state = state,
-                onOpenDrawer = { drawerOpen = true },
-            )
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-
-        // Under the header on every screen rather than inside chat: a newer app is
-        // not a chat concern, and the previous version of this notice lived two taps
-        // in on the host screen, where it went unseen through an entire release.
-        if (!updateDismissed) {
-            UpdateBanner(
-                state = updateState,
-                canInstall = canInstallUpdates,
-                onInstall = viewModel::installUpdate,
-                onGrantInstall = { installPermission.launch(viewModel.installPermissionIntent()) },
-                onDismiss = viewModel::dismissUpdate,
-                installedVersion = BuildConfig.VERSION_NAME,
-            )
-        }
-
-        Box(Modifier.weight(1f)) {
-            when (destination) {
-                AppDestination.CHAT -> ChatPane(
-                    chat,
-                    viewModel,
-                    // Named on the empty screen, because which computer is awake is
-                    // the one thing no other assistant can put there.
-                    hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
+            if (destination == AppDestination.CHAT && conversationTitle != null) {
+                ChatHeader(
+                    title = conversationTitle,
+                    connected = state is ConnectionState.Connected,
+                    onOpenDrawer = { drawerOpen = true },
                 )
-
-                AppDestination.AGENTS -> AgentsScreen(
-                    runs = agentRuns,
-                    loading = agentsLoading,
-                    busyRunId = busyRunId,
-                    onApprove = viewModel::approvePlan,
-                    onReject = viewModel::rejectPlan,
-                    onStop = viewModel::stopAgentRun,
-                    onOpenConversation = {
-                        viewModel.openConversation(it)
-                        destination = AppDestination.CHAT
-                    },
+            } else {
+                ConnectionHeader(
+                    state = state,
+                    onOpenDrawer = { drawerOpen = true },
                 )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
 
-                AppDestination.EMAIL -> EmailPane(viewModel)
-
-                AppDestination.WORKSPACE -> WorkspaceScreen(
-                    files = workspaceFiles,
-                    loading = workspaceLoading,
-                    onOpenFile = viewModel::openWorkspaceFile,
-                    projectName = projects.active?.name,
-                    error = workspaceError,
-                    projects = projects.projects,
-                    activeProjectId = projects.activeProjectId,
-                    browsing = browsingProjects,
-                    onOpenProject = { id ->
-                        viewModel.setActiveProject(id)
-                        browsingProjects = false
-                    },
-                    onBrowseProjects = { browsingProjects = true },
-                    onNewChatHere = projects.activeProjectId?.let { id ->
-                        {
-                            viewModel.newConversation(projectId = id)
-                            destination = AppDestination.CHAT
-                        }
-                    },
+            // Under the header on every screen rather than inside chat: a newer app is
+            // not a chat concern, and the previous version of this notice lived two taps
+            // in on the host screen, where it went unseen through an entire release.
+            if (!updateDismissed) {
+                UpdateBanner(
+                    state = updateState,
+                    canInstall = canInstallUpdates,
+                    onInstall = viewModel::installUpdate,
+                    onGrantInstall = { installPermission.launch(viewModel.installPermissionIntent()) },
+                    onDismiss = viewModel::dismissUpdate,
+                    installedVersion = BuildConfig.VERSION_NAME,
                 )
+            }
 
-                AppDestination.SCHEDULER -> {
-                    val parsedWhen by viewModel.draftWhen.collectAsStateWithLifecycle()
-                    val creatingTask by viewModel.creatingTask.collectAsStateWithLifecycle()
-
-                    SchedulerScreen(
-                        tasks = tasks,
-                        loading = tasksLoading,
-                        error = tasksError,
-                        onOpenTask = { openTaskId = it },
-                        onDraftChanged = viewModel::parseWhen,
-                        parsed = parsedWhen,
-                        creating = creatingTask,
-                        onCreate = { prompt -> viewModel.createTask(prompt) {} },
+            Box(Modifier.weight(1f)) {
+                when (destination) {
+                    AppDestination.CHAT -> ChatPane(
+                        chat,
+                        viewModel,
+                        // Named on the empty screen, because which computer is awake is
+                        // the one thing no other assistant can put there.
+                        hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
                     )
+
+                    AppDestination.AGENTS -> AgentsScreen(
+                        runs = agentRuns,
+                        loading = agentsLoading,
+                        busyRunId = busyRunId,
+                        onApprove = viewModel::approvePlan,
+                        onReject = viewModel::rejectPlan,
+                        onStop = viewModel::stopAgentRun,
+                        onOpenConversation = {
+                            viewModel.openConversation(it)
+                            destination = AppDestination.CHAT
+                        },
+                    )
+
+                    AppDestination.EMAIL -> EmailPane(viewModel)
+
+                    AppDestination.WORKSPACE -> WorkspaceScreen(
+                        files = workspaceFiles,
+                        loading = workspaceLoading,
+                        onOpenFile = viewModel::openWorkspaceFile,
+                        projectName = projects.active?.name,
+                        error = workspaceError,
+                        projects = projects.projects,
+                        activeProjectId = projects.activeProjectId,
+                        browsing = browsingProjects,
+                        onOpenProject = { id ->
+                            viewModel.setActiveProject(id)
+                            browsingProjects = false
+                        },
+                        onBrowseProjects = { browsingProjects = true },
+                        onNewChatHere = projects.activeProjectId?.let { id ->
+                            {
+                                viewModel.newConversation(projectId = id)
+                                destination = AppDestination.CHAT
+                            }
+                        },
+                    )
+
+                    AppDestination.SCHEDULER -> {
+                        val parsedWhen by viewModel.draftWhen.collectAsStateWithLifecycle()
+                        val creatingTask by viewModel.creatingTask.collectAsStateWithLifecycle()
+
+                        SchedulerScreen(
+                            tasks = tasks,
+                            loading = tasksLoading,
+                            error = tasksError,
+                            onOpenTask = { openTaskId = it },
+                            onDraftChanged = viewModel::parseWhen,
+                            parsed = parsedWhen,
+                            creating = creatingTask,
+                            onCreate = { prompt -> viewModel.createTask(prompt) {} },
+                        )
+                    }
                 }
             }
         }
+
+        // Dim what is behind, and let a tap out there close it — the gesture people
+        // already expect from every drawer on the phone. Drawn before the panel so
+        // the panel sits on top of it.
+        AnimatedVisibility(
+            visible = drawerOpen,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = SCRIM_ALPHA))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { drawerOpen = false },
+                    ),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = drawerOpen,
+            // In from the edge it lives on, and back to it. The app behind does not
+            // move: this slides over the page rather than pushing it aside.
+            enter = slideInHorizontally(initialOffsetX = { -it }),
+            exit = slideOutHorizontally(targetOffsetX = { -it }),
+        ) {
+            drawer()
+        }
     }
 }
+
+/** How far the drawer reaches across, leaving the app visible beside it. */
+private const val DRAWER_WIDTH_FRACTION = 0.86f
+
+/** Dark enough to push the page back, light enough that it is plainly still there. */
+private const val SCRIM_ALPHA = 0.55f
 
 /**
  * The conversation's own bar: a way out, what this is, and whether the computer is
