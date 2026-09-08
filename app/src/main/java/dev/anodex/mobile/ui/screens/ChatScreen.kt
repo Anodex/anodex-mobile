@@ -73,6 +73,9 @@ import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import dev.anodex.mobile.workspace.ChangedFile
+import dev.anodex.mobile.workspace.describeDelta
+import dev.anodex.mobile.workspace.shortPath
 import java.time.LocalTime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -491,6 +494,14 @@ private fun MessageRow(
                     ThinkingLine()
                 }
 
+                // What ended up different, after the words. The tool rows above say
+                // what the turn attempted; this is the computer's own record of what
+                // actually changed on disk — the half worth trusting a run on when
+                // you are not in the room to look.
+                if (message.changedFiles.isNotEmpty()) {
+                    ChangedFiles(message.changedFiles, onOpenFile)
+                }
+
                 if (!message.streaming && message.text.isNotEmpty()) {
                     MessageActions(
                         text = message.text,
@@ -902,6 +913,116 @@ private suspend fun LazyListState.showEndOf(index: Int) {
     val past = (item.offset + item.size) - layoutInfo.viewportEndOffset
     if (past > 0) animateScrollBy(past.toFloat())
 }
+
+/**
+ * The files a turn changed, named.
+ *
+ * Collapsed to a count until asked, for the same reason the tool rows are: a run
+ * that touched twenty files would otherwise bury the answer it was asked for.
+ *
+ * Read-only from here. The computer knows how to put these back, and that is
+ * deliberately not offered on a phone — undoing an afternoon of work wants a diff
+ * in front of you, and a filename and a byte count is not that.
+ */
+@Composable
+private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit)?) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    var expanded by rememberSaveable(files.size) { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = Spacing.x2)
+            .clip(Radii.lg)
+            .background(colors.bgSurface2)
+            .padding(Spacing.x3),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            AnodexIcon(AnodexIcon.FOLDER, size = 14.dp, tint = colors.accentGreen)
+            Text(
+                text = if (files.size == 1) "Changed 1 file" else "Changed ${files.size} files",
+                style = type.label,
+                color = colors.text,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (expanded) "Hide" else "Show",
+                style = type.meta,
+                color = colors.accent,
+            )
+        }
+
+        if (!expanded) return@Column
+
+        for (file in files) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.minTarget)
+                    .then(
+                        if (onOpenFile != null) {
+                            Modifier.clickable { onOpenFile(file.path) }
+                        } else {
+                            Modifier
+                        },
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                Text(
+                    text = kindMark(file.kind),
+                    style = type.mono,
+                    color = kindColour(file.kind, colors),
+                )
+                Text(
+                    text = shortPath(file.path),
+                    style = type.meta,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                // Only when it moved. A rewrite that lands on the same length is
+                // still a change, and "0 bytes" beside it reads as "nothing happened".
+                describeDelta(file.sizeDelta)?.let { delta ->
+                    Text(delta, style = type.meta, color = colors.textFaint)
+                }
+            }
+
+            // The record is of the turn, not of the file as it stands now. Somebody
+            // editing the same file afterwards makes it a description of a state that
+            // no longer exists, and saying so is cheaper than being quietly wrong.
+            if (file.conflicted) {
+                Text(
+                    text = "Edited again since this turn.",
+                    style = type.meta,
+                    color = colors.warn,
+                )
+            }
+        }
+    }
+}
+
+/** One character, because a list of files is read down the left edge. */
+private fun kindMark(kind: String?): String = when (kind) {
+    "added" -> "+"
+    "deleted" -> "−"
+    else -> "~"
+}
+
+@Composable
+private fun kindColour(kind: String?, colors: dev.anodex.mobile.ui.theme.AnodexColors) =
+    when (kind) {
+        "added" -> colors.accentGreen
+        "deleted" -> colors.danger
+        else -> colors.textFaint
+    }
 
 @Composable
 private fun ThinkingLine() {

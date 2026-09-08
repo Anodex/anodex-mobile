@@ -2,6 +2,8 @@ package dev.anodex.mobile.chat
 
 import dev.anodex.mobile.transport.AnodexSocket
 import dev.anodex.mobile.transport.ServerFrame
+import dev.anodex.mobile.workspace.ChangedFile
+import dev.anodex.mobile.workspace.Checkpoints
 import java.util.UUID
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -60,6 +62,14 @@ data class ChatMessage(
      * message-with-attachment until the attachment is whole.
      */
     val attachments: List<UploadedFile> = emptyList(),
+    /**
+     * The files this turn actually changed on the computer.
+     *
+     * Read after the turn ends rather than inferred from the tool rows. The rows
+     * say what was attempted; this says what ended up different, which is the only
+     * one of the two worth trusting a run on from another room.
+     */
+    val changedFiles: List<ChangedFile> = emptyList(),
     /**
      * Who actually answered, stamped when the turn was sent.
      *
@@ -274,6 +284,7 @@ class ChatSession(
                 watchdog.cancel()
                 _sending.value = false
                 finishStreaming()
+                recordChangedFiles(messageId)
                 persist()
             }
         }
@@ -586,6 +597,34 @@ class ChatSession(
         runCatching { socket.invoke(CHANNEL_SAVE, listOf(conversation)) }
             .onFailure { _error.value = "Saved on your computer failed: ${it.message}" }
     }
+
+    /**
+     * Ask what the turn changed, and hang it on the reply.
+     *
+     * Only for a turn that ran inside a project — without one there are no files to
+     * change and the computer has no checkpoint to answer with.
+     *
+     * Keyed on the *user* message id: that is what the desktop records changes
+     * against while the turn runs, not the `:reply` id this app gives the answer.
+     *
+     * Best effort. A turn that wrote nothing has no checkpoint at all, which is the
+     * ordinary case rather than a failure worth putting on screen.
+     */
+    private suspend fun recordChangedFiles(messageId: String) {
+        val project = projectId ?: return
+        val changed = runCatching {
+            checkpoints.changedBy(project, conversationId, messageId)
+        }.getOrDefault(emptyList())
+
+        if (changed.isEmpty()) return
+
+        val replyId = assistantIdFor(messageId)
+        _messages.value = _messages.value.map {
+            if (it.id == replyId) it.copy(changedFiles = changed) else it
+        }
+    }
+
+    private val checkpoints = Checkpoints(socket)
 
     private fun assistantIdFor(messageId: String) = "$messageId:reply"
 
