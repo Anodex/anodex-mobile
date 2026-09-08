@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,22 +15,31 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
+import dev.anodex.mobile.ui.theme.Touch
 
 /**
  * What the computer runs on its own, and whether it worked.
@@ -52,12 +62,20 @@ fun SchedulerScreen(
     error: String? = null,
     /** Open one task to read its run log. */
     onOpenTask: ((String) -> Unit)? = null,
+    /** Ask the computer what a typed phrase means. Called as it is typed. */
+    onDraftChanged: (String) -> Unit = {},
+    /** What the computer made of it, or null while it has made nothing. */
+    parsed: ParsedWhen? = null,
+    /** Create the task. Null hides the composer entirely. */
+    onCreate: ((String) -> Unit)? = null,
+    creating: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    var draft by rememberSaveable { mutableStateOf("") }
 
     Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        if (tasks.isEmpty()) {
+        if (tasks.isEmpty() && onCreate == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -91,14 +109,206 @@ fun SchedulerScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(Spacing.x3),
             verticalArrangement = Arrangement.spacedBy(Spacing.x3),
         ) {
             items(tasks, key = { it.id }) { task ->
                 TaskCard(task, onClick = onOpenTask?.let { open -> { open(task.id) } })
             }
+
+            // Offered under whatever is already there, so the screen is never a dead
+            // end — and phrased as things this computer can actually do. Cards
+            // promising what Anodex has no way to carry out would be the worst
+            // version of this screen: an invitation that fails after you accept it.
+            if (onCreate != null) {
+                item(key = "starters-label") {
+                    Text(
+                        text = if (tasks.isEmpty()) "START SOMETHING" else "OR START SOMETHING",
+                        style = type.badge,
+                        color = colors.textFaint,
+                        modifier = Modifier.padding(top = Spacing.x2),
+                    )
+                }
+
+                items(STARTERS, key = { it.phrase }) { starter ->
+                    StarterCard(starter) {
+                        draft = starter.phrase
+                        onDraftChanged(starter.phrase)
+                    }
+                }
+            }
         }
+
+        if (onCreate != null) {
+            Composer(
+                draft = draft,
+                parsed = parsed,
+                creating = creating,
+                onDraftChanged = {
+                    draft = it
+                    onDraftChanged(it)
+                },
+                onSend = {
+                    onCreate(draft)
+                    draft = ""
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Say what you want, and when.
+ *
+ * One field rather than a form. The computer reads the timing out of the sentence
+ * and says so above the input — before anything is created, which is the point: a
+ * task that runs at the wrong hour does not fail, it simply happens at the wrong
+ * hour, and nothing tells you.
+ */
+@Composable
+private fun Composer(
+    draft: String,
+    parsed: ParsedWhen?,
+    creating: Boolean,
+    onDraftChanged: (String) -> Unit,
+    onSend: () -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val ready = parsed != null && draft.isNotBlank() && !creating
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(Spacing.x3)
+            .clip(Radii.xl)
+            .background(colors.bgInput)
+            .padding(Spacing.x3),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        BasicTextField(
+            value = draft,
+            onValueChange = onDraftChanged,
+            textStyle = type.body.copy(color = colors.text),
+            cursorBrush = SolidColor(colors.accent),
+            modifier = Modifier.fillMaxWidth(),
+            decorationBox = { inner ->
+                if (draft.isEmpty()) {
+                    Text(
+                        text = "Every weekday at 7am, sweep my mail",
+                        style = type.body,
+                        color = colors.textFaint,
+                    )
+                }
+                inner()
+            },
+        )
+
+        // The whole reason this screen can be trusted: what the computer understood,
+        // shown while it can still be corrected.
+        if (parsed != null) {
+            Text(
+                text = listOfNotNull(parsed.label, parsed.note).joinToString(" · "),
+                style = type.meta,
+                color = colors.success,
+            )
+        } else if (draft.isNotBlank()) {
+            Text(
+                text = "No timing yet — try “every weekday at 7am” or “in 2 hours”.",
+                style = type.meta,
+                color = colors.textFaint,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (creating) "Creating…" else "Runs on your computer",
+                style = type.meta,
+                color = colors.textFaint,
+                modifier = Modifier.weight(1f),
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(Touch.minTarget)
+                    .clip(Radii.pill)
+                    .background(if (ready) colors.accent else colors.bgElevated)
+                    .clickable(enabled = ready, onClick = onSend),
+                contentAlignment = Alignment.Center,
+            ) {
+                AnodexIcon(
+                    AnodexIcon.SEND,
+                    size = 16.dp,
+                    tint = if (ready) colors.textOnAccent else colors.textFaint,
+                )
+            }
+        }
+    }
+}
+
+/** A task worth offering, and the words that make it. */
+private data class Starter(val icon: AnodexIcon, val title: String, val phrase: String)
+
+/**
+ * Things this computer can actually do.
+ *
+ * Each one is the sentence the composer would receive, so tapping a card and typing
+ * it by hand take the same path — there is no second way to make a task that could
+ * behave differently from the one people use.
+ */
+private val STARTERS = listOf(
+    Starter(
+        icon = AnodexIcon.MAIL,
+        title = "Morning mail sweep",
+        phrase = "Every weekday at 7am, read my overnight mail and tell me what needs a reply",
+    ),
+    Starter(
+        icon = AnodexIcon.CLOCK,
+        title = "End of day check",
+        phrase = "Every weekday at 5pm, remind me of anything I said I would follow up on",
+    ),
+    Starter(
+        icon = AnodexIcon.FOLDER,
+        title = "Friday digest",
+        phrase = "Every Friday at 4pm, summarise what changed in my project this week",
+    ),
+)
+
+@Composable
+private fun StarterCard(starter: Starter, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radii.xl)
+            // Outlined rather than filled, because it is not a task yet. A live task
+            // and an offer that looks identical is the fastest way to make somebody
+            // believe something is scheduled when nothing is.
+            .border(1.dp, colors.borderStrong, Radii.xl)
+            .clickable(onClick = onClick)
+            .padding(Spacing.x4),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            AnodexIcon(starter.icon, size = 16.dp, tint = colors.accent)
+            Text(
+                text = starter.title,
+                style = type.bodyEmphasis,
+                color = colors.text,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Text(starter.phrase, style = type.meta, color = colors.textFaint)
     }
 }
 

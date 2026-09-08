@@ -10,6 +10,7 @@ import dev.anodex.mobile.connection.ConnectionService
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.workspace.FileContent
+import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
 import dev.anodex.mobile.workspace.Workspace
@@ -58,6 +59,8 @@ import dev.anodex.mobile.transport.AnodexSocket
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -234,6 +237,86 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** Why the list is empty, when the reason is not "nothing is scheduled". */
     private val _tasksError = MutableStateFlow<String?>(null)
     val tasksError: StateFlow<String?> = _tasksError.asStateFlow()
+
+    private val _draftWhen = MutableStateFlow<ParsedWhen?>(null)
+
+    /** What the computer made of the phrase being typed, or null if not yet anything. */
+    val draftWhen: StateFlow<ParsedWhen?> = _draftWhen.asStateFlow()
+
+    private val _creatingTask = MutableStateFlow(false)
+    val creatingTask: StateFlow<Boolean> = _creatingTask.asStateFlow()
+
+    private var parseJob: Job? = null
+
+    /**
+     * Ask the computer what a typed phrase means, as it is typed.
+     *
+     * Debounced and single-flighted: this runs on a keystroke, and without
+     * cancelling the previous one a fast typist gets several answers back in
+     * whatever order the network returns them — so the preview would settle on
+     * whichever *older* phrase happened to arrive last.
+     */
+    fun parseWhen(text: String) {
+        parseJob?.cancel()
+
+        val client = schedulerClient
+        if (client == null || text.isBlank()) {
+            _draftWhen.value = null
+            return
+        }
+
+        parseJob = viewModelScope.launch {
+            delay(PARSE_DEBOUNCE_MS)
+            _draftWhen.value = runCatching { client.parseWhen(text) }.getOrNull()
+        }
+    }
+
+    /**
+     * Create a task from what was typed.
+     *
+     * The recurrence is the one the computer returned for this exact phrase, handed
+     * back untouched. Refuses rather than guessing when nothing was understood: a
+     * task created with an invented schedule runs at a time nobody chose, and
+     * nothing about it looks wrong afterwards.
+     */
+    fun createTask(prompt: String, onDone: () -> Unit) {
+        val client = schedulerClient
+        val parsed = _draftWhen.value
+
+        if (client == null) {
+            _tasksError.value = "Not connected to your computer."
+            return
+        }
+        if (parsed == null) {
+            _tasksError.value = "Say when it should run — “every weekday at 7am”."
+            return
+        }
+
+        _creatingTask.value = true
+        _tasksError.value = null
+
+        viewModelScope.launch {
+            runCatching {
+                client.create(
+                    prompt = prompt.trim(),
+                    // Left to the computer, which already derives one from the prompt
+                    // and words it the same way as every task made at the desk.
+                    name = null,
+                    recurrence = parsed.recurrence,
+                    projectId = null,
+                )
+            }
+                .onSuccess {
+                    _draftWhen.value = null
+                    onDone()
+                }
+                .onFailure {
+                    _tasksError.value = it.message ?: "Your computer would not take it."
+                }
+            _creatingTask.value = false
+            refreshTasks()
+        }
+    }
 
     private val _taskRunning = MutableStateFlow<String?>(null)
 
@@ -1437,3 +1520,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
 /** Long enough that a resume-driven check cannot exhaust GitHub's anonymous quota. */
 private const val UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000L
+
+/**
+ * A short pause before asking the computer what a phrase means.
+ *
+ * Long enough that typing a sentence is one question rather than thirty, short
+ * enough that the preview appears while the person is still looking at the field
+ * rather than after they have moved on.
+ */
+private const val PARSE_DEBOUNCE_MS = 350L
