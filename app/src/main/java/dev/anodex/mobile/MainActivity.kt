@@ -700,104 +700,105 @@ private fun ConnectedScaffold(
     }
 
     Box(Modifier.fillMaxSize()) {
-    Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
-        // Inside a conversation the title takes the top line and the host shrinks to
-        // its dot: you already know which computer, and what you are reading is the
-        // conversation. Everywhere else the host bar is the most useful thing there.
-        val conversationTitle = chat?.let { session ->
-            session.existingTitle?.takeIf { it.isNotBlank() }
-                ?: messagesTitle(session)
-        }
+        Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
+            // Inside a conversation the title takes the top line and the host shrinks to
+            // its dot: you already know which computer, and what you are reading is the
+            // conversation. Everywhere else the host bar is the most useful thing there.
+            val conversationTitle = chat?.let { session ->
+                session.existingTitle?.takeIf { it.isNotBlank() }
+                    ?: messagesTitle(session)
+            }
 
-        if (destination == AppDestination.CHAT && conversationTitle != null) {
-            ChatHeader(
-                title = conversationTitle,
-                connected = state is ConnectionState.Connected,
-                onOpenDrawer = { drawerOpen = true },
-            )
-        } else {
-            ConnectionHeader(
-                state = state,
-                onOpenDrawer = { drawerOpen = true },
-            )
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-
-        // Under the header on every screen rather than inside chat: a newer app is
-        // not a chat concern, and the previous version of this notice lived two taps
-        // in on the host screen, where it went unseen through an entire release.
-        if (!updateDismissed) {
-            UpdateBanner(
-                state = updateState,
-                canInstall = canInstallUpdates,
-                onInstall = viewModel::installUpdate,
-                onGrantInstall = { installPermission.launch(viewModel.installPermissionIntent()) },
-                onDismiss = viewModel::dismissUpdate,
-                installedVersion = BuildConfig.VERSION_NAME,
-            )
-        }
-
-        Box(Modifier.weight(1f)) {
-            when (destination) {
-                AppDestination.CHAT -> ChatPane(
-                    chat,
-                    viewModel,
-                    // Named on the empty screen, because which computer is awake is
-                    // the one thing no other assistant can put there.
-                    hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
+            if (destination == AppDestination.CHAT && conversationTitle != null) {
+                ChatHeader(
+                    title = conversationTitle,
+                    connected = state is ConnectionState.Connected,
+                    onOpenDrawer = { drawerOpen = true },
                 )
-
-                AppDestination.AGENTS -> AgentsScreen(
-                    runs = agentRuns,
-                    loading = agentsLoading,
-                    busyRunId = busyRunId,
-                    onApprove = viewModel::approvePlan,
-                    onReject = viewModel::rejectPlan,
-                    onStop = viewModel::stopAgentRun,
-                    onOpenConversation = {
-                        viewModel.openConversation(it)
-                        destination = AppDestination.CHAT
-                    },
+            } else {
+                ConnectionHeader(
+                    state = state,
+                    onOpenDrawer = { drawerOpen = true },
                 )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
 
-                AppDestination.EMAIL -> EmailPane(viewModel)
-
-                AppDestination.WORKSPACE -> WorkspaceScreen(
-                    files = workspaceFiles,
-                    loading = workspaceLoading,
-                    onOpenFile = viewModel::openWorkspaceFile,
-                    projectName = projects.active?.name,
-                    error = workspaceError,
-                    projects = projects.projects,
-                    activeProjectId = projects.activeProjectId,
-                    browsing = browsingProjects,
-                    onOpenProject = { id ->
-                        viewModel.setActiveProject(id)
-                        browsingProjects = false
-                    },
-                    onBrowseProjects = { browsingProjects = true },
-                    onNewChatHere = projects.activeProjectId?.let { id ->
-                        {
-                            viewModel.newConversation(projectId = id)
-                            destination = AppDestination.CHAT
-                        }
-                    },
+            // Under the header on every screen rather than inside chat: a newer app is
+            // not a chat concern, and the previous version of this notice lived two taps
+            // in on the host screen, where it went unseen through an entire release.
+            if (!updateDismissed) {
+                UpdateBanner(
+                    state = updateState,
+                    canInstall = canInstallUpdates,
+                    onInstall = viewModel::installUpdate,
+                    onGrantInstall = { installPermission.launch(viewModel.installPermissionIntent()) },
+                    onDismiss = viewModel::dismissUpdate,
+                    installedVersion = BuildConfig.VERSION_NAME,
                 )
+            }
 
-                AppDestination.SCHEDULER -> {
-                    val parsedWhen by viewModel.draftWhen.collectAsStateWithLifecycle()
-                    val creatingTask by viewModel.creatingTask.collectAsStateWithLifecycle()
-
-                    SchedulerScreen(
-                        tasks = tasks,
-                        loading = tasksLoading,
-                        error = tasksError,
-                        onOpenTask = { openTaskId = it },
-                        onDraftChanged = viewModel::parseWhen,
-                        parsed = parsedWhen,
-                        creating = creatingTask,
-                        onCreate = { prompt -> viewModel.createTask(prompt) {} },
+            Box(Modifier.weight(1f)) {
+                when (destination) {
+                    AppDestination.CHAT -> ChatPane(
+                        chat,
+                        viewModel,
+                        // Named on the empty screen, because which computer is awake is
+                        // the one thing no other assistant can put there.
+                        hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
                     )
+
+                    AppDestination.AGENTS -> AgentsScreen(
+                        runs = agentRuns,
+                        loading = agentsLoading,
+                        busyRunId = busyRunId,
+                        onApprove = viewModel::approvePlan,
+                        onReject = viewModel::rejectPlan,
+                        onStop = viewModel::stopAgentRun,
+                        onOpenConversation = {
+                            viewModel.openConversation(it)
+                            destination = AppDestination.CHAT
+                        },
+                    )
+
+                    AppDestination.EMAIL -> EmailPane(viewModel)
+
+                    AppDestination.WORKSPACE -> WorkspaceScreen(
+                        files = workspaceFiles,
+                        loading = workspaceLoading,
+                        onOpenFile = viewModel::openWorkspaceFile,
+                        projectName = projects.active?.name,
+                        error = workspaceError,
+                        projects = projects.projects,
+                        activeProjectId = projects.activeProjectId,
+                        browsing = browsingProjects,
+                        onOpenProject = { id ->
+                            viewModel.setActiveProject(id)
+                            browsingProjects = false
+                        },
+                        onBrowseProjects = { browsingProjects = true },
+                        onNewChatHere = projects.activeProjectId?.let { id ->
+                            {
+                                viewModel.newConversation(projectId = id)
+                                destination = AppDestination.CHAT
+                            }
+                        },
+                    )
+
+                    AppDestination.SCHEDULER -> {
+                        val parsedWhen by viewModel.draftWhen.collectAsStateWithLifecycle()
+                        val creatingTask by viewModel.creatingTask.collectAsStateWithLifecycle()
+
+                        SchedulerScreen(
+                            tasks = tasks,
+                            loading = tasksLoading,
+                            error = tasksError,
+                            onOpenTask = { openTaskId = it },
+                            onDraftChanged = viewModel::parseWhen,
+                            parsed = parsedWhen,
+                            creating = creatingTask,
+                            onCreate = { prompt -> viewModel.createTask(prompt) {} },
+                        )
+                    }
                 }
             }
         }
