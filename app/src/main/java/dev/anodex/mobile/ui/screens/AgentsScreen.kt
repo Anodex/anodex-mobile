@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -379,6 +380,17 @@ private fun RunCard(
             )
         }
 
+        // How far through its budget, for a run that is actually using one.
+        //
+        // Deliberately still. A run can go for an hour, and something animating for
+        // an hour is wallpaper — the eye stops seeing it, and the phone spends
+        // frames redrawing what nobody is reading. The dot above is the one moving
+        // thing on this card and it is enough to say "working"; this says "how far",
+        // which is a fact rather than a state and does not need to breathe.
+        if (running && run.limitsEnabled && run.maxTurns > 0) {
+            TurnBudget(used = run.turnsUsed, of = run.maxTurns)
+        }
+
         // Only a blocked run shows its plan. Everywhere else it is detail nobody
         // asked for on a screen that exists to unblock things.
         if (waiting && run.plan != null) {
@@ -399,6 +411,40 @@ private fun RunCard(
 
             running -> SecondaryButton(label = "Stop", onClick = onStop)
         }
+    }
+}
+
+/**
+ * How much of its allowance a run has spent.
+ *
+ * "Turn 7 of 40" is already on the card in words, and words are the wrong shape for
+ * this question: nobody converts a fraction while glancing at a phone. A bar is
+ * read without being counted, which is the whole difference between knowing a run
+ * has time left and having to work it out.
+ *
+ * Warns near the end rather than at it. A run that stops on budget stops
+ * mid-thought, and the useful moment to notice is while there is still room to
+ * decide something about it.
+ */
+@Composable
+private fun TurnBudget(used: Int, of: Int) {
+    val colors = AnodexTheme.colors
+    val fraction = (used.toFloat() / of).coerceIn(0f, 1f)
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .clip(Radii.pill)
+            .background(colors.border),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(fraction)
+                .height(3.dp)
+                .clip(Radii.pill)
+                .background(if (fraction > 0.85f) colors.warn else colors.accentCyan),
+        )
     }
 }
 

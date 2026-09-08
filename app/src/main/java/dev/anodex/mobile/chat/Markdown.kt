@@ -1,5 +1,7 @@
 package dev.anodex.mobile.chat
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Just enough Markdown for what a coding agent actually replies with.
  *
@@ -25,7 +27,25 @@ package dev.anodex.mobile.chat
  * block at the moment the model happens to close it.
  */
 
-/** A run of text with the emphasis that applies to it. */
+/**
+ * A run of text with the emphasis that applies to it.
+ *
+ * `@Immutable`, and the whole model below with it, because of what streaming does
+ * to this screen. A reply arrives a token at a time and every token re-parses the
+ * message, so the list of blocks is rebuilt thirty times a second — but almost all
+ * of it is identical each time, since only the last paragraph is still growing.
+ *
+ * Compose cannot know that on its own. `List` is an interface, so a block holding
+ * one is treated as unstable and re-rendered whether or not its contents changed:
+ * every paragraph of a long answer, laid out and drawn again, on every token. The
+ * annotation is the promise that lets equality be trusted and the unchanged
+ * paragraphs be skipped.
+ *
+ * The promise is real — nothing here is ever mutated after `parseMarkdown` returns
+ * it. If that stops being true this becomes a rendering bug rather than a slow
+ * screen, which is the trade being made deliberately.
+ */
+@Immutable
 data class Inline(
     val text: String,
     val code: Boolean = false,
@@ -33,19 +53,24 @@ data class Inline(
     val italic: Boolean = false,
 )
 
+@Immutable
 sealed interface MarkdownBlock {
+    @Immutable
     data class Paragraph(val spans: List<Inline>) : MarkdownBlock
 
     /** A fenced block. [complete] is false while the closing fence is still to come. */
+    @Immutable
     data class CodeBlock(
         val language: String?,
         val text: String,
         val complete: Boolean = true,
     ) : MarkdownBlock
 
+    @Immutable
     data class Heading(val level: Int, val spans: List<Inline>) : MarkdownBlock
 
     /** A bullet or numbered list. [ordered] decides which marker is drawn. */
+    @Immutable
     data class ListBlock(val items: List<List<Inline>>, val ordered: Boolean) : MarkdownBlock
 }
 
