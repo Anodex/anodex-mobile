@@ -67,6 +67,7 @@ import dev.anodex.mobile.ui.components.AppDrawer
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
+import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.components.UpdateBanner
 import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
@@ -914,18 +915,27 @@ private fun ChatHeader(title: String, connected: Boolean, onOpenDrawer: () -> Un
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
+    // On the app's own ground rather than a bar of its own. A filled strip with a
+    // title in it is a document header; this is a conversation, and the thing that
+    // should carry weight on screen is what was said, not the furniture above it.
+    //
+    // The controls get the surface instead: each sits on its own soft round ground,
+    // so they read as things to press while the title reads as a label. That is the
+    // arrangement borrowed from elsewhere — with Anodex's own facet radius and the
+    // status dot kept, because which computer is awake is this app's fact to show.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.bgSurface)
-            .padding(horizontal = Spacing.x2, vertical = Spacing.x2),
+            .background(colors.bgApp)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
         Box(
             modifier = Modifier
                 .size(Touch.minTarget)
-                .clip(Radii.md)
+                .clip(CircleShape)
+                .background(colors.bgSurface)
                 .clickable(onClick = onOpenDrawer),
             contentAlignment = Alignment.Center,
         ) {
@@ -945,13 +955,22 @@ private fun ChatHeader(title: String, connected: Boolean, onOpenDrawer: () -> Un
             modifier = Modifier.weight(1f),
         )
 
+        // In a pill of its own, so a six-pixel dot floating against the page has
+        // something to sit in and reads as deliberate rather than as a speck.
         Box(
-            Modifier
-                .padding(end = Spacing.x3)
-                .size(6.dp)
+            modifier = Modifier
+                .size(Touch.minTarget)
                 .clip(CircleShape)
-                .background(if (connected) colors.success else colors.warn)
-        )
+                .background(colors.bgSurface),
+            contentAlignment = Alignment.Center,
+        ) {
+            StatusDot(
+                colour = if (connected) colors.success else colors.warn,
+                // Ripples while it is reconnecting: that is the state somebody is
+                // waiting on, and the only one worth spending motion on here.
+                running = !connected,
+            )
+        }
     }
 }
 
