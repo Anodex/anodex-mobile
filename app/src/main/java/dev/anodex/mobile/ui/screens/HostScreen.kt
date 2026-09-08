@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.DangerButton
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -71,6 +72,7 @@ fun HostScreen(
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    var confirmingUnpair by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -179,12 +181,29 @@ fun HostScreen(
                     color = colors.textFaint,
                 )
                 DangerButton(
-                    label = "Unpair",
-                    onClick = onUnpair,
+                    label = "Unpair…",
+                    onClick = { confirmingUnpair = true },
                     modifier = Modifier.padding(top = Spacing.x1),
                 )
             }
         }
+    }
+
+    // The card above already explains the consequence, so this is not repetition —
+    // it is the gap between reading a description and having acted on it. A red
+    // outline styles a button; it does not ask anything, and the key it destroys
+    // can only be reissued by the desktop in person.
+    if (confirmingUnpair && onUnpair != null) {
+        ConfirmDialog(
+            title = "Unpair this phone?",
+            body = "You'll need a new pairing code from the computer to connect again.",
+            confirmLabel = "Unpair",
+            onConfirm = {
+                confirmingUnpair = false
+                onUnpair()
+            },
+            onDismiss = { confirmingUnpair = false },
+        )
     }
 }
 
