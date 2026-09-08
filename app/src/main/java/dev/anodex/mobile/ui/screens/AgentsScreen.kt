@@ -11,14 +11,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -27,12 +34,14 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Plan
 import dev.anodex.mobile.agents.PlanStep
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
+import dev.anodex.mobile.ui.theme.Touch
 
 /**
  * Agent runs, and the plans waiting on a human.
@@ -67,9 +76,17 @@ fun AgentsScreen(
      * would be a second, worse answer to the same question.
      */
     onClose: (() -> Unit)? = null,
+    /** Set a run going. Null hides the composer — there is nothing to start against. */
+    onStart: ((String, Boolean) -> Unit)? = null,
+    starting: Boolean = false,
+    /** The project a run would work in, named so nobody starts one in the wrong place. */
+    projectName: String? = null,
+    error: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    var goal by rememberSaveable { mutableStateOf("") }
+    var lookOnly by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize().background(colors.bgApp)) {
         Text(
@@ -84,11 +101,47 @@ fun AgentsScreen(
             ),
         )
 
+        if (error != null) {
+            Text(
+                text = error,
+                style = type.meta,
+                color = colors.danger,
+                modifier = Modifier
+                    .padding(horizontal = Spacing.x3)
+                    .fillMaxWidth()
+                    .clip(Radii.lg)
+                    .background(colors.dangerSoft)
+                    .padding(Spacing.x3),
+            )
+        }
+
         when {
             loading && runs.isEmpty() -> Centred("Reading from your computer…", colors.textFaint)
 
-            runs.isEmpty() ->
-                Centred("No agent runs. They are started at the computer.", colors.textFaint)
+            runs.isEmpty() -> Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+                    modifier = Modifier.padding(Spacing.x6),
+                ) {
+                    Text(
+                        text = "Nothing running",
+                        style = type.bodyEmphasis,
+                        color = colors.textMuted,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = if (onStart != null) {
+                            "Describe a job below and your computer will plan it first."
+                        } else {
+                            "Runs are started at the computer."
+                        },
+                        style = type.meta,
+                        color = colors.textFaint,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
 
             else -> LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -108,6 +161,21 @@ fun AgentsScreen(
             }
         }
 
+        if (onStart != null) {
+            StartRun(
+                goal = goal,
+                lookOnly = lookOnly,
+                starting = starting,
+                projectName = projectName,
+                onGoalChanged = { goal = it },
+                onLookOnlyChanged = { lookOnly = it },
+                onStart = {
+                    onStart(goal, lookOnly)
+                    goal = ""
+                },
+            )
+        }
+
         if (onClose != null) {
             SecondaryButton(
                 label = "Close",
@@ -116,6 +184,121 @@ fun AgentsScreen(
             )
         }
     }
+}
+
+/**
+ * Set a job going on the computer.
+ *
+ * The one thing the phone could not do, and the reason for carrying it: an agent
+ * run is what actually builds a project, and starting one meant being at the desk.
+ *
+ * It says which project it will work in, because that is where real edits land and
+ * a run started against the wrong folder is the expensive kind of mistake. And it
+ * says the run will plan first, because that is what makes starting one from a
+ * phone reasonable — nothing is touched until a plan comes back and you approve it,
+ * on this same screen.
+ */
+@Composable
+private fun StartRun(
+    goal: String,
+    lookOnly: Boolean,
+    starting: Boolean,
+    projectName: String?,
+    onGoalChanged: (String) -> Unit,
+    onLookOnlyChanged: (Boolean) -> Unit,
+    onStart: () -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val ready = goal.isNotBlank() && !starting && projectName != null
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(Spacing.x3)
+            .clip(Radii.xl)
+            .background(colors.bgInput)
+            .padding(Spacing.x3),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        BasicTextField(
+            value = goal,
+            onValueChange = onGoalChanged,
+            textStyle = type.body.copy(color = colors.text),
+            cursorBrush = SolidColor(colors.accent),
+            modifier = Modifier.fillMaxWidth(),
+            decorationBox = { inner ->
+                if (goal.isEmpty()) {
+                    Text(
+                        text = "Fix the failing tests in the parser",
+                        style = type.body,
+                        color = colors.textFaint,
+                    )
+                }
+                inner()
+            },
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            // Two intentions, not a tool checklist. The desktop shows every tool by
+            // name; a phone offering the same would be a list nobody can weigh
+            // standing up, and the computer narrows whatever is asked for anyway.
+            Chip("Build it", selected = !lookOnly) { onLookOnlyChanged(false) }
+            Chip("Look only", selected = lookOnly) { onLookOnlyChanged(true) }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = when {
+                    starting -> "Starting…"
+                    projectName == null -> "Open a project first"
+                    lookOnly -> "Reads $projectName and reports back"
+                    else -> "Plans first, then waits for you to approve"
+                },
+                style = type.meta,
+                color = if (projectName == null) colors.warn else colors.textFaint,
+                modifier = Modifier.weight(1f),
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(Touch.minTarget)
+                    .clip(Radii.pill)
+                    .background(if (ready) colors.accent else colors.bgElevated)
+                    .clickable(enabled = ready, onClick = onStart),
+                contentAlignment = Alignment.Center,
+            ) {
+                AnodexIcon(
+                    AnodexIcon.SEND,
+                    size = 16.dp,
+                    tint = if (ready) colors.textOnAccent else colors.textFaint,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Text(
+        text = label,
+        style = type.label,
+        color = if (selected) colors.textOnAccent else colors.textMuted,
+        modifier = Modifier
+            .clip(Radii.pill)
+            .background(if (selected) colors.accent else colors.bgSurface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+    )
 }
 
 @Composable
