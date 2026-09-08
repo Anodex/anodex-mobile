@@ -59,6 +59,7 @@ import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AppDestination
@@ -745,6 +746,12 @@ private fun ConnectedScaffold(
                         // Named on the empty screen, because which computer is awake is
                         // the one thing no other assistant can put there.
                         hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
+                        openers = openersFor(
+                            projectName = projects.active?.name,
+                            unreadEmail = unreadEmail,
+                            lastTask = tasks.firstOrNull { it.lastRunAt != null },
+                            waitingAgents = waitingAgents,
+                        ),
                     )
 
                     AppDestination.AGENTS -> {
@@ -853,6 +860,48 @@ private const val DRAWER_WIDTH_FRACTION = 0.86f
 private const val SCRIM_ALPHA = 0.55f
 
 /**
+ * Three things worth asking, from what is true on the computer right now.
+ *
+ * Not a tour of the features. Every assistant opens with a list of what it can do
+ * and nobody reads one — the reason is that a capability is not a question, and
+ * somebody staring at an empty composer is short of a question rather than short of
+ * information.
+ *
+ * So each of these names something real: the run that is blocked, the mail that is
+ * unread, the task that ran while nobody was watching, the project that is open. If
+ * none of that is true the screen stays as it was, because inventing an opener for
+ * a computer with nothing going on is exactly the generic list this avoids.
+ *
+ * Ordered by what is most likely to be *waiting on the person reading it*: a
+ * blocked run first, because that one is costing time right now.
+ */
+private fun openersFor(
+    projectName: String?,
+    unreadEmail: Int,
+    lastTask: ScheduledTask?,
+    waitingAgents: Int,
+): List<String> = buildList {
+    if (waitingAgents > 0) {
+        add("What is the agent run waiting on?")
+    }
+    if (unreadEmail > 0) {
+        add(
+            if (unreadEmail == 1) {
+                "What is the unread email about?"
+            } else {
+                "Which of my $unreadEmail unread emails need a reply?"
+            }
+        )
+    }
+    lastTask?.let { task -> add("How did “${task.name}” go?") }
+    projectName?.let { name -> add("What changed in $name recently?") }
+}
+    .take(MAX_OPENERS)
+
+/** Three. A fourth is a menu, and a menu is the thing this is not. */
+private const val MAX_OPENERS = 3
+
+/**
  * The conversation's own bar: a way out, what this is, and whether the computer is
  * still there.
  *
@@ -940,6 +989,7 @@ private fun ChatPane(
     chat: ChatSession?,
     viewModel: AnodexViewModel,
     hostLine: String?,
+    openers: List<String> = emptyList(),
 ) {
     val attachments by viewModel.attachments.collectAsStateWithLifecycle()
 
@@ -992,6 +1042,7 @@ private fun ChatPane(
     }
 
     ChatScreen(
+        openers = openers,
         messages = messages,
         sending = sending,
         error = error,
