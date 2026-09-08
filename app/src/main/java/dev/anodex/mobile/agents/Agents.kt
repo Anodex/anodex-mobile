@@ -67,17 +67,7 @@ data class PlanStep(val id: String, val title: String, val status: String)
  */
 class Agents(private val socket: AnodexSocket) {
 
-    suspend fun list(): List<AgentRun> {
-        val result = socket.invoke(CHANNEL_LIST) as? JsonArray ?: return emptyList()
-        return result.filterIsInstance<JsonObject>()
-            .mapNotNull { it.toRun() }
-            // Anything waiting on a human first, then by recency. A run that is
-            // blocked is the reason the screen was opened.
-            .sortedWith(
-                compareByDescending<AgentRun> { it.status == AgentRun.Status.NEEDS_REVIEW }
-                    .thenByDescending { it.updatedAtEpochMs },
-            )
-    }
+    suspend fun list(): List<AgentRun> = parseAgentRuns(socket.invoke(CHANNEL_LIST))
 
     suspend fun approvePlan(runId: String) {
         socket.invoke(CHANNEL_APPROVE, listOf(JsonPrimitive(runId)))
@@ -133,51 +123,6 @@ class Agents(private val socket: AnodexSocket) {
         socket.invoke(CHANNEL_STOP, listOf(JsonPrimitive(runId)))
     }
 
-    private fun JsonObject.toRun(): AgentRun? {
-        val id = str("id") ?: return null
-        return AgentRun(
-            id = id,
-            goal = str("goal") ?: "Agent run",
-            status = AgentRun.Status.parse(str("status")),
-            conversationId = str("conversationId") ?: "",
-            turnsUsed = num("turnsUsed"),
-            maxTurns = num("maxTurns"),
-            limitsEnabled = str("limitsEnabled") == "true",
-            summary = str("summary")?.takeIf { it.isNotBlank() },
-            lastError = str("lastError")?.takeIf { it.isNotBlank() },
-            plan = (this["plan"] as? JsonObject)?.toPlan(),
-            updatedAtEpochMs = num("updatedAt").toLong(),
-        )
-    }
-
-    private fun JsonObject.toPlan(): Plan = Plan(
-        title = str("title") ?: "Plan",
-        steps = (this["steps"] as? JsonArray)
-            ?.filterIsInstance<JsonObject>()
-            ?.mapNotNull { step ->
-                val id = step.str("id") ?: return@mapNotNull null
-                PlanStep(id, step.str("title") ?: "", step.str("status") ?: "pending")
-            }
-            .orEmpty(),
-    )
-
-    /**
-     * A string field, or null when the computer sent null.
-     *
-     * `contentOrNull`, not `content`: `JsonNull` *is* a `JsonPrimitive`, and its
-     * `content` is the four-character string "null". So a field the desktop
-     * deliberately left empty arrived as the word null, survived `isNotBlank()`,
-     * and a finished run showed "null" in red where its error would go.
-     *
-     * The same read fed `goal`, `status` and `conversationId`, where a null would
-     * have been just as wrong and considerably quieter.
-     */
-    private fun JsonObject.str(key: String): String? =
-        (this[key] as? JsonPrimitive)?.contentOrNull
-
-    private fun JsonObject.num(key: String): Int =
-        (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: 0
-
     private companion object {
         const val CHANNEL_LIST = "agent:list"
         const val CHANNEL_CREATE = "agent:create"
@@ -214,3 +159,77 @@ class Agents(private val socket: AnodexSocket) {
         const val CHANNEL_STOP = "agent:stop"
     }
 }
+
+
+/**
+ * The computer's runs, from a reply or from a broadcast.
+ *
+ * One parser for both. `agent:runs-changed` carries the same array `agent:list`
+ * answers with, and a second reader for it would agree on the day it was written
+ * and drift after — which on this screen means a run whose state depends on whether
+ * you asked for it or were told.
+ *
+ * Sorted here rather than at the call site for the same reason: whatever is blocked
+ * belongs at the top, and a list that reorders itself depending on how it arrived
+ * would be its own kind of wrong.
+ */
+internal fun parseAgentRuns(element: kotlinx.serialization.json.JsonElement?): List<AgentRun> {
+    val array = when (element) {
+        is JsonArray -> element
+        is JsonObject -> element["value"] as? JsonArray ?: return emptyList()
+        else -> return emptyList()
+    }
+
+    return array.filterIsInstance<JsonObject>()
+        .mapNotNull { it.toRun() }
+        // Anything waiting on a human first, then by recency. A run that is blocked
+        // is the reason the screen was opened.
+        .sortedWith(
+            compareByDescending<AgentRun> { it.status == AgentRun.Status.NEEDS_REVIEW }
+                .thenByDescending { it.updatedAtEpochMs },
+        )
+}
+private fun JsonObject.toRun(): AgentRun? {
+    val id = str("id") ?: return null
+    return AgentRun(
+        id = id,
+        goal = str("goal") ?: "Agent run",
+        status = AgentRun.Status.parse(str("status")),
+        conversationId = str("conversationId") ?: "",
+        turnsUsed = num("turnsUsed"),
+        maxTurns = num("maxTurns"),
+        limitsEnabled = str("limitsEnabled") == "true",
+        summary = str("summary")?.takeIf { it.isNotBlank() },
+        lastError = str("lastError")?.takeIf { it.isNotBlank() },
+        plan = (this["plan"] as? JsonObject)?.toPlan(),
+        updatedAtEpochMs = num("updatedAt").toLong(),
+    )
+}
+
+private fun JsonObject.toPlan(): Plan = Plan(
+    title = str("title") ?: "Plan",
+    steps = (this["steps"] as? JsonArray)
+        ?.filterIsInstance<JsonObject>()
+        ?.mapNotNull { step ->
+            val id = step.str("id") ?: return@mapNotNull null
+            PlanStep(id, step.str("title") ?: "", step.str("status") ?: "pending")
+        }
+        .orEmpty(),
+)
+
+/**
+ * A string field, or null when the computer sent null.
+ *
+ * `contentOrNull`, not `content`: `JsonNull` *is* a `JsonPrimitive`, and its
+ * `content` is the four-character string "null". So a field the desktop
+ * deliberately left empty arrived as the word null, survived `isNotBlank()`,
+ * and a finished run showed "null" in red where its error would go.
+ *
+ * The same read fed `goal`, `status` and `conversationId`, where a null would
+ * have been just as wrong and considerably quieter.
+ */
+private fun JsonObject.str(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun JsonObject.num(key: String): Int =
+    (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: 0
