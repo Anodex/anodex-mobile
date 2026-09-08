@@ -81,6 +81,17 @@ fun WorkspaceScreen(
         if (query.isBlank()) files else files.filter { matchesQuery(it.path, query) }
     }
 
+    // One pass, kept until the list or the query changes. The list is already
+    // newest-first, so a run down it in order is all the grouping needs.
+    val groups = remember(shown, query) {
+        if (query.isNotBlank()) {
+            listOf(FileGroup(band = null, files = shown))
+        } else {
+            shown.groupBy { timeBand(it.modifiedAt) }
+                .map { (band, files) -> FileGroup(band, files) }
+        }
+    }
+
     Column(modifier.fillMaxSize().background(colors.bgApp)) {
         // Two ways in, one screen. Opened from the drawer it is the index of
         // projects; opened with one already active it is that project's files. And
@@ -199,8 +210,40 @@ fun WorkspaceScreen(
                 }
             }
 
-            items(shown, key = { it.path }) { file ->
-                FileRow(file, onClick = { onOpenFile(file.path) })
+            // Grouped by when, not while searching. A search result is an answer to
+            // a question, and slicing four matches across three date headings buries
+            // them in structure they did not ask for.
+            //
+            // Unsearched, the headings are the point: this list is newest-first
+            // precisely because it doubles as a record of what the computer has been
+            // doing unwatched, and "Today" against "Earlier" is that record. A flat
+            // column of relative times makes the reader assemble it themselves.
+            //
+            // Grouped up front rather than by tracking the previous row inside
+            // `items`. A LazyColumn composes only what is visible and in whatever
+            // order it likes, so a running variable is read when it happens to hold
+            // whatever the last *composed* row set — and headings appear, vanish and
+            // duplicate as you scroll.
+            for (group in groups) {
+                if (group.band != null) {
+                    item(key = "band-${group.band}") {
+                        Text(
+                            text = group.band.uppercase(),
+                            style = type.badge,
+                            color = colors.textFaint,
+                            modifier = Modifier.padding(
+                                start = Spacing.x4,
+                                end = Spacing.x4,
+                                top = Spacing.x4,
+                                bottom = Spacing.x1,
+                            ),
+                        )
+                    }
+                }
+
+                items(group.files, key = { it.path }) { file ->
+                    FileRow(file, onClick = { onOpenFile(file.path) })
+                }
             }
         }
     }
@@ -295,6 +338,45 @@ private fun ProjectPicker(
         }
     }
 }
+
+/** A run of files that were last touched in the same stretch of time. */
+private data class FileGroup(val band: String?, val files: List<WorkspaceFile>)
+
+/**
+ * Which stretch of time a file was last touched in.
+ *
+ * Coarse on purpose, and coarser the further back it goes. The question this list
+ * answers is "what has been happening", and the useful resolution for that decays:
+ * whether something changed today matters, whether it changed on a Tuesday five
+ * weeks ago does not.
+ *
+ * Computed from the difference rather than from calendar days — a phone crossing
+ * midnight should not reshuffle the list, and "today" meaning "in the last day" is
+ * the reading somebody glancing at it already has.
+ */
+private fun timeBand(modifiedAt: Long, now: Long = System.currentTimeMillis()): String {
+    val age = now - modifiedAt
+    return when {
+        modifiedAt <= 0L -> "Undated"
+        age < DAY -> "Today"
+        age < 2 * DAY -> "Yesterday"
+        age < 7 * DAY -> "This week"
+        age < 30 * DAY -> "This month"
+        else -> "Earlier"
+    }
+}
+
+private const val DAY = 24 * 60 * 60 * 1000L
+
+/**
+ * A way in for the tests, since `timeBand` is private and belongs that way.
+ *
+ * The headings are the one part of this screen with logic worth pinning: the
+ * boundaries are arbitrary until they are written down, and the midnight rule is
+ * the sort of thing that gets "simplified" into calendar days by somebody who has
+ * not watched a list rearrange itself under them.
+ */
+internal fun timeBandForTest(modifiedAt: Long, now: Long): String = timeBand(modifiedAt, now)
 
 /**
  * Twenty.
