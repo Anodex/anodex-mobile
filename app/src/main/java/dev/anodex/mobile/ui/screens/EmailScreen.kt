@@ -54,6 +54,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val threads by viewModel.emailThreads.collectAsStateWithLifecycle()
     val loading by viewModel.emailLoading.collectAsStateWithLifecycle()
     val configured by viewModel.emailConfigured.collectAsStateWithLifecycle()
+    val emailError by viewModel.emailError.collectAsStateWithLifecycle()
     val openThread by viewModel.openThread.collectAsStateWithLifecycle()
     val threadLoading by viewModel.threadLoading.collectAsStateWithLifecycle()
 
@@ -83,6 +84,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         threads = threads,
         loading = loading,
         configured = configured,
+        error = emailError,
         onOpen = viewModel::openEmailThread,
         modifier = modifier,
     )
@@ -93,6 +95,8 @@ private fun InboxList(
     threads: List<EmailThread>,
     loading: Boolean,
     configured: Boolean?,
+    /** Why the mailbox could not be read. Outranks every other empty state below. */
+    error: String? = null,
     onOpen: (EmailThread) -> Unit,
     modifier: Modifier = Modifier,
     nowEpochMs: Long = System.currentTimeMillis(),
@@ -109,6 +113,12 @@ private fun InboxList(
         )
 
         when {
+            // First, because every state under this one is a statement about the
+            // mailbox, and none of them can be made when the mailbox was not reached.
+            // This used to fall through to "No email account is connected on your
+            // computer" — the most confident wrong sentence in the app.
+            error != null && threads.isEmpty() -> Notice(error)
+
             loading && threads.isEmpty() -> Notice("Reading your mail…")
 
             // Not yet asked — the socket was down when this tab opened. Saying
