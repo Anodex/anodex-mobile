@@ -146,7 +146,17 @@ fun ConversationsScreen(
                 Centred("No conversations yet. Start one.", colors.textFaint)
 
             else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                for (group in groupConversations(shown, activeId, projectNames)) {
+                // Flat while searching, for the same reason the workspace list is:
+                // results are an answer to a question, and four matches split across
+                // three project headings and an "Active now" is more structure than
+                // the answer has content. Grouping is for browsing.
+                val groups = if (query.isBlank()) {
+                    groupConversations(shown, activeId, projectNames)
+                } else {
+                    listOf(ConversationGroup("Matches", shown, isProject = false))
+                }
+
+                for (group in groups) {
                     item(key = "group-${group.label}") { GroupLabel(group.label) }
 
                     items(group.conversations, key = { it.id }) { conversation ->

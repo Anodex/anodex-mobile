@@ -1,75 +1,78 @@
 package dev.anodex.mobile
 
 import android.app.Application
+import android.os.Build
+import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import dev.anodex.mobile.agents.AgentRun
+import dev.anodex.mobile.agents.Agents
+import dev.anodex.mobile.agents.parseAgentRuns
+import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.ConversationSummary
+import dev.anodex.mobile.chat.Conversations
+import dev.anodex.mobile.chat.LocalModel
+import dev.anodex.mobile.chat.MessagePersona
+import dev.anodex.mobile.chat.Models
+import dev.anodex.mobile.chat.Personalities
+import dev.anodex.mobile.chat.PersonalityState
+import dev.anodex.mobile.chat.Projects
+import dev.anodex.mobile.chat.ProjectsState
+import dev.anodex.mobile.chat.UploadState
+import dev.anodex.mobile.chat.Uploads
 import dev.anodex.mobile.connection.ConnectionController
 import dev.anodex.mobile.connection.ConnectionService
+import dev.anodex.mobile.connection.ConnectionState
+import dev.anodex.mobile.connection.HostIdentity
+import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.connection.NetworkMonitor
+import dev.anodex.mobile.connection.PairedHostRef
+import dev.anodex.mobile.connection.Reachability
+import dev.anodex.mobile.connection.diagnoseConnectionFailure
+import dev.anodex.mobile.connection.isUpdateAvailable
+import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
-import dev.anodex.mobile.workspace.FileContent
+import dev.anodex.mobile.email.EmailNote
+import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
 import dev.anodex.mobile.memory.MemoryEntry
+import dev.anodex.mobile.notify.NotificationKind
+import dev.anodex.mobile.notify.Notifications
+import dev.anodex.mobile.pairing.CertificateProbe
+import dev.anodex.mobile.pairing.PairedHost
+import dev.anodex.mobile.pairing.PairedHostStore
+import dev.anodex.mobile.pairing.PairingPayload
+import dev.anodex.mobile.pairing.humanFingerprintOf
 import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
-import dev.anodex.mobile.workspace.Workspace
-import dev.anodex.mobile.workspace.WorkspaceFile
-import dev.anodex.mobile.email.EmailNote
-import dev.anodex.mobile.email.EmailThread
-import dev.anodex.mobile.connection.ConnectionState
-import dev.anodex.mobile.connection.diagnoseConnectionFailure
-import dev.anodex.mobile.connection.isUpdateAvailable
-import dev.anodex.mobile.update.UpdateState
+import dev.anodex.mobile.scheduler.parseTasks
+import dev.anodex.mobile.transport.AnodexSocket
+import dev.anodex.mobile.transport.ServerFrame
+import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.theme.AppearanceStore
+import dev.anodex.mobile.update.UpdateState
 import dev.anodex.mobile.update.Updater
-import dev.anodex.mobile.connection.NetworkMonitor
-import dev.anodex.mobile.notify.NotificationKind
-import dev.anodex.mobile.notify.Notifications
-import dev.anodex.mobile.connection.Reachability
-import dev.anodex.mobile.connection.localIPv4Addresses
-import dev.anodex.mobile.connection.PairedHostRef
-import android.os.Build
-import android.util.Base64
-import dev.anodex.mobile.agents.AgentRun
-import dev.anodex.mobile.agents.Agents
-import dev.anodex.mobile.chat.ChatMessage
-import dev.anodex.mobile.chat.ChatSession
-import dev.anodex.mobile.chat.MessagePersona
-import dev.anodex.mobile.chat.LocalModel
-import dev.anodex.mobile.chat.Models
-import dev.anodex.mobile.chat.Personalities
-import dev.anodex.mobile.chat.UploadState
-import dev.anodex.mobile.chat.Uploads
-import dev.anodex.mobile.chat.PersonalityState
-import dev.anodex.mobile.chat.ConversationSummary
-import dev.anodex.mobile.chat.Conversations
-import dev.anodex.mobile.chat.Projects
-import dev.anodex.mobile.chat.ProjectsState
-import dev.anodex.mobile.connection.HostIdentity
-import dev.anodex.mobile.connection.ModelStatus
-import dev.anodex.mobile.pairing.PairedHost
-import dev.anodex.mobile.pairing.PairedHostStore
-import dev.anodex.mobile.pairing.CertificateProbe
-import dev.anodex.mobile.pairing.PairingPayload
-import dev.anodex.mobile.pairing.humanFingerprintOf
-import dev.anodex.mobile.ui.screens.ManualPairState
-import dev.anodex.mobile.transport.AnodexSocket
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
+import dev.anodex.mobile.workspace.FileContent
+import dev.anodex.mobile.workspace.Workspace
+import dev.anodex.mobile.workspace.WorkspaceFile
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Holds the app together: the stored pairing, the connection controller, and the network monitor.
@@ -79,6 +82,12 @@ import kotlinx.coroutines.launch
  * pulling logic up into here would put it back out of reach. This class wires, it does not decide.
  */
 private const val CHANNEL_NOTIFICATION = "remote:notification"
+
+/** The computer's own list, pushed whenever a run is created, turns, or finishes. */
+private const val CHANNEL_AGENT_RUNS = "agent:runs-changed"
+
+/** Same, for scheduled tasks: created, edited, run, deleted. */
+private const val CHANNEL_TASKS_CHANGED = "scheduler:tasks-changed"
 
 class AnodexViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -1111,9 +1120,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 // Everything the desktop pushes that is not a chat token: run
                 // finished, task failed, something waiting on a human.
                 viewModelScope.launch {
-                    candidate.events.collect { event ->
-                        if (event.channel == CHANNEL_NOTIFICATION) onNotification(event.payload)
-                    }
+                    candidate.events.collect { event -> onPushed(event) }
                 }
 
                 // Tell the controller when this connection dies, rather than waiting
@@ -1637,6 +1644,39 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * nothing. Everything else gets its own id so a run finishing does not
      * overwrite a task that failed.
      */
+    /**
+     * Something the computer sent without being asked.
+     *
+     * These were being dropped — every channel except notifications — and the cost
+     * showed up exactly where this app is supposed to be strongest. You start a
+     * build from the phone, watch the Agents screen, and it never changes: the run
+     * moves from planning to waiting to finished on the computer while the phone
+     * holds whatever it fetched when the screen opened. The only way to see progress
+     * was to leave the screen and come back.
+     *
+     * The desktop was broadcasting all of it to remote clients the whole time.
+     *
+     * The payload is the whole list, so this costs no round trip: a run that changes
+     * on the computer is on the phone in the time it takes the socket to carry it.
+     */
+    private fun onPushed(event: ServerFrame.Event) {
+        when (event.channel) {
+            CHANNEL_NOTIFICATION -> onNotification(event.payload)
+
+            CHANNEL_AGENT_RUNS -> {
+                _agentRuns.value = parseAgentRuns(event.payload)
+                // A push proves the computer is reachable, so any error the last read
+                // left on screen is now stale.
+                _agentsError.value = null
+            }
+
+            CHANNEL_TASKS_CHANGED -> {
+                _tasks.value = parseTasks(event.payload)
+                _tasksError.value = null
+            }
+        }
+    }
+
     private fun onNotification(payload: JsonElement?) {
         val fields = payload as? JsonObject ?: return
         val kind = NotificationKind.parse((fields["kind"] as? JsonPrimitive)?.content)
