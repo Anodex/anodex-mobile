@@ -100,7 +100,10 @@ fun ChatHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.bgApp)
+            // No ground of its own. The conversation runs underneath and fades out
+            // into it, which is what makes this read as something floating over the
+            // page rather than a bar the page stops at. Each control keeps its own
+            // round surface, so they stay legible against whatever scrolls behind.
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),

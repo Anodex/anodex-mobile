@@ -38,10 +38,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -791,6 +794,31 @@ private fun ConnectedScaffold(
         edgeGrabEnabled = filesBeside,
     )
 
+    // Inside a conversation the title takes the top line and the host shrinks to its
+    // dot: you already know which computer, and what you are reading is the
+    // conversation. Everywhere else the host bar is the most useful thing there.
+    val conversationTitle = chat?.let { session ->
+        session.existingTitle?.takeIf { it.isNotBlank() }
+            ?: messagesTitle(session)
+    }
+
+    // The workspace this conversation belongs to, not whichever one the computer
+    // happens to have open. They are usually the same and the difference is the whole
+    // point: a chat filed under a project the desktop has since moved away from still
+    // belongs to that project.
+    val chatProject = chat?.projectId
+        ?.let { id -> projects.projects.firstOrNull { it.id == id } }
+
+    /** Whether the bars hang over the page instead of sitting above it. */
+    val floatingChrome = destination == AppDestination.CHAT && conversationTitle != null
+
+    // How tall that floating chrome turned out to be, so the transcript underneath
+    // knows how far to fade and how much room to leave itself. Measured rather than
+    // assumed: the update banner comes and goes, and a long title does not wrap but a
+    // workspace name beneath it changes the pill's height.
+    var chromeHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+
     Box(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -802,68 +830,21 @@ private fun ConnectedScaffold(
                 .panelEdgeGrab(filesSwipe)
                 .safeDrawingPadding()
         ) {
-            // Inside a conversation the title takes the top line and the host shrinks to
-            // its dot: you already know which computer, and what you are reading is the
-            // conversation. Everywhere else the host bar is the most useful thing there.
-            val conversationTitle = chat?.let { session ->
-                session.existingTitle?.takeIf { it.isNotBlank() }
-                    ?: messagesTitle(session)
-            }
-
-            if (destination == AppDestination.CHAT && conversationTitle != null) {
-                // The workspace this conversation belongs to, not whichever one the
-                // computer happens to have open. They are usually the same and the
-                // difference is the whole point: a chat filed under a project the
-                // desktop has since moved away from still belongs to that project.
-                val chatProject = chat?.projectId
-                    ?.let { id -> projects.projects.firstOrNull { it.id == id } }
-
-                ChatHeader(
-                    title = conversationTitle,
-                    workspaceName = chatProject?.name,
-                    hostName = hostNameOf(state),
-                    connected = state is ConnectionState.Connected,
-                    status = HostStatus(
-                        hostName = hostNameOf(state),
-                        connection = connectionWordFor(state),
-                        connected = state is ConnectionState.Connected,
-                        workspaceName = chatProject?.name,
-                        folderPath = chatProject?.folderPath,
-                        modelName = model?.name,
-                        contextUsedTokens = model?.contextUsedTokens ?: 0,
-                        contextTotalTokens = model?.contextTotalTokens ?: 0,
-                        conversationId = chat?.conversationId,
-                    ),
-                    onOpenDrawer = { drawerOpen = true },
-                    onCopyId = {
-                        chat?.conversationId?.let { id ->
-                            clipboard.setText(AnnotatedString(id))
-                        }
-                    },
-                    onArchive = {
-                        chat?.conversationId?.let(viewModel::archiveConversation)
-                    },
-                    // Only where the panel would show this conversation's own files.
-                    // The same rule the right edge follows, so the menu item and the
-                    // gesture cannot disagree about whether there is anything there.
-                    onOpenFiles = if (filesBeside) {
-                        { filesOpen = true }
-                    } else {
-                        null
-                    },
-                )
-            } else {
+            // Everywhere but a conversation, the header sits in the flow and the
+            // page starts underneath it. In a conversation it hangs over the
+            // transcript instead — see the floating column below.
+            if (!floatingChrome) {
                 ConnectionHeader(
                     state = state,
                     onOpenDrawer = { drawerOpen = true },
                 )
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
             }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
 
             // Under the header on every screen rather than inside chat: a newer app is
             // not a chat concern, and the previous version of this notice lived two taps
             // in on the host screen, where it went unseen through an entire release.
-            if (!updateDismissed) {
+            if (!floatingChrome && !updateDismissed) {
                 UpdateBanner(
                     state = updateState,
                     canInstall = canInstallUpdates,
@@ -879,6 +860,7 @@ private fun ConnectedScaffold(
                     AppDestination.CHAT -> ChatPane(
                         chat,
                         viewModel,
+                        topInset = if (floatingChrome) chromeHeight else 0.dp,
                         // Named on the empty screen, because which computer is awake is
                         // the one thing no other assistant can put there.
                         hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
@@ -953,6 +935,67 @@ private fun ConnectedScaffold(
                             onCreate = { prompt -> viewModel.createTask(prompt) {} },
                         )
                     }
+                }
+            }
+        }
+
+        // The conversation's own bar, hanging over the transcript rather than sitting
+        // above it. The chat runs edge to edge underneath and dissolves into both
+        // bars, which is the whole effect: the page is plainly continuing up there,
+        // rather than stopping at a line.
+        if (floatingChrome && conversationTitle != null) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .safeDrawingPadding()
+                    .onSizeChanged { chromeHeight = with(density) { it.height.toDp() } },
+            ) {
+                ChatHeader(
+                    title = conversationTitle,
+                    workspaceName = chatProject?.name,
+                    hostName = hostNameOf(state),
+                    connected = state is ConnectionState.Connected,
+                    status = HostStatus(
+                        hostName = hostNameOf(state),
+                        connection = connectionWordFor(state),
+                        connected = state is ConnectionState.Connected,
+                        workspaceName = chatProject?.name,
+                        folderPath = chatProject?.folderPath,
+                        modelName = model?.name,
+                        contextUsedTokens = model?.contextUsedTokens ?: 0,
+                        contextTotalTokens = model?.contextTotalTokens ?: 0,
+                        conversationId = chat?.conversationId,
+                    ),
+                    onOpenDrawer = { drawerOpen = true },
+                    onCopyId = {
+                        chat?.conversationId?.let { id ->
+                            clipboard.setText(AnnotatedString(id))
+                        }
+                    },
+                    onArchive = {
+                        chat?.conversationId?.let(viewModel::archiveConversation)
+                    },
+                    // Only where the panel would show this conversation's own files.
+                    // The same rule the right edge follows, so the menu item and the
+                    // gesture cannot disagree about whether there is anything there.
+                    onOpenFiles = if (filesBeside) {
+                        { filesOpen = true }
+                    } else {
+                        null
+                    },
+                )
+
+                if (!updateDismissed) {
+                    UpdateBanner(
+                        state = updateState,
+                        canInstall = canInstallUpdates,
+                        onInstall = viewModel::installUpdate,
+                        onGrantInstall = {
+                            installPermission.launch(viewModel.installPermissionIntent())
+                        },
+                        onDismiss = viewModel::dismissUpdate,
+                        installedVersion = BuildConfig.VERSION_NAME,
+                    )
                 }
             }
         }
@@ -1103,6 +1146,8 @@ private fun ChatPane(
     viewModel: AnodexViewModel,
     hostLine: String?,
     openers: List<String> = emptyList(),
+    /** How much floating chrome hangs over the top of the conversation. */
+    topInset: Dp = 0.dp,
 ) {
     val attachments by viewModel.attachments.collectAsStateWithLifecycle()
 
@@ -1156,6 +1201,7 @@ private fun ChatPane(
 
     ChatScreen(
         openers = openers,
+        topInset = topInset,
         messages = messages,
         sending = sending,
         error = error,
