@@ -10,7 +10,6 @@ import androidx.lifecycle.viewModelScope
 import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Agents
 import dev.anodex.mobile.agents.parseAgentRuns
-import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.Conversations
@@ -1019,6 +1018,68 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private val _archiveNotice = MutableStateFlow<ArchiveNotice?>(null)
+
+    /**
+     * What was just archived and can still be put back, or the news that it failed.
+     *
+     * Cleared by the bar that shows it. Archiving asks nothing before it happens,
+     * which is only defensible because this exists: the undo is the confirmation,
+     * arriving after the tap instead of in front of it.
+     */
+    val archiveNotice: StateFlow<ArchiveNotice?> = _archiveNotice.asStateFlow()
+
+    /**
+     * Archive one conversation, and offer it back.
+     *
+     * Removed from the list here rather than after a re-read, for the same reason
+     * forgetting a memory is: leaving a conversation the user has just archived
+     * sitting on screen while a round trip completes reads as the tap having done
+     * nothing. A failure puts it back and says so.
+     */
+    fun archiveConversation(conversationId: String) {
+        val reader = conversationReader ?: return
+        val summary = _conversations.value.firstOrNull { it.id == conversationId }
+        val title = summary?.title ?: "Conversation"
+
+        val before = _conversations.value
+        _conversations.value = before.filterNot { it.id == conversationId }
+
+        // A conversation cannot be read after it is archived, so leaving it open
+        // would be a transcript of something the app has just said is gone. A fresh
+        // empty chat is where archiving from the desktop leaves you too, and nothing
+        // is written until the first message.
+        if (_chat.value?.conversationId == conversationId) newConversation()
+
+        viewModelScope.launch {
+            runCatching { reader.archive(conversationId) }
+                .onSuccess { _archiveNotice.value = ArchiveNotice(conversationId, title) }
+                .onFailure {
+                    _conversations.value = before
+                    _archiveNotice.value = ArchiveNotice(conversationId, title, failed = true)
+                }
+        }
+    }
+
+    /** Put back the one just archived. */
+    fun restoreArchived() {
+        val reader = conversationReader ?: return
+        val notice = _archiveNotice.value ?: return
+        _archiveNotice.value = null
+
+        viewModelScope.launch {
+            runCatching { reader.restore(notice.conversationId) }
+            // Re-read rather than re-inserting the summary this held: the computer
+            // is the authority on what exists, and it has just been told twice.
+            refreshConversations()
+        }
+    }
+
+    /** The bar has said its piece. */
+    fun dismissArchiveNotice() {
+        _archiveNotice.value = null
+    }
+
     /**
      * Open a conversation that already exists on the computer.
      *
@@ -1030,8 +1091,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val reader = conversationReader ?: return
         val open = socket ?: return
         viewModelScope.launch {
+            // Not `getOrDefault(emptyList())`, which is how a conversation gets
+            // destroyed. A failed read became an empty transcript bound to a real
+            // conversation id, and the next message saved that one turn over
+            // everything the computer had — the desktop's store writes what it is
+            // given. A conversation that could not be read is left closed instead.
             val history = runCatching { reader.messagesOf(conversationId) }
-                .getOrDefault(emptyList<ChatMessage>())
+                .getOrElse { return@launch }
             // Carry the real creation time through, so re-saving does not rewrite it
             // to now on a conversation that was started days ago at the computer.
             val summary = _conversations.value.firstOrNull { it.id == conversationId }
@@ -1769,3 +1835,17 @@ private const val UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000L
  * rather than after they have moved on.
  */
 private const val PARSE_DEBOUNCE_MS = 350L
+
+/**
+ * A conversation was archived — or was not.
+ *
+ * Carries the title because the bar naming it is most of what makes the undo
+ * usable: "Archived" alone leaves somebody wondering which one, at exactly the
+ * moment they have a few seconds to decide.
+ */
+data class ArchiveNotice(
+    val conversationId: String,
+    val title: String,
+    /** True when the computer refused, in which case there is nothing to undo. */
+    val failed: Boolean = false,
+)

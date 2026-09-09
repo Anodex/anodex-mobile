@@ -57,6 +57,9 @@ import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AppDestination
 import dev.anodex.mobile.ui.components.AppDrawer
+import dev.anodex.mobile.ui.components.UndoBar
+import dev.anodex.mobile.ui.components.ChatHeader
+import dev.anodex.mobile.ui.components.HostStatus
 import dev.anodex.mobile.ui.components.PanelSide
 import dev.anodex.mobile.ui.components.SlidingPanel
 import dev.anodex.mobile.ui.components.ConfirmDialog
@@ -399,6 +402,8 @@ private fun ConnectedScaffold(
     val projectError by viewModel.projectError.collectAsStateWithLifecycle()
 
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val archiveNotice by viewModel.archiveNotice.collectAsStateWithLifecycle()
+    val clipboard = LocalClipboardManager.current
 
     val waitingAgents = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW }
     val model = (state as? ConnectionState.Connected)?.model
@@ -766,10 +771,46 @@ private fun ConnectedScaffold(
             }
 
             if (destination == AppDestination.CHAT && conversationTitle != null) {
+                // The workspace this conversation belongs to, not whichever one the
+                // computer happens to have open. They are usually the same and the
+                // difference is the whole point: a chat filed under a project the
+                // desktop has since moved away from still belongs to that project.
+                val chatProject = chat?.projectId
+                    ?.let { id -> projects.projects.firstOrNull { it.id == id } }
+
                 ChatHeader(
                     title = conversationTitle,
+                    workspaceName = chatProject?.name,
+                    hostName = hostNameOf(state),
                     connected = state is ConnectionState.Connected,
+                    status = HostStatus(
+                        hostName = hostNameOf(state),
+                        connection = connectionWordFor(state),
+                        connected = state is ConnectionState.Connected,
+                        workspaceName = chatProject?.name,
+                        folderPath = chatProject?.folderPath,
+                        modelName = model?.name,
+                        contextUsedTokens = model?.contextUsedTokens ?: 0,
+                        contextTotalTokens = model?.contextTotalTokens ?: 0,
+                        conversationId = chat?.conversationId,
+                    ),
                     onOpenDrawer = { drawerOpen = true },
+                    onCopyId = {
+                        chat?.conversationId?.let { id ->
+                            clipboard.setText(AnnotatedString(id))
+                        }
+                    },
+                    onArchive = {
+                        chat?.conversationId?.let(viewModel::archiveConversation)
+                    },
+                    // Only where the panel would show this conversation's own files.
+                    // The same rule the right edge follows, so the menu item and the
+                    // gesture cannot disagree about whether there is anything there.
+                    onOpenFiles = if (filesBeside) {
+                        { filesOpen = true }
+                    } else {
+                        null
+                    },
                 )
             } else {
                 ConnectionHeader(
@@ -876,6 +917,22 @@ private fun ConnectedScaffold(
             }
         }
 
+        // Over the page, under the panels. Archiving asks nothing before it
+        // happens, so this is where the question gets asked instead.
+        archiveNotice?.let { notice ->
+            UndoBar(
+                text = if (notice.failed) {
+                    "Could not archive “${notice.title}”."
+                } else {
+                    "Archived “${notice.title}”."
+                },
+                actionLabel = if (notice.failed) null else "Undo",
+                onAction = viewModel::restoreArchived,
+                onDismiss = viewModel::dismissArchiveNotice,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
         // In from the edge it lives on, and back to it, following the finger the
         // whole way. The app behind does not move: these slide over the page rather
         // than pushing it aside.
@@ -975,78 +1032,6 @@ private fun openersFor(
 /** Three. A fourth is a menu, and a menu is the thing this is not. */
 private const val MAX_OPENERS = 3
 
-/**
- * The conversation's own bar: a way out, what this is, and whether the computer is
- * still there.
- *
- * The status dot survives from the host bar because it is the one thing that can
- * change under you mid-conversation. Everything else about the machine — the model,
- * the context, the project — is a between-turns concern and moved to Host.
- */
-@Composable
-private fun ChatHeader(title: String, connected: Boolean, onOpenDrawer: () -> Unit) {
-    val colors = AnodexTheme.colors
-    val type = AnodexTheme.type
-
-    // On the app's own ground rather than a bar of its own. A filled strip with a
-    // title in it is a document header; this is a conversation, and the thing that
-    // should carry weight on screen is what was said, not the furniture above it.
-    //
-    // The controls get the surface instead: each sits on its own soft round ground,
-    // so they read as things to press while the title reads as a label. That is the
-    // arrangement borrowed from elsewhere — with Anodex's own facet radius and the
-    // status dot kept, because which computer is awake is this app's fact to show.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.bgApp)
-            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(Touch.minTarget)
-                .clip(CircleShape)
-                .background(colors.bgSurface)
-                .clickable(onClick = onOpenDrawer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Box(Modifier.width(18.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
-                Box(Modifier.width(13.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
-                Box(Modifier.width(18.dp).height(1.5.dp).clip(Radii.pill).background(colors.textMuted))
-            }
-        }
-
-        Text(
-            text = title,
-            style = type.bodyEmphasis,
-            color = colors.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-
-        // In a pill of its own, so a six-pixel dot floating against the page has
-        // something to sit in and reads as deliberate rather than as a speck.
-        Box(
-            modifier = Modifier
-                .size(Touch.minTarget)
-                .clip(CircleShape)
-                .background(colors.bgSurface),
-            contentAlignment = Alignment.Center,
-        ) {
-            StatusDot(
-                colour = if (connected) colors.success else colors.warn,
-                // Ripples while it is reconnecting: that is the state somebody is
-                // waiting on, and the only one worth spending motion on here.
-                running = !connected,
-            )
-        }
-    }
-}
-
 /** The first thing the user said, when the computer has not titled it yet. */
 private fun messagesTitle(session: ChatSession): String? =
     session.messages.value
@@ -1064,14 +1049,17 @@ private fun hostNameOf(state: ConnectionState): String? = when (state) {
     ConnectionState.Unpaired -> null
 }
 
+/** One word for what the link is doing. */
+private fun connectionWordFor(state: ConnectionState): String = when (state) {
+    is ConnectionState.Connected -> "Connected"
+    is ConnectionState.Reconnecting -> "Reconnecting"
+    is ConnectionState.Offline -> "Offline"
+    ConnectionState.Unpaired -> "Not paired"
+}
+
 /** "Connected · Bench" — what the computer is, and what it is pointed at. */
 private fun hostDetailOf(state: ConnectionState, projectName: String?): String {
-    val status = when (state) {
-        is ConnectionState.Connected -> "Connected"
-        is ConnectionState.Reconnecting -> "Reconnecting"
-        is ConnectionState.Offline -> "Offline"
-        ConnectionState.Unpaired -> "Not paired"
-    }
+    val status = connectionWordFor(state)
     return if (projectName != null) "$status · $projectName" else status
 }
 
