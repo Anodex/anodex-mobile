@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -79,6 +80,7 @@ import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.ToolApprovalCard
 import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Elevation
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -375,6 +377,27 @@ fun ChatScreen(
                 }
             }
         }
+
+        // Something for the composer to sit against.
+        //
+        // The conversation runs underneath and is meant to show through — that is the
+        // effect — but a control floating on nothing but moving text is hard to find.
+        // This holds most of the page's own colour at the very bottom and lets go of
+        // it just past the composer, so the words still ghost through without
+        // competing with the one control that sends them.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(bottomInset + SCRIM_FADE)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        1f - SCRIM_HOLD to colors.bgApp.copy(alpha = SCRIM_ALPHA),
+                        1f to colors.bgApp,
+                    )
+                )
+        )
 
         // Over the conversation rather than below it, and measuring itself so the
         // transcript knows how much of itself is behind it.
@@ -1277,6 +1300,10 @@ private fun Composer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // Lifted for the same reason the title pill is: it hangs over the
+                // conversation now, and a flat field on a transparent ground is hard
+                // to find when there is text moving behind it.
+                .shadow(Elevation.md, COMPOSER_SHAPE)
                 .clip(COMPOSER_SHAPE)
                 .background(colors.bgInput)
                 .border(
@@ -1372,6 +1399,26 @@ private fun Composer(
  * curve. The radius has to stop growing at the point the row stops being one line.
  */
 private val COMPOSER_SHAPE = RoundedCornerShape((Touch.minTarget + Spacing.x1 * 2) / 2)
+
+/**
+ * How far past a floating bar its scrim keeps fading.
+ *
+ * Short. The scrim exists to give the controls something to sit against, not to put
+ * the bar back — past this the conversation is at full strength again.
+ */
+internal val SCRIM_FADE = 28.dp
+
+/** How far into the scrim the page's colour has arrived, as a fraction of its height. */
+internal const val SCRIM_HOLD = 0.55f
+
+/**
+ * How much of the page's colour the scrim carries behind the bar itself.
+ *
+ * Not all of it. Solid would be a bar again, and watching the conversation continue
+ * behind the chrome is the thing worth keeping — it just cannot cost you the send
+ * button.
+ */
+internal const val SCRIM_ALPHA = 0.82f
 
 /**
  * Six lines.

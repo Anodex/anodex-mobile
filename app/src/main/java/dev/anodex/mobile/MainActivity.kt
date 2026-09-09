@@ -38,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -88,6 +90,9 @@ import dev.anodex.mobile.ui.screens.SchedulerScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.screens.TaskScreen
 import dev.anodex.mobile.ui.screens.ThemeMode
+import dev.anodex.mobile.ui.screens.SCRIM_ALPHA
+import dev.anodex.mobile.ui.screens.SCRIM_FADE
+import dev.anodex.mobile.ui.screens.SCRIM_HOLD
 import dev.anodex.mobile.ui.screens.WorkspaceScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.AppearanceStore
@@ -810,7 +815,18 @@ private fun ConnectedScaffold(
         ?.let { id -> projects.projects.firstOrNull { it.id == id } }
 
     /** Whether the bars hang over the page instead of sitting above it. */
-    val floatingChrome = destination == AppDestination.CHAT && conversationTitle != null
+    val floatingChrome = destination == AppDestination.CHAT
+
+    /**
+     * What the pill says.
+     *
+     * "New chat" until the computer has titled it, rather than falling back to the
+     * old host bar. A conversation that has not been named yet is still a
+     * conversation, and swapping the whole header for a different one the moment you
+     * send the first message — a different shape, a different height, in a different
+     * place — reads as the app changing screens under you.
+     */
+    val headerTitle = conversationTitle ?: "New chat"
 
     // How tall that floating chrome turned out to be, so the transcript underneath
     // knows how far to fade and how much room to leave itself. Measured rather than
@@ -943,7 +959,28 @@ private fun ConnectedScaffold(
         // above it. The chat runs edge to edge underneath and dissolves into both
         // bars, which is the whole effect: the page is plainly continuing up there,
         // rather than stopping at a line.
-        if (floatingChrome && conversationTitle != null) {
+        if (floatingChrome) {
+            // Something for the bar to sit against, and only just.
+            //
+            // The conversation runs underneath and is meant to show through. But the
+            // controls have to be findable against whatever happens to be scrolling
+            // behind them, and text at half strength directly under a title is a
+            // competition nobody wins. This holds most of the page's colour at the
+            // top edge and lets go of it just past the bar.
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(chromeHeight + SCRIM_FADE)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to colors.bgApp,
+                            SCRIM_HOLD to colors.bgApp.copy(alpha = SCRIM_ALPHA),
+                            1f to Color.Transparent,
+                        )
+                    )
+            )
+
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -951,7 +988,7 @@ private fun ConnectedScaffold(
                     .onSizeChanged { chromeHeight = with(density) { it.height.toDp() } },
             ) {
                 ChatHeader(
-                    title = conversationTitle,
+                    title = headerTitle,
                     workspaceName = chatProject?.name,
                     hostName = hostNameOf(state),
                     connected = state is ConnectionState.Connected,

@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Elevation
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -124,8 +126,15 @@ fun ChatHeader(
             Column(
                 modifier = Modifier
                     .widthIn(max = PILL_MAX)
+                    // Lifted off the page, because it is floating over a conversation
+                    // now rather than sitting on a bar of its own. `bgSurface` was one
+                    // step above the page and vanished against ghosted text scrolling
+                    // behind it; elevated, edged and with a shadow under it, it reads
+                    // as a thing in front — which is what it is.
+                    .shadow(Elevation.md, Radii.pill)
                     .clip(Radii.pill)
-                    .background(colors.bgSurface)
+                    .background(colors.bgElevated)
+                    .border(1.dp, colors.borderStrong, Radii.pill)
                     .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -253,8 +262,13 @@ private fun RoundButton(
     Box(
         modifier = Modifier
             .size(Touch.minTarget)
+            // The same lift as the pill beside it: these three are one row of things
+            // hanging over the page, and one of them sitting flat would read as a
+            // mistake rather than a distinction.
+            .shadow(Elevation.md, CircleShape)
             .clip(CircleShape)
-            .background(AnodexTheme.colors.bgSurface)
+            .background(AnodexTheme.colors.bgElevated)
+            .border(1.dp, AnodexTheme.colors.borderStrong, CircleShape)
             .clickable(onClick = onClick, onClickLabel = contentDescription),
         contentAlignment = Alignment.Center,
     ) {
