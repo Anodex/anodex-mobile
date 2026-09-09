@@ -45,6 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -1144,10 +1146,30 @@ private fun Composer(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
+    val border = colors.border
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.bgSurface)
+            // The app's own ground, not a bar of its own.
+            //
+            // This was a filled `bgSurface` band, which put a full-width lighter
+            // rectangle behind a rounded control — a square behind a pill, with the
+            // darker system navigation strip below it. Three stacked rectangles to
+            // separate two things.
+            //
+            // A one-pixel line does the whole job, and the same one the header uses.
+            // The field already reads as a control: it has an edge that lifts to the
+            // accent the moment there is something to send. It does not also need a
+            // plinth to stand on.
+            .drawBehind {
+                drawLine(
+                    color = border,
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, 0f),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
