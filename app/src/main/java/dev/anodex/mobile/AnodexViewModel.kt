@@ -1018,6 +1018,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private val _notice = MutableStateFlow<String?>(null)
+
+    /**
+     * Something the user needs told, with nothing to undo.
+     *
+     * Its own flow rather than a variant of [archiveNotice], because the two are
+     * different events that happen to be shown in the same strip: one offers a way
+     * back, and this one only reports.
+     */
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+
+    /** The strip has said its piece. */
+    fun dismissNotice() {
+        _notice.value = null
+    }
+
     private val _archiveNotice = MutableStateFlow<ArchiveNotice?>(null)
 
     /**
@@ -1096,8 +1112,17 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // conversation id, and the next message saved that one turn over
             // everything the computer had — the desktop's store writes what it is
             // given. A conversation that could not be read is left closed instead.
+            //
+            // Said out loud, too. Leaving it closed and silent is safe and looks
+            // exactly like a broken app: the drawer shuts, nothing opens, and there is
+            // nothing on screen to suggest the tap was even received.
             val history = runCatching { reader.messagesOf(conversationId) }
-                .getOrElse { return@launch }
+                .getOrElse { failure ->
+                    _notice.value = failure.message?.takeIf { it.isNotBlank() }
+                        ?.let { "Could not open that conversation: $it" }
+                        ?: "Could not open that conversation."
+                    return@launch
+                }
             // Carry the real creation time through, so re-saving does not rewrite it
             // to now on a conversation that was started days ago at the computer.
             val summary = _conversations.value.firstOrNull { it.id == conversationId }

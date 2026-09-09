@@ -62,6 +62,8 @@ import dev.anodex.mobile.ui.components.ChatHeader
 import dev.anodex.mobile.ui.components.HostStatus
 import dev.anodex.mobile.ui.components.PanelSide
 import dev.anodex.mobile.ui.components.SlidingPanel
+import dev.anodex.mobile.ui.components.panelEdgeGrab
+import dev.anodex.mobile.ui.components.rememberPanelSwipe
 import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
@@ -403,6 +405,7 @@ private fun ConnectedScaffold(
 
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val archiveNotice by viewModel.archiveNotice.collectAsStateWithLifecycle()
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
 
     val waitingAgents = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW }
@@ -760,8 +763,45 @@ private fun ConnectedScaffold(
     // rather than leaving it to spring open again the next time one qualifies.
     LaunchedEffect(filesBeside) { if (!filesBeside) filesOpen = false }
 
+    // Hoisted out of the panels because the gesture that *opens* one has to live on
+    // the page rather than over it. An invisible strip laid across the left edge took
+    // the menu button out of reach of a tap — Compose stops hit-testing at the topmost
+    // thing under the finger, so an overlay swallows what it covers whether or not it
+    // ever consumes anything.
+    val drawerSwipe = rememberPanelSwipe(
+        open = drawerOpen,
+        onOpenChange = {
+            drawerOpen = it
+            // One at a time. Both open at once is two scrims over one page and a
+            // sliver of app between them.
+            if (it) filesOpen = false
+        },
+        side = PanelSide.LEFT,
+        widthFraction = DRAWER_WIDTH_FRACTION,
+    )
+
+    val filesSwipe = rememberPanelSwipe(
+        open = filesOpen && filesBeside,
+        onOpenChange = {
+            filesOpen = it
+            if (it) drawerOpen = false
+        },
+        side = PanelSide.RIGHT,
+        widthFraction = DRAWER_WIDTH_FRACTION,
+        edgeGrabEnabled = filesBeside,
+    )
+
     Box(Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.bgApp)
+                // Before `safeDrawingPadding`, so the band the gesture watches is the
+                // real edge of the screen rather than the edge of the inset content.
+                .panelEdgeGrab(drawerSwipe)
+                .panelEdgeGrab(filesSwipe)
+                .safeDrawingPadding()
+        ) {
             // Inside a conversation the title takes the top line and the host shrinks to
             // its dot: you already know which computer, and what you are reading is the
             // conversation. Everywhere else the host bar is the most useful thing there.
@@ -919,34 +959,36 @@ private fun ConnectedScaffold(
 
         // Over the page, under the panels. Archiving asks nothing before it
         // happens, so this is where the question gets asked instead.
-        archiveNotice?.let { notice ->
+        archiveNotice?.let { archived ->
             UndoBar(
-                text = if (notice.failed) {
-                    "Could not archive “${notice.title}”."
+                text = if (archived.failed) {
+                    "Could not archive “${archived.title}”."
                 } else {
-                    "Archived “${notice.title}”."
+                    "Archived “${archived.title}”."
                 },
-                actionLabel = if (notice.failed) null else "Undo",
+                actionLabel = if (archived.failed) null else "Undo",
                 onAction = viewModel::restoreArchived,
                 onDismiss = viewModel::dismissArchiveNotice,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
 
+        // The same strip, carrying something that has no undo — a conversation the
+        // computer would not hand over, most of all, because that failure is
+        // otherwise indistinguishable from a tap that did not register.
+        notice?.let { text ->
+            UndoBar(
+                text = text,
+                onDismiss = viewModel::dismissNotice,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
         // In from the edge it lives on, and back to it, following the finger the
         // whole way. The app behind does not move: these slide over the page rather
-        // than pushing it aside.
-        SlidingPanel(
-            open = drawerOpen,
-            onOpenChange = {
-                drawerOpen = it
-                // One at a time. Both open at once is two scrims over one page and a
-                // sliver of app between them.
-                if (it) filesOpen = false
-            },
-            side = PanelSide.LEFT,
-            widthFraction = DRAWER_WIDTH_FRACTION,
-        ) {
+        // than pushing it aside. These two *are* overlays, and should be — while a
+        // panel is open the page behind it is not meant to be touchable.
+        SlidingPanel(drawerSwipe) {
             drawer()
         }
 
@@ -954,16 +996,7 @@ private fun ConnectedScaffold(
         // halves of the same idea — what am I working on, and what am I working *in*
         // — and one reaching further across than the other would say one of them is
         // the bigger thing.
-        SlidingPanel(
-            open = filesOpen && filesBeside,
-            onOpenChange = {
-                filesOpen = it
-                if (it) drawerOpen = false
-            },
-            side = PanelSide.RIGHT,
-            widthFraction = DRAWER_WIDTH_FRACTION,
-            edgeGrabEnabled = filesBeside,
-        ) {
+        SlidingPanel(filesSwipe) {
             WorkspaceScreen(
                 files = workspaceFiles,
                 loading = workspaceLoading,
