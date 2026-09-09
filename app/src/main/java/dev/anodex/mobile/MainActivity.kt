@@ -9,15 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +57,8 @@ import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AppDestination
 import dev.anodex.mobile.ui.components.AppDrawer
+import dev.anodex.mobile.ui.components.PanelSide
+import dev.anodex.mobile.ui.components.SlidingPanel
 import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.PrimaryButton
@@ -383,6 +378,16 @@ private fun ConnectedScaffold(
      * same idea arrived at from the other direction.
      */
     var browsingProjects by rememberSaveable { mutableStateOf(false) }
+
+    /**
+     * Whether the project's files are showing over the chat.
+     *
+     * Its own state rather than a destination: this is the workspace *beside* the
+     * conversation, not instead of it. Reading a file while talking about it is the
+     * whole reason to have it here, and navigating away and back would lose the
+     * conversation's place on screen.
+     */
+    var filesOpen by rememberSaveable { mutableStateOf(false) }
     var showingSettings by rememberSaveable { mutableStateOf(false) }
 
     val agentRuns by viewModel.agentRuns.collectAsStateWithLifecycle()
@@ -505,13 +510,19 @@ private fun ConnectedScaffold(
         else viewModel.refreshConversations()
     }
 
+    // Read when it is opened rather than on a timer, the same rule the Workspace
+    // screen follows: a file list is only interesting at the moment somebody looks
+    // at it.
+    LaunchedEffect(filesOpen) { if (filesOpen) viewModel.refreshWorkspaceFiles() }
+
     // Back unwinds one step at a time, in the order the user got here.
     BackHandler(
-        enabled = drawerOpen || choosingProject || showingHost || showingSettings ||
+        enabled = drawerOpen || filesOpen || choosingProject || showingHost || showingSettings ||
             showingAllConversations || browsingProjects || destination != AppDestination.CHAT
     ) {
         when {
             drawerOpen -> drawerOpen = false
+            filesOpen -> filesOpen = false
             showingSettings -> showingSettings = false
             showingHost -> showingHost = false
             showingAllConversations -> showingAllConversations = false
@@ -718,13 +729,31 @@ private fun ConnectedScaffold(
             },
             agentBadge = waitingAgents,
             emailBadge = unreadEmail,
-            modifier = Modifier
-                // Not the full width. Leaving the app visible down the side is most
-                // of what tells you it is still there, waiting, rather than closed.
-                .fillMaxWidth(DRAWER_WIDTH_FRACTION)
-                .safeDrawingPadding(),
+            // The width belongs to the panel that slides it in now, so that the two
+            // panels cannot drift apart: "as far as the left menu" is the rule for
+            // the files side, and a rule stated in two places is a rule that will
+            // one day be stated differently.
+            modifier = Modifier.safeDrawingPadding(),
         )
     }
+
+    /**
+     * Whether the files panel has anything true to show beside this conversation.
+     *
+     * The desktop answers `workspace:list-files` for the project it currently has
+     * open, and for no other — there is no way to ask it for a different one. So the
+     * panel is offered only where the conversation on screen *is* that project: a
+     * chat filed under a workspace the computer has since moved away from would be
+     * shown another project's files under its own name, which is worse than showing
+     * nothing at all.
+     */
+    val filesBeside = destination == AppDestination.CHAT &&
+        chat?.projectId != null &&
+        chat?.projectId == projects.activeProjectId
+
+    // A conversation that moves out from under the panel takes the panel with it,
+    // rather than leaving it to spring open again the next time one qualifies.
+    LaunchedEffect(filesBeside) { if (!filesBeside) filesOpen = false }
 
     Box(Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().background(colors.bgApp).safeDrawingPadding()) {
@@ -847,43 +876,62 @@ private fun ConnectedScaffold(
             }
         }
 
-        // Dim what is behind, and let a tap out there close it — the gesture people
-        // already expect from every drawer on the phone. Drawn before the panel so
-        // the panel sits on top of it.
-        AnimatedVisibility(
-            visible = drawerOpen,
-            enter = fadeIn(),
-            exit = fadeOut(),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = SCRIM_ALPHA))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { drawerOpen = false },
-                    ),
-            )
-        }
-
-        AnimatedVisibility(
-            visible = drawerOpen,
-            // In from the edge it lives on, and back to it. The app behind does not
-            // move: this slides over the page rather than pushing it aside.
-            enter = slideInHorizontally(initialOffsetX = { -it }),
-            exit = slideOutHorizontally(targetOffsetX = { -it }),
+        // In from the edge it lives on, and back to it, following the finger the
+        // whole way. The app behind does not move: these slide over the page rather
+        // than pushing it aside.
+        SlidingPanel(
+            open = drawerOpen,
+            onOpenChange = {
+                drawerOpen = it
+                // One at a time. Both open at once is two scrims over one page and a
+                // sliver of app between them.
+                if (it) filesOpen = false
+            },
+            side = PanelSide.LEFT,
+            widthFraction = DRAWER_WIDTH_FRACTION,
         ) {
             drawer()
+        }
+
+        // The same width as the drawer, deliberately: the two panels are the two
+        // halves of the same idea — what am I working on, and what am I working *in*
+        // — and one reaching further across than the other would say one of them is
+        // the bigger thing.
+        SlidingPanel(
+            open = filesOpen && filesBeside,
+            onOpenChange = {
+                filesOpen = it
+                if (it) drawerOpen = false
+            },
+            side = PanelSide.RIGHT,
+            widthFraction = DRAWER_WIDTH_FRACTION,
+            edgeGrabEnabled = filesBeside,
+        ) {
+            WorkspaceScreen(
+                files = workspaceFiles,
+                loading = workspaceLoading,
+                onOpenFile = { path ->
+                    // The file takes the whole screen, so the panel it was picked
+                    // from should not still be sitting under it when that closes.
+                    filesOpen = false
+                    viewModel.openWorkspaceFile(path)
+                },
+                projectName = projects.active?.name,
+                error = workspaceError,
+                modifier = Modifier.safeDrawingPadding(),
+            )
         }
     }
 }
 
-/** How far the drawer reaches across, leaving the app visible beside it. */
+/**
+ * How far a panel reaches across, leaving the app visible beside it.
+ *
+ * Both of them: the drawer on the left and the files on the right. "Only as far as
+ * the left menu" is the rule for the right-hand one, and the way to keep a rule like
+ * that is to have one number rather than two that agree today.
+ */
 private const val DRAWER_WIDTH_FRACTION = 0.86f
-
-/** Dark enough to push the page back, light enough that it is plainly still there. */
-private const val SCRIM_ALPHA = 0.55f
 
 /**
  * Three things worth asking, from what is true on the computer right now.
