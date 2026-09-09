@@ -99,6 +99,28 @@ class Conversations(private val socket: AnodexSocket) {
             .orEmpty()
     }
 
+    /**
+     * Archive one conversation.
+     *
+     * The desktop calls this `delete` and means archive: the record is kept, flagged,
+     * and dropped out of every list until it is restored. Nothing here is capable of
+     * destroying one — `conversations:delete-permanent` exists on the computer and is
+     * deliberately not spoken from the phone, which is a device that gets left on
+     * tables.
+     *
+     * The archived flag is what [asSummary] already filters on, so a conversation
+     * archived from here disappears from this app's lists for the same reason it
+     * disappears from the desktop's.
+     */
+    suspend fun archive(conversationId: String) {
+        socket.invoke(CHANNEL_ARCHIVE, listOf(JsonPrimitive(conversationId)))
+    }
+
+    /** Put one back, which is the whole reason archiving needs no confirmation. */
+    suspend fun restore(conversationId: String) {
+        socket.invoke(CHANNEL_RESTORE, listOf(JsonPrimitive(conversationId)))
+    }
+
     private fun kotlinx.serialization.json.JsonElement.asSummary(): ConversationSummary? {
         val fields = this as? JsonObject ?: return null
         if (fields["archived"]?.jsonPrimitive?.contentOrNull() == "true") return null
@@ -161,6 +183,10 @@ class Conversations(private val socket: AnodexSocket) {
     private companion object {
         const val CHANNEL_SUMMARIES = "conversations:list-summaries"
         const val CHANNEL_GET = "conversations:get"
+
+        /** Archive, in the desktop's own words. See [archive]. */
+        const val CHANNEL_ARCHIVE = "conversations:delete"
+        const val CHANNEL_RESTORE = "conversations:restore"
 
         /**
          * How much of a transcript to pull when opening one.
