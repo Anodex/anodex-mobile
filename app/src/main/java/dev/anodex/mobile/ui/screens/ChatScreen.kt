@@ -1180,12 +1180,12 @@ private fun Composer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(Radii.pill)
+                .clip(COMPOSER_SHAPE)
                 .background(colors.bgInput)
                 .border(
                     width = 1.dp,
                     color = if (hasSomethingToSend) colors.accent else colors.border,
-                    shape = Radii.pill,
+                    shape = COMPOSER_SHAPE,
                 )
                 .padding(Spacing.x1),
             verticalAlignment = Alignment.Bottom,
@@ -1235,6 +1235,11 @@ private fun Composer(
                     onValueChange = onDraftChange,
                     textStyle = type.chatBody.copy(color = colors.text),
                     cursorBrush = SolidColor(colors.accent),
+                    // Past this the field scrolls instead of growing. Without it a
+                    // long message pushed the conversation off the top of the screen
+                    // and kept going — a prompt of a few paragraphs left nothing on
+                    // screen but the thing being typed.
+                    maxLines = COMPOSER_MAX_LINES,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -1255,6 +1260,31 @@ private fun Composer(
     }
 }
 
+
+/**
+ * The composer's outline.
+ *
+ * Half the height of the collapsed row — the tallest thing in it plus the row's own
+ * padding — so an empty composer is a perfect stadium and a full one is a rounded
+ * rectangle with those same corners.
+ *
+ * It used to be [Radii.pill], which is 999dp and therefore *always* half the height
+ * whatever the height is. On one line that is the intended stadium. On fifteen it is
+ * a circle the width of the screen, and the text inside gets carved away by its own
+ * border: a long prompt appeared with its first and last lines sliced off along a
+ * curve. The radius has to stop growing at the point the row stops being one line.
+ */
+private val COMPOSER_SHAPE = RoundedCornerShape((Touch.minTarget + Spacing.x1 * 2) / 2)
+
+/**
+ * Six lines.
+ *
+ * Enough to see a paragraph while writing it, and short enough that the conversation
+ * being written *into* is still on screen above the keyboard. Beyond this the field
+ * scrolls and keeps the cursor in view, which is what a text field does everywhere
+ * else on the phone.
+ */
+private const val COMPOSER_MAX_LINES = 6
 
 /**
  * The one round control in the app.
