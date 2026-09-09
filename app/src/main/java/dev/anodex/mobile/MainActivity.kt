@@ -684,12 +684,11 @@ private fun ConnectedScaffold(
             conversations = conversations,
             projects = projects.projects,
             activeProjectId = projects.activeProjectId,
-            onOpenProject = { id ->
-                viewModel.setActiveProject(id)
-                drawerOpen = false
-                browsingProjects = false
-                destination = AppDestination.WORKSPACE
-            },
+            // No onOpenProject any more. A workspace row in the drawer expands to
+            // show its chats; switching the *active* project is global — it moves
+            // the workspace of whoever is sitting at the computer — and that belongs
+            // behind the Workspace row above, which opens the picker, rather than
+            // behind a tap whose visible job is "show me what is in here".
             activeConversationId = chat?.conversationId,
             onOpenConversation = {
                 viewModel.openConversation(it)
