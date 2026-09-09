@@ -24,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -386,6 +385,11 @@ private fun WorkspaceRow(
             // The accent marks the workspace the computer is actually in. Without
             // it, a list of folders says nothing about where a message would land.
             tint = if (active) colors.accent else colors.textFaint,
+            // There is no chevron any more — the folder is the control, and a second
+            // glyph beside it was a disclosure arrow explaining a row that already
+            // explains itself the moment it opens. The state still has to be said out
+            // loud for anyone who cannot see the indent, so the folder says it.
+            contentDescription = if (expanded) "Collapse $name" else "Expand $name",
         )
         Text(
             text = name,
@@ -393,20 +397,11 @@ private fun WorkspaceRow(
             color = if (active) colors.text else colors.textMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            // Sized to its text rather than to the row, so the count stays beside the
+            // name instead of drifting out to an edge with nothing to sit against.
             modifier = Modifier.weight(1f, fill = false),
         )
         Text(count.toString(), style = type.meta, color = colors.textFaint)
-        Spacer(Modifier.weight(1f))
-        AnodexIcon(
-            // Rotated rather than a second glyph: the icon set is a hand copy of the
-            // desktop's, and a chevron-down that does not exist over there would be
-            // a divergence for the sake of ninety degrees.
-            AnodexIcon.CHEVRON_RIGHT,
-            size = 14.dp,
-            tint = colors.textFaint,
-            modifier = Modifier.rotate(if (expanded) 90f else 0f),
-            contentDescription = if (expanded) "Collapse $name" else "Expand $name",
-        )
     }
 }
 
