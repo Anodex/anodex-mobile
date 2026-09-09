@@ -19,9 +19,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,17 +65,16 @@ fun AppDrawer(
     onSelect: (AppDestination) -> Unit,
     conversations: List<ConversationSummary>,
     /**
-     * The computer's projects, listed instead of conversations while Workspace is
-     * the open destination.
+     * The computer's projects — here to *name* the workspaces the conversations are
+     * filed under, not as a list of their own.
      *
-     * The drawer's second half answers "what am I working on", and what that means
-     * depends on which half of the app you are in: in Chat it is a conversation, in
-     * Workspace it is a project. Showing conversations under a file browser is a
-     * list of the wrong nouns.
+     * The drawer's second half answers "what am I working on", and the answer has
+     * two levels: which workspace, and which conversation inside it. A conversation
+     * carries only its project's id, so without this the groups would all be headed
+     * "Project".
      */
     projects: List<Project> = emptyList(),
     activeProjectId: String? = null,
-    onOpenProject: (String) -> Unit = {},
     activeConversationId: String?,
     onOpenConversation: (String) -> Unit,
     onNewChat: () -> Unit,
@@ -89,6 +91,17 @@ fun AppDrawer(
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+
+    // Which workspaces are open.
+    //
+    // The one the computer is in, and nothing else. The desktop can afford every
+    // group expanded; this panel has room for about eight rows before the footer,
+    // and three open workspaces push the chats off the bottom of the phone.
+    //
+    // Not persisted, deliberately. The drawer is composed when it opens, so each
+    // opening starts from where the computer actually is rather than from a shape
+    // left behind an hour ago.
+    val expanded = remember { mutableStateMapOf<String, Boolean>() }
 
     // fillMaxHeight, not fillMaxSize: the caller decides the width now, because
     // this is a panel sliding over the app rather than a screen replacing it.
@@ -145,100 +158,121 @@ fun AppDrawer(
                     .background(colors.border)
             )
 
-            Text(
-                text = "RECENT",
-                style = type.badge,
-                color = colors.textFaint,
-                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x1),
-            )
+            // No "RECENT" heading. What follows is grouped by workspace now, and a
+            // recency heading over it named the wrong axis — the desktop's sidebar
+            // names the two kinds of thing and lets order carry the rest.
+            //
+            // Only what a person started, in both sections. A scheduled run and a
+            // benchmark script write conversations exactly like a real one, so a
+            // list ordered by last write showed the computer's activity rather than
+            // the user's — one chat they had actually used, surrounded by eleven
+            // they had never opened.
+            val sections = drawerSections(conversations, projects, activeProjectId)
 
-            // Plain text, no metadata. Every one of the four apps does this, and they are
-            // right: a title is a sentence, and timestamps are noise at the moment you are
-            // scanning for something you remember writing.
-            // Both kinds, because "recent" is about what you were last doing rather
-            // than which section it belonged to. The section rows above open the full
-            // index of each; this is the shortcut back into the two or three things
-            // anybody actually returns to.
-            // Only what a person started. A scheduled run and a benchmark script write
-            // conversations exactly like a real one, so ordering by last write showed the
-            // computer's activity rather than the user's — one chat they had actually
-            // used, surrounded by eleven they had never opened.
-            val mine = conversations.filter { it.isMine }
-            val machineMade = conversations.size - mine.size
+            // What the list can actually show, against what exists. The "all
+            // conversations" row appears only when those differ, so it is never a
+            // link to the same six rows already on screen.
+            val shown = sections.workspaces.sumOf {
+                minOf(it.conversations.size, WORKSPACE_CHAT_LIMIT)
+            } + minOf(sections.chats.size, RECENT_LIMIT)
+
+            // Resolved here rather than inside the list. A LazyColumn's content block
+            // is not an ordinary composable scope, and reading the expansion map from
+            // in there is the sort of thing that works until it quietly does not.
+            val openWorkspaces = sections.workspaces
+                .filter { expanded[it.id] ?: (it.id == activeProjectId) }
+                .map { it.id }
+                .toSet()
 
             LazyColumn(Modifier.weight(1f)) {
-                val openProject = projects.firstOrNull { it.id == activeProjectId }
-                if (openProject != null) {
-                    // Named, because a project and a conversation sat in one
-                    // undifferentiated list and nothing said which was which. A folder
-                    // icon carried the whole distinction, and an icon is not a label —
-                    // it tells you something is a folder only if you already know that
-                    // is the thing being asked.
-                    item(key = "kind-workspace") { KindLabel("WORKSPACE") }
+                if (sections.workspaces.isNotEmpty()) {
+                    item(key = "kind-workspace") {
+                        KindLabel("WORKSPACE", sections.workspaces.size)
+                    }
+                }
 
-                    item(key = "project-${openProject.id}") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = Touch.minTarget)
-                                .clickable { onOpenProject(openProject.id) }
-                                .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
-                        ) {
-                            AnodexIcon(
-                                AnodexIcon.FOLDER,
-                                size = 16.dp,
-                                tint = colors.textFaint,
-                            )
+                for (workspace in sections.workspaces) {
+                    val open = workspace.id in openWorkspaces
+
+                    item(key = "workspace-${workspace.id}") {
+                        WorkspaceRow(
+                            name = workspace.name,
+                            count = workspace.conversations.size,
+                            expanded = open,
+                            active = workspace.id == activeProjectId,
+                            onClick = { expanded[workspace.id] = !open },
+                        )
+                    }
+
+                    if (!open) continue
+
+                    // Said out loud rather than left blank: a row that opens onto
+                    // nothing is indistinguishable from one that failed to load.
+                    if (workspace.conversations.isEmpty()) {
+                        item(key = "workspace-${workspace.id}-empty") {
                             Text(
-                                text = openProject.name,
-                                style = type.body,
-                                color = colors.text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                text = "No chats in this workspace yet",
+                                style = type.meta,
+                                color = colors.textFaint,
+                                modifier = Modifier.padding(
+                                    start = INDENT,
+                                    end = Spacing.x4,
+                                    top = Spacing.x2,
+                                    bottom = Spacing.x3,
+                                ),
+                            )
+                        }
+                    }
+
+                    items(
+                        workspace.conversations.take(WORKSPACE_CHAT_LIMIT),
+                        key = { it.id },
+                    ) { conversation ->
+                        ConversationRow(
+                            conversation = conversation,
+                            active = conversation.id == activeConversationId,
+                            indented = true,
+                            onClick = { onOpenConversation(conversation.id) },
+                        )
+                    }
+
+                    if (workspace.conversations.size > WORKSPACE_CHAT_LIMIT) {
+                        item(key = "workspace-${workspace.id}-more") {
+                            MoreRow(
+                                text = "All ${workspace.conversations.size} in " +
+                                    workspace.name,
+                                indented = true,
+                                onClick = onOpenAllConversations,
                             )
                         }
                     }
                 }
 
-                if (mine.isNotEmpty()) {
-                    item(key = "kind-chats") { KindLabel("CHATS") }
+                if (sections.chats.isNotEmpty()) {
+                    item(key = "kind-chats") { KindLabel("CHATS", sections.chats.size) }
                 }
 
-                items(mine.take(RECENT_LIMIT), key = { it.id }) { conversation ->
-                    Text(
-                        text = conversation.title,
-                        style = type.body,
-                        color = if (conversation.id == activeConversationId) {
-                            colors.text
-                        } else {
-                            colors.textMuted
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = Touch.minTarget)
-                            .clickable { onOpenConversation(conversation.id) }
-                            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                // Plain text, no metadata. Every one of the four apps does this, and
+                // they are right: a title is a sentence, and timestamps are noise at
+                // the moment you are scanning for something you remember writing.
+                items(sections.chats.take(RECENT_LIMIT), key = { it.id }) { conversation ->
+                    ConversationRow(
+                        conversation = conversation,
+                        active = conversation.id == activeConversationId,
+                        indented = false,
+                        onClick = { onOpenConversation(conversation.id) },
                     )
                 }
 
                 // Recents are a shortcut, not the archive. Without this the older
                 // conversations would simply have nowhere to be reached from, which
                 // the bottom bar's Chats tab used to provide.
-                if (mine.size > RECENT_LIMIT) {
+                if (sections.totalMine > shown) {
                     item(key = "all") {
-                        Text(
-                            text = "All ${mine.size} conversations",
-                            style = type.label,
-                            color = colors.accent,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = Touch.minTarget)
-                                .clickable(onClick = onOpenAllConversations)
-                                .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                        MoreRow(
+                            text = "All ${sections.totalMine} conversations",
+                            indented = false,
+                            onClick = onOpenAllConversations,
                         )
                     }
                 }
@@ -246,11 +280,11 @@ fun AppDrawer(
                 // Said out loud, because a filtered list and a lost one look identical.
                 // It also points at where those runs actually are, rather than leaving
                 // somebody to wonder whether the computer threw them away.
-                if (machineMade > 0) {
+                if (sections.machineMade > 0) {
                     item(key = "machine-made") {
                         Text(
-                            text = "$machineMade scheduled and agent runs are kept out of " +
-                                "this list. They are in Scheduler and Agents.",
+                            text = "${sections.machineMade} scheduled and agent runs are " +
+                                "kept out of this list. They are in Scheduler and Agents.",
                             style = type.meta,
                             color = colors.textFaint,
                             modifier = Modifier.padding(
@@ -300,9 +334,11 @@ fun AppDrawer(
  * would compete with the navigation it sits beneath.
  */
 @Composable
-private fun KindLabel(text: String) {
+private fun KindLabel(text: String, count: Int) {
     Text(
-        text = text,
+        // The count belongs to the heading, the way the desktop writes it. It
+        // answers "is anything hidden under here" before the group is opened.
+        text = "$text  $count",
         style = AnodexTheme.type.badge,
         color = AnodexTheme.colors.textFaint,
         modifier = Modifier.padding(
@@ -311,6 +347,115 @@ private fun KindLabel(text: String) {
             top = Spacing.x3,
             bottom = Spacing.x1,
         ),
+    )
+}
+
+/**
+ * One workspace, and the switch that shows what is filed under it.
+ *
+ * Tapping it expands rather than opens. On the desktop those are the same click,
+ * because selecting a workspace there costs nothing; here it would call
+ * `projects:set-active`, which is global — it moves the workspace of whoever is
+ * sitting at the computer, and the desktop refuses it outright mid-generation.
+ * Making the common gesture, "show me what is in here", carry that is wrong.
+ * Opening a workspace stays where it already was: the Workspace row above.
+ */
+@Composable
+private fun WorkspaceRow(
+    name: String,
+    count: Int,
+    expanded: Boolean,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.minTarget)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        AnodexIcon(
+            AnodexIcon.FOLDER,
+            size = 16.dp,
+            // The accent marks the workspace the computer is actually in. Without
+            // it, a list of folders says nothing about where a message would land.
+            tint = if (active) colors.accent else colors.textFaint,
+        )
+        Text(
+            text = name,
+            style = type.bodyEmphasis,
+            color = if (active) colors.text else colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Text(count.toString(), style = type.meta, color = colors.textFaint)
+        Spacer(Modifier.weight(1f))
+        AnodexIcon(
+            // Rotated rather than a second glyph: the icon set is a hand copy of the
+            // desktop's, and a chevron-down that does not exist over there would be
+            // a divergence for the sake of ninety degrees.
+            AnodexIcon.CHEVRON_RIGHT,
+            size = 14.dp,
+            tint = colors.textFaint,
+            modifier = Modifier.rotate(if (expanded) 90f else 0f),
+            contentDescription = if (expanded) "Collapse $name" else "Expand $name",
+        )
+    }
+}
+
+/** A conversation, indented when it is filed under a workspace. */
+@Composable
+private fun ConversationRow(
+    conversation: ConversationSummary,
+    active: Boolean,
+    indented: Boolean,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = conversation.title,
+        style = AnodexTheme.type.body,
+        color = if (active) AnodexTheme.colors.text else AnodexTheme.colors.textMuted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.minTarget)
+            .clickable(onClick = onClick)
+            .padding(
+                start = if (indented) INDENT else Spacing.x4,
+                end = Spacing.x4,
+                top = Spacing.x3,
+                bottom = Spacing.x3,
+            ),
+    )
+}
+
+/** The way out of a shortened list, into the full index. */
+@Composable
+private fun MoreRow(text: String, indented: Boolean, onClick: () -> Unit) {
+    Text(
+        text = text,
+        style = AnodexTheme.type.label,
+        color = AnodexTheme.colors.accent,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.minTarget)
+            .clickable(onClick = onClick)
+            .padding(
+                start = if (indented) INDENT else Spacing.x4,
+                end = Spacing.x4,
+                top = Spacing.x3,
+                bottom = Spacing.x3,
+            ),
     )
 }
 
@@ -439,8 +584,103 @@ private fun HostFooter(
  * This list is described a few lines up as "the two or three things anybody actually
  * returns to", and then took twelve — most of a phone screen, and more than the
  * sentence claims. Six leaves room for the shortcut to still be a shortcut.
+ *
+ * It now counts plain chats only. The workspaces above have their own budget, and a
+ * single cap over both would have let one busy workspace eat the whole panel.
  */
 private const val RECENT_LIMIT = 6
+
+/**
+ * Three, per workspace.
+ *
+ * The workspaces are a place to recognise the thing you were doing, not a second
+ * copy of the index. Three of them plus their headings is already most of what fits
+ * above the footer, and the overflow row underneath goes to the full list.
+ */
+private const val WORKSPACE_CHAT_LIMIT = 3
+
+/**
+ * How far a chat sits inside its workspace.
+ *
+ * The list's own inset, plus the folder icon, plus the gap after it — so a chat
+ * starts where its workspace's *name* starts rather than at some indent chosen by
+ * eye. The nesting is the only thing saying these chats can edit real files.
+ */
+private val INDENT = 44.dp
+
+/** A workspace as the drawer lists it: the folder, and the chats filed under it. */
+internal data class DrawerWorkspace(
+    val id: String,
+    val name: String,
+    val conversations: List<ConversationSummary>,
+)
+
+/** The drawer's lower half, once the conversations have been filed. */
+internal data class DrawerSections(
+    val workspaces: List<DrawerWorkspace>,
+    /** Only the ones belonging to no workspace. */
+    val chats: List<ConversationSummary>,
+    val totalMine: Int,
+    val machineMade: Int,
+)
+
+/**
+ * Filing the conversations the way the desktop's sidebar does.
+ *
+ * The drawer used to show one row for the active project and then every conversation
+ * under a single CHATS heading, which put a chat that edits real files in the list
+ * headed "talking, not working" — while [dev.anodex.mobile.ui.screens.groupConversations],
+ * three screens away, filed the same conversation under its workspace. Two lists in
+ * one app disagreeing about what a conversation *is*.
+ *
+ * `projectId` was already carried on the summary for exactly this, and already says
+ * so in its own doc comment. This is the drawer finally reading it.
+ */
+internal fun drawerSections(
+    conversations: List<ConversationSummary>,
+    projects: List<Project>,
+    activeProjectId: String?,
+): DrawerSections {
+    val mine = conversations.filter { it.isMine }
+    val names = projects.associate { it.id to it.name }
+
+    val byProject = mine.filter { it.projectId != null }
+        .groupBy { it.projectId!! }
+        .mapValues { (_, items) -> items.sortedByDescending { it.updatedAtEpochMs } }
+
+    val ids = buildList {
+        // The workspace the computer is in comes first, and is listed even when it
+        // holds nothing yet: it is the answer to "where would a message land", which
+        // does not stop being worth showing because no chat has been started there.
+        // Unless the phone has never heard of it either — then there is nothing to
+        // name it with, and a row reading "Project 0" is worse than no row.
+        if (activeProjectId != null && names.containsKey(activeProjectId)) add(activeProjectId)
+        val first = toSet()
+        addAll(
+            byProject.entries
+                .filter { it.key !in first }
+                .sortedByDescending { entry -> entry.value.maxOf { it.updatedAtEpochMs } }
+                .map { it.key }
+        )
+    }
+
+    return DrawerSections(
+        workspaces = ids.map { id ->
+            DrawerWorkspace(
+                id = id,
+                // Labelled by name where the phone knows it. A project added on the
+                // computer since this list was fetched still gets its own row rather
+                // than having its chats fall in with the plain ones, which would say
+                // they cannot touch files.
+                name = names[id] ?: "Project",
+                conversations = byProject[id].orEmpty(),
+            )
+        },
+        chats = mine.filter { it.projectId == null }.sortedByDescending { it.updatedAtEpochMs },
+        totalMine = mine.size,
+        machineMade = conversations.size - mine.size,
+    )
+}
 
 /**
  * How much room the list leaves under itself for the floating button.
@@ -458,10 +698,16 @@ private fun PreviewDrawer() {
             destination = AppDestination.CHAT,
             onSelect = {},
             conversations = listOf(
-                ConversationSummary("1", "Fix the orbit panel jitter", 0, 0, 6),
-                ConversationSummary("2", "Why do the scheduler tests fail?", 0, 0, 12),
-                ConversationSummary("3", "Weekend reading list", 0, 0, 3),
+                ConversationSummary("1", "Fix the orbit panel jitter", 0, 3, 6, projectId = "p1"),
+                ConversationSummary("2", "Why do the scheduler tests fail?", 0, 2, 12, projectId = "p1"),
+                ConversationSummary("3", "Weekend reading list", 0, 1, 3),
+                ConversationSummary("4", "Rewrite the save format", 0, 4, 9, projectId = "p2"),
             ),
+            projects = listOf(
+                Project("p1", "Universe Sandbox", "/home/work/universe"),
+                Project("p2", "AnodexWeb", "/home/work/web"),
+            ),
+            activeProjectId = "p1",
             activeConversationId = "1",
             onOpenConversation = {},
             onNewChat = {},
