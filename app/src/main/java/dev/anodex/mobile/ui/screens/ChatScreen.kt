@@ -45,9 +45,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -57,6 +59,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ToolActivity
@@ -126,6 +131,15 @@ fun ChatScreen(
      * is the only kind worth putting in front of them.
      */
     openers: List<String> = emptyList(),
+    /**
+     * How much floating chrome sits over the top of this screen.
+     *
+     * The header does not push the conversation down any more; it hangs over it, and
+     * the transcript runs underneath and fades out into it. This is how far down the
+     * fade reaches and how much room the list leaves so its first turn can still be
+     * scrolled clear of the bar.
+     */
+    topInset: Dp = 0.dp,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -237,9 +251,23 @@ fun ChatScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.bgApp).imePadding()) {
+    // How tall the composer and whatever is stacked above it turned out to be.
+    //
+    // Measured rather than assumed, because it is not a fixed height: the field grows
+    // to six lines, an attachment chip appears above it, and a tool approval card can
+    // sit on top of both. The transcript needs the real number to know where to stop
+    // fading and how far to let its last turn scroll.
+    var bottomInset by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+
+    Box(modifier = modifier.fillMaxSize().background(colors.bgApp).imePadding()) {
         if (messages.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = topInset, bottom = bottomInset),
+                contentAlignment = Alignment.Center,
+            ) {
                 // Not a void. Two flat planes in the mark's own violet and cyan, then
                 // the mark, then a greeting that names the *computer* — because that
                 // is the thing you came back to, and it is the one fact none of the
@@ -286,13 +314,22 @@ fun ChatScreen(
                 }
             }
         } else {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.x4),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // The fade goes on the scrolling content and nothing else, so
+                        // the pinned request and the jump-to-bottom button stay solid
+                        // while the conversation dissolves behind the bars.
+                        .fadingEdges(topInset, bottomInset)
+                        .padding(horizontal = Spacing.x4),
                     verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+                    // Room to scroll clear of the bars. Without it the first turn can
+                    // never be read in full — it stops under the header and stays there.
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        vertical = Spacing.x4
+                        top = topInset + Spacing.x4,
+                        bottom = bottomInset + Spacing.x4,
                     ),
                 ) {
                     itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
@@ -322,61 +359,111 @@ fun ChatScreen(
                                 if (index >= 0) listState.animateScrollToItem(index)
                             }
                         },
-                        modifier = Modifier.align(Alignment.TopCenter),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = topInset),
                     )
                 }
 
                 if (!atBottom) {
                     JumpToBottom(
                         onClick = { scope.launch { listState.showEndOf(messages.lastIndex) } },
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = Spacing.x3),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = bottomInset + Spacing.x3),
                     )
                 }
             }
         }
 
-        // Above the composer, because it is the thing to answer before anything else
-        // is worth typing - the run is stopped until it is.
-        if (approval != null) {
-            ToolApprovalCard(
-                approval = approval,
-                secondsRemaining = approvalSecondsRemaining,
-                onApprove = onApprove,
-                onDeny = onDeny,
-                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+        // Over the conversation rather than below it, and measuring itself so the
+        // transcript knows how much of itself is behind it.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .onSizeChanged { bottomInset = with(density) { it.height.toDp() } },
+        ) {
+            // Above the composer, because it is the thing to answer before anything else
+            // is worth typing - the run is stopped until it is.
+            if (approval != null) {
+                ToolApprovalCard(
+                    approval = approval,
+                    secondsRemaining = approvalSecondsRemaining,
+                    onApprove = onApprove,
+                    onDeny = onDeny,
+                    modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+                )
+            }
+
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = type.meta,
+                    color = colors.danger,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.x4)
+                        .clip(Radii.md)
+                        .background(colors.dangerSoft)
+                        .padding(Spacing.x3),
+                )
+            }
+
+            Composer(
+                draft = draft,
+                sending = sending,
+                onDraftChange = { draft = it },
+                onSend = {
+                    onSend(draft)
+                    draft = ""
+                },
+                onClearDraft = { draft = "" },
+                onStop = onStop,
+                attachments = pendingAttachments,
+                onAttach = onAttach,
+                onRemoveAttachment = onRemoveAttachment,
             )
         }
-
-        if (error != null) {
-            Text(
-                text = error,
-                style = type.meta,
-                color = colors.danger,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.x4)
-                    .clip(Radii.md)
-                    .background(colors.dangerSoft)
-                    .padding(Spacing.x3),
-            )
-        }
-
-        Composer(
-            draft = draft,
-            sending = sending,
-            onDraftChange = { draft = it },
-            onSend = {
-                onSend(draft)
-                draft = ""
-            },
-            onClearDraft = { draft = "" },
-            onStop = onStop,
-            attachments = pendingAttachments,
-            onAttach = onAttach,
-            onRemoveAttachment = onRemoveAttachment,
-        )
     }
 }
+
+/**
+ * Dissolve the top and bottom of whatever this draws, over the given distances.
+ *
+ * The conversation runs under the floating bars rather than stopping at them, and a
+ * line of text sliced in half by an edge looks like a rendering fault. Fading it out
+ * instead says the same thing — there is more up there — without drawing anything to
+ * say it.
+ *
+ * `DstIn` multiplies what is already drawn by the alpha of this rectangle, so black
+ * keeps a pixel and transparent removes it. It needs its own layer to blend against,
+ * which is what `CompositingStrategy.Offscreen` buys; without it the blend would
+ * reach the whole canvas and take the page with it.
+ */
+private fun Modifier.fadingEdges(top: Dp, bottom: Dp): Modifier =
+    this
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+
+            val height = size.height
+            if (height <= 0f) return@drawWithContent
+
+            val topStop = (top.toPx() / height).coerceIn(0f, 1f)
+            val bottomStop = (1f - bottom.toPx() / height).coerceIn(topStop, 1f)
+            if (topStop == 0f && bottomStop == 1f) return@drawWithContent
+
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    topStop to Color.Black,
+                    bottomStop to Color.Black,
+                    1f to Color.Transparent,
+                ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
 
 @Composable
 private fun MessageRow(
@@ -1146,30 +1233,18 @@ private fun Composer(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    val border = colors.border
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            // The app's own ground, not a bar of its own.
+            // Nothing behind it at all — no band, no line.
             //
-            // This was a filled `bgSurface` band, which put a full-width lighter
-            // rectangle behind a rounded control — a square behind a pill, with the
-            // darker system navigation strip below it. Three stacked rectangles to
-            // separate two things.
+            // It was a filled `bgSurface` rectangle, then briefly a hairline, and now
+            // the conversation itself runs underneath and fades out into it. That
+            // fade is the separation, and it is a better one than a rule: it says
+            // there is more up there rather than drawing a line and stopping.
             //
-            // A one-pixel line does the whole job, and the same one the header uses.
-            // The field already reads as a control: it has an edge that lifts to the
-            // accent the moment there is something to send. It does not also need a
-            // plinth to stand on.
-            .drawBehind {
-                drawLine(
-                    color = border,
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
-                    strokeWidth = 1.dp.toPx(),
-                )
-            }
+            // The field still reads as a control because it has an edge that lifts to
+            // the accent the moment there is something to send.
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
