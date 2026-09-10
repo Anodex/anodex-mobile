@@ -102,7 +102,7 @@ fun SkeletonBar(
  * recomposition — which is motion, arriving through the back door, in the one
  * composable that has just finished explaining why it does not move.
  */
-private fun barWidth(row: Int, line: Int, lines: Int): Float {
+internal fun barWidth(row: Int, line: Int, lines: Int): Float {
     if (line == 0) {
         // Titles: long, but not all the same long.
         return listOf(0.72f, 0.55f, 0.84f, 0.63f)[row % 4]
