@@ -24,6 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -129,10 +132,20 @@ fun AppDrawer(
                     Modifier
                         .size(Touch.minTarget)
                         .clip(Radii.md)
-                        .clickable(onClick = onClose),
+                        .clickable(role = Role.Button, onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("✕", style = type.body, color = colors.textFaint)
+                    // The glyph is the picture of the control, not its name. Left as
+                    // it was, a screen reader reads out the character — "multiplication
+                    // x" — which is worse than silence.
+                    Text(
+                        text = "✕",
+                        style = type.body,
+                        color = colors.textFaint,
+                        modifier = Modifier.clearAndSetSemantics {
+                            contentDescription = "Close the menu"
+                        },
+                    )
                 }
             }
 
