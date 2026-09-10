@@ -143,3 +143,26 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
 }
+
+/**
+ * Where the Compose compiler writes down what it decided about stability.
+ *
+ * Off unless asked for, because a normal build should not pay for a diagnostic.
+ *
+ * `AGENTS.md` records that unstable `List` parameters once made the chat transcript
+ * stutter. Checking whether that is still true would ordinarily mean profiling on a
+ * device, which nobody here can do — there is no local Android toolchain. This is
+ * the way to find out without one: the compiler already knows which composables it
+ * could not make skippable, and this asks it to write that down.
+ *
+ *     ./gradlew :app:compileReleaseKotlin -PcomposeReports=true
+ *
+ * `.github/workflows/stability.yml` runs exactly that on demand and keeps the
+ * result as an artifact, so the answer is a button rather than a guess.
+ */
+composeCompiler {
+    if (project.findProperty("composeReports") == "true") {
+        reportsDestination = layout.buildDirectory.dir("compose-reports")
+        metricsDestination = layout.buildDirectory.dir("compose-metrics")
+    }
+}
