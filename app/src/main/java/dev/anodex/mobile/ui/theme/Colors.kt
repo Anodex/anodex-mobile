@@ -73,6 +73,20 @@ data class AnodexColors(
     val isDark: Boolean,
 ) {
     val series: List<Color> get() = listOf(series1, series2, series3, series4)
+
+    /**
+     * The wash a control wears while a finger is on it. See [dev.anodex.mobile.ui.theme.AnodexPress].
+     *
+     * Derived rather than declared, because there is exactly one right answer for a
+     * given palette and no theme should be able to get it wrong: the page's own text
+     * colour, which is a near-white on Midnight and a warm charcoal on Light, at an
+     * alpha low enough to read as a press and not as a selection.
+     *
+     * Light needs less of it. The same alpha of charcoal on cream is a heavier mark
+     * than that alpha of near-white on near-black, because the light theme's surfaces
+     * sit much closer to the tint than the dark theme's do.
+     */
+    val pressTint: Color get() = text.copy(alpha = if (isDark) 0.09f else 0.06f)
 }
 
 /**

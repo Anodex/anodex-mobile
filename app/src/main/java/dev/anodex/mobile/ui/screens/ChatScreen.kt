@@ -533,7 +533,11 @@ private fun MessageRow(
                                 .padding(bottom = Spacing.x2)
                                 .then(
                                     if (openable != null) {
-                                        Modifier.clickable { viewing = openable }
+                                        // Clipped first so the press wash is the tile,
+                                        // not a square behind its rounded corners.
+                                        Modifier
+                                            .clip(Radii.lg)
+                                            .clickable { viewing = openable }
                                     } else {
                                         Modifier
                                     },
@@ -1102,7 +1106,14 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            modifier = Modifier
+                .fillMaxWidth()
+                // A row of 14dp icon and 13sp label came out around twenty dp tall —
+                // under half the floor everything else in this app clears, on a
+                // control that is genuinely tapped.
+                .heightIn(min = Touch.minTarget)
+                .clip(Radii.md)
+                .clickable { expanded = !expanded },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {

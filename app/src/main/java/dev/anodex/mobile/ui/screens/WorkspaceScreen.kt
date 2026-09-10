@@ -120,6 +120,11 @@ fun WorkspaceScreen(
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = Touch.minTarget)
+                        // Clipped before it is made tappable, so the press wash takes
+                        // the control's shape instead of a bare rectangle around the
+                        // words. Every rounded thing in this app that answers a finger
+                        // has to do this — see AnodexPress.
+                        .clip(Radii.md)
                         .clickable(onClick = onBrowseProjects)
                         .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
                 )
@@ -134,6 +139,7 @@ fun WorkspaceScreen(
                         color = colors.accent,
                         modifier = Modifier
                             .heightIn(min = Touch.minTarget)
+                            .clip(Radii.md)
                             .clickable(onClick = onNewChatHere)
                             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
                     )
