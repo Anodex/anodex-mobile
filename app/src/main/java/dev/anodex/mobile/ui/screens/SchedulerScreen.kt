@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -217,7 +218,7 @@ private fun Composer(
             value = draft,
             onValueChange = onDraftChanged,
             textStyle = type.body.copy(color = colors.text),
-            cursorBrush = SolidColor(colors.accent),
+            cursorBrush = SolidColor(colors.accentInk),
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { inner ->
                 if (draft.isEmpty()) {
@@ -237,7 +238,7 @@ private fun Composer(
             Text(
                 text = listOfNotNull(parsed.label, parsed.note).joinToString(" · "),
                 style = type.meta,
-                color = colors.success,
+                color = colors.successInk,
             )
         } else if (draft.isNotBlank()) {
             Text(
@@ -263,13 +264,14 @@ private fun Composer(
                     .size(Touch.minTarget)
                     .clip(Radii.pill)
                     .background(if (ready) colors.accent else colors.bgElevated)
-                    .clickable(enabled = ready, onClick = onSend),
+                    .clickable(enabled = ready, role = Role.Button, onClick = onSend),
                 contentAlignment = Alignment.Center,
             ) {
                 AnodexIcon(
                     AnodexIcon.SEND,
                     size = 16.dp,
                     tint = if (ready) colors.textOnAccent else colors.textFaint,
+                    contentDescription = "Create the task",
                 )
             }
         }
@@ -321,7 +323,7 @@ private fun StarterCard(starter: Starter, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
-            AnodexIcon(starter.icon, size = 16.dp, tint = colors.accent)
+            AnodexIcon(starter.icon, size = 16.dp, tint = colors.accentInk)
             Text(
                 text = starter.title,
                 style = type.bodyEmphasis,
@@ -429,9 +431,9 @@ private fun statusColour(task: ScheduledTask, colors: dev.anodex.mobile.ui.theme
         !task.enabled -> colors.textFaint
         task.lastRunStatus == null -> colors.textFaint
         task.lastRunStatus.equals("ok", ignoreCase = true) ||
-            task.lastRunStatus.equals("success", ignoreCase = true) -> colors.success
-        task.lastRunStatus.equals("skipped", ignoreCase = true) -> colors.warn
-        else -> colors.danger
+            task.lastRunStatus.equals("success", ignoreCase = true) -> colors.successInk
+        task.lastRunStatus.equals("skipped", ignoreCase = true) -> colors.warnInk
+        else -> colors.dangerInk
     }
 
 @Preview(name = "Scheduler", showBackground = true, backgroundColor = 0xFF0C0C0C)

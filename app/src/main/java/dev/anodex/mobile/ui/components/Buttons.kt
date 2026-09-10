@@ -90,6 +90,6 @@ fun DangerButton(
             .padding(horizontal = Spacing.x6),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = AnodexTheme.type.bodyEmphasis, color = colors.danger)
+        Text(label, style = AnodexTheme.type.bodyEmphasis, color = colors.dangerInk)
     }
 }

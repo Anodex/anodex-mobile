@@ -93,7 +93,7 @@ fun ToolRow(
             // A path that can be opened is marked as such by colour alone. An icon
             // per row would put a column of chevrons down a transcript that is
             // mostly prose.
-            color = if (path != null) colors.accent else colors.textFaint,
+            color = if (path != null) colors.accentInk else colors.textFaint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -121,9 +121,9 @@ private fun StatusMark(status: ToolActivity.Status) {
     val reducedMotion = LocalReducedMotion.current
 
     val colour = when (status) {
-        ToolActivity.Status.RUNNING -> colors.accent
-        ToolActivity.Status.DONE -> colors.success
-        ToolActivity.Status.FAILED -> colors.danger
+        ToolActivity.Status.RUNNING -> colors.accentInk
+        ToolActivity.Status.DONE -> colors.successInk
+        ToolActivity.Status.FAILED -> colors.dangerInk
     }
 
     val pulse = rememberInfiniteTransition(label = "toolPulse")

@@ -76,7 +76,7 @@ fun EmptyState(
                     size = 28.dp,
                     // Faint. It is a mark for the eye to land on, not an illustration,
                     // and an empty screen is not an occasion.
-                    tint = if (tone == EmptyTone.PROBLEM) colors.danger else colors.textFaint,
+                    tint = if (tone == EmptyTone.PROBLEM) colors.dangerInk else colors.textFaint,
                 )
             }
 
@@ -84,7 +84,7 @@ fun EmptyState(
                 text = headline,
                 style = type.bodyEmphasis,
                 color = when (tone) {
-                    EmptyTone.PROBLEM -> colors.danger
+                    EmptyTone.PROBLEM -> colors.dangerInk
                     else -> colors.textMuted
                 },
                 textAlign = TextAlign.Center,
@@ -130,7 +130,7 @@ fun InlineProblem(text: String, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AnodexIcon(AnodexIcon.INFO, size = 16.dp, tint = colors.danger)
-        Text(text, style = AnodexTheme.type.meta, color = colors.danger)
+        AnodexIcon(AnodexIcon.INFO, size = 16.dp, tint = colors.dangerInk)
+        Text(text, style = AnodexTheme.type.meta, color = colors.dangerInk)
     }
 }
