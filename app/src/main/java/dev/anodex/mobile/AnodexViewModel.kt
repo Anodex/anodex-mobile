@@ -606,10 +606,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private fun refreshPersonalities() {
         val client = personalityClient ?: return
         viewModelScope.launch {
-            // Failure leaves the list empty and Settings says it is waiting. The
-            // personalities are a nicety, never a reason to fail a connection.
-            _personalities.value = runCatching { client.state() }
-                .getOrDefault(PersonalityState(null, emptyList()))
+            // Never a reason to fail a connection — but "the list is empty" and
+            // "the list did not arrive" are different things, and blanking it said
+            // the first when it meant the second. Keeps what it had; a stale
+            // personality list is honest in a way an empty one is not, because
+            // those personalities do still exist on the computer.
+            runCatching { client.state() }.onSuccess { _personalities.value = it }
         }
     }
 
@@ -780,21 +782,27 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _updateDismissed.value = true
     }
 
-    private val _unreadEmail = MutableStateFlow(0)
+    private val _unreadEmail = MutableStateFlow<Int?>(null)
 
     /**
-     * Unread threads, for the tab badge.
+     * Unread threads, for the tab badge. **Null means the count is not known.**
      *
      * Fetched on connect rather than when the Email tab is opened, because a badge
      * that only appears once you have already looked is telling you something you
      * necessarily already know.
+     *
+     * Nullable rather than defaulting to zero, which is what it used to do. Zero is
+     * a claim — "there is nothing waiting for you" — and a request that never
+     * arrived is not evidence for it. That claim was reaching two places at once:
+     * the drawer's badge, and the opener on an empty chat screen offering to sweep
+     * the mail. Not knowing shows neither, which is the truthful version of both.
      */
-    val unreadEmail: StateFlow<Int> = _unreadEmail.asStateFlow()
+    val unreadEmail: StateFlow<Int?> = _unreadEmail.asStateFlow()
 
     private fun refreshUnreadEmail() {
         val client = emailClient ?: return
         viewModelScope.launch {
-            _unreadEmail.value = runCatching { client.unreadCount() }.getOrDefault(0)
+            _unreadEmail.value = runCatching { client.unreadCount() }.getOrNull()
         }
     }
 
@@ -958,8 +966,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun refreshProjects() {
         val client = projectClient ?: return
         viewModelScope.launch {
-            _projects.value = runCatching { client.state() }
-                .getOrDefault(ProjectsState(emptyList(), null))
+            runCatching { client.state() }
+                .onSuccess {
+                    _projects.value = it
+                    _projectError.value = null
+                }
+                // Keeps whatever it had and says what went wrong, instead of
+                // replacing the list with an empty one. An empty project list is
+                // the sentence "no projects on that computer yet" — a statement
+                // about the machine's disk, made on the strength of a request that
+                // did not arrive.
+                //
+                // `_projectError` already existed and was already wired to the
+                // picker for *changing* a project. It was simply never set when
+                // *reading* them failed, which is the case that produces the
+                // confident wrong sentence.
+                .onFailure { _projectError.value = it.message ?: "Could not read your projects." }
         }
     }
 
@@ -1009,11 +1031,33 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * do still exist on the computer, and the connection banner already says the
      * link is down.
      */
+    private val _conversationsError = MutableStateFlow<String?>(null)
+
+    /**
+     * Why the conversation list is empty, when the reason is not "you have none".
+     *
+     * The one screen in the app that had no way to say this, and the one it matters
+     * on most: Conversations is where the app opens. A first read that failed left
+     * it showing "No conversations yet. Start one." — an invitation, phrased as a
+     * fact about the user's history, produced by a request that never landed.
+     *
+     * Only meaningful alongside an empty list. A failed *refresh* that still has
+     * conversations to show keeps showing them; the list is stale, not wrong.
+     */
+    val conversationsError: StateFlow<String?> = _conversationsError.asStateFlow()
+
     fun refreshConversations() {
         val reader = conversationReader ?: return
         viewModelScope.launch {
             _loadingConversations.value = true
-            runCatching { reader.list() }.onSuccess { _conversations.value = it }
+            runCatching { reader.list() }
+                .onSuccess {
+                    _conversations.value = it
+                    _conversationsError.value = null
+                }
+                .onFailure {
+                    _conversationsError.value = it.message ?: "Could not read your conversations."
+                }
             _loadingConversations.value = false
         }
     }

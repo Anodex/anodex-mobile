@@ -423,6 +423,7 @@ private fun ConnectedScaffold(
     val openFile by viewModel.openFile.collectAsStateWithLifecycle()
     val openFileContent by viewModel.openFileContent.collectAsStateWithLifecycle()
     val unreadEmail by viewModel.unreadEmail.collectAsStateWithLifecycle()
+    val conversationsError by viewModel.conversationsError.collectAsStateWithLifecycle()
     val personalityState by viewModel.personalities.collectAsStateWithLifecycle()
 
     val personalityBusy by viewModel.personalityBusy.collectAsStateWithLifecycle()
@@ -623,6 +624,7 @@ private fun ConnectedScaffold(
         ConversationsScreen(
             conversations = conversations,
             loading = false,
+            error = conversationsError,
             activeId = chat?.conversationId,
             onOpen = {
                 viewModel.openConversation(it)
@@ -745,7 +747,7 @@ private fun ConnectedScaffold(
                 showingSettings = true
             },
             agentBadge = waitingAgents,
-            emailBadge = unreadEmail,
+            emailBadge = unreadEmail ?: 0,
             // The width belongs to the panel that slides it in now, so that the two
             // panels cannot drift apart: "as far as the left menu" is the rule for
             // the files side, and a rule stated in two places is a rule that will
@@ -1122,14 +1124,18 @@ private const val DRAWER_WIDTH_FRACTION = 0.86f
  */
 private fun openersFor(
     projectName: String?,
-    unreadEmail: Int,
+    /** Null when the mailbox has not been reached, which is not the same as none. */
+    unreadEmail: Int?,
     lastTask: ScheduledTask?,
     waitingAgents: Int,
 ): List<String> = buildList {
     if (waitingAgents > 0) {
         add("What is the agent run waiting on?")
     }
-    if (unreadEmail > 0) {
+    // Offered only on a count the app actually has. Suggesting "which of my unread
+    // emails need a reply" on the strength of a read that failed is an opener that
+    // fails the moment it is tapped.
+    if (unreadEmail != null && unreadEmail > 0) {
         add(
             if (unreadEmail == 1) {
                 "What is the unread email about?"
