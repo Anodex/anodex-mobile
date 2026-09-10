@@ -21,8 +21,19 @@ android {
         // the app could not say which build it was and nothing could tell whether an
         // APK was newer than the one already installed. Both are prerequisites for an
         // update check.
-        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 58
-        versionName = (project.findProperty("appVersionName") as String?) ?: "0.58.0"
+        // `major * 10000 + minor * 100 + patch`. 0.58.1 is 5801, 0.59.0 is 5900.
+        //
+        // It used to be the minor on its own — 0.58.0 was 58 — which had no room for
+        // a patch in it. 0.58.1 would have had to keep code 58, and Android compares
+        // *only* the code when deciding whether an install is an upgrade, so the
+        // release would have appeared in the in-app check and then refused to
+        // install: precisely the loop the release script was written to prevent,
+        // arriving through the version scheme instead of the wrong bytes.
+        //
+        // Derived rather than counted, so it cannot drift from the name it is meant
+        // to describe, and monotonic for every ordering of releases after it.
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 5801
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.58.1"
     }
 
     /**
