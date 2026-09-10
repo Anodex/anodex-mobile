@@ -13,16 +13,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import dev.anodex.mobile.chat.Project
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.InlineProblem
+import dev.anodex.mobile.ui.components.ScreenScaffold
 import dev.anodex.mobile.ui.components.SecondaryButton
+import dev.anodex.mobile.ui.components.fadingEdges
+import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
-import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 
@@ -51,72 +53,73 @@ fun ProjectPickerScreen(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Column(modifier = modifier.fillMaxSize().background(colors.bgApp)) {
-        Column(
-            modifier = Modifier.padding(Spacing.x4),
-            verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-        ) {
-            Text("Project", style = type.heading, color = colors.text)
-            Text(
-                text = "This is what Anodex reads and writes. Changing it also changes it for " +
-                    "whoever is at the computer.",
-                style = type.meta,
-                color = colors.textMuted,
+    ScreenScaffold(
+        title = "Project",
+        modifier = modifier,
+        subtitle = "This is what Anodex reads and writes. Changing it also changes it for " +
+            "whoever is at the computer.",
+    ) { topInset ->
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                if (projects.isEmpty()) {
+                    EmptyState(
+                        headline = "No projects on that computer yet",
+                        detail = "They are created at the desk.",
+                        icon = AnodexIcon.FOLDER,
+                        modifier = Modifier.padding(top = topInset),
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .fadingEdges(topInset, 0.dp),
+                        contentPadding = listPadding(topInset, horizontal = 0.dp, bottom = Spacing.x2),
+                    ) {
+                        // Said above the list rather than instead of it. Choosing a
+                        // project is still possible when the last attempt failed, and
+                        // it is usually the way out of the failure.
+                        if (error != null) {
+                            item(key = "problem") {
+                                InlineProblem(
+                                    text = error,
+                                    modifier = Modifier.padding(
+                                        start = Spacing.x4,
+                                        end = Spacing.x4,
+                                        bottom = Spacing.x2,
+                                    ),
+                                )
+                            }
+                        }
+
+                        item(key = "none") {
+                            ProjectRow(
+                                name = "No project",
+                                detail = "Just chat — no files, no workspace",
+                                active = activeProjectId == null,
+                                enabled = !busy,
+                                onClick = { onSelect(null) },
+                            )
+                        }
+
+                        items(projects, key = { it.id }) { project ->
+                            ProjectRow(
+                                name = project.name,
+                                detail = project.folderPath,
+                                active = project.id == activeProjectId,
+                                enabled = !busy,
+                                onClick = { onSelect(project.id) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            SecondaryButton(
+                label = "Close",
+                onClick = onClose,
+                modifier = Modifier.padding(Spacing.x4),
             )
         }
-
-        if (error != null) {
-            Text(
-                text = error,
-                style = type.body,
-                color = colors.warn,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.x4)
-                    .clip(Radii.md)
-                    .background(colors.warnSoft)
-                    .padding(Spacing.x4),
-            )
-        }
-
-        if (projects.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "No projects on that computer yet. They are created at the desk.",
-                    style = type.body,
-                    color = colors.textFaint,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(Spacing.x6),
-                )
-            }
-        } else {
-            LazyColumn(Modifier.weight(1f)) {
-                item {
-                    ProjectRow(
-                        name = "No project",
-                        detail = "Just chat — no files, no workspace",
-                        active = activeProjectId == null,
-                        enabled = !busy,
-                        onClick = { onSelect(null) },
-                    )
-                }
-                items(projects, key = { it.id }) { project ->
-                    ProjectRow(
-                        name = project.name,
-                        detail = project.folderPath,
-                        active = project.id == activeProjectId,
-                        enabled = !busy,
-                        onClick = { onSelect(project.id) },
-                    )
-                }
-            }
-        }
-
-        SecondaryButton(
-            label = "Close",
-            onClick = onClose,
-            modifier = Modifier.padding(Spacing.x4),
-        )
     }
 }
 
