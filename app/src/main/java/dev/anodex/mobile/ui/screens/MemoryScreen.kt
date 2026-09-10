@@ -1,14 +1,11 @@
 package dev.anodex.mobile.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,11 +19,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.ui.components.AnodexCard
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.EmptyTone
+import dev.anodex.mobile.ui.components.ListSkeleton
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -57,84 +57,71 @@ fun MemoryScreen(
     error: String? = null,
     onForget: ((MemoryEntry) -> Unit)? = null,
 ) {
-    val colors = AnodexTheme.colors
-    val type = AnodexTheme.type
-
-    Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        Text(
-            text = "Memory",
-            style = type.heading,
-            color = colors.text,
-            modifier = Modifier.padding(
-                start = Spacing.x4,
-                end = Spacing.x4,
-                top = Spacing.x4,
-            ),
-        )
-
-        // Where it lives is the sentence worth putting on this screen. It is the
-        // one real difference between this and everything else on the phone, and
-        // this is where somebody wonders about it.
+    // No title of its own, and no floating chrome. This is a section of Settings
+    // rather than a destination — Settings already names it in the header above,
+    // and a screen that titles itself inside something that has just titled it says
+    // "Memory" twice.
+    Column(modifier.fillMaxSize()) {
+        // Where it lives is the sentence worth putting here. It is the one real
+        // difference between this and everything else on the phone, and this is
+        // where somebody wonders about it.
         Text(
             text = "Kept on your computer. Never leaves it.",
-            style = type.meta,
-            color = colors.textFaint,
+            style = AnodexTheme.type.meta,
+            color = AnodexTheme.colors.textFaint,
             modifier = Modifier.padding(
                 start = Spacing.x4,
                 end = Spacing.x4,
-                top = Spacing.x1,
+                top = Spacing.x2,
                 bottom = Spacing.x3,
             ),
         )
 
-        if (entries.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-                    modifier = Modifier.padding(Spacing.x6),
-                ) {
-                    Text(
-                        text = when {
-                            loading -> "Asking your computer…"
-                            error != null -> "Could not read your memory"
-                            else -> "Nothing remembered yet"
-                        },
-                        style = type.bodyEmphasis,
-                        color = if (error != null) colors.danger else colors.textMuted,
-                        textAlign = TextAlign.Center,
-                    )
-                    if (!loading) {
-                        Text(
-                            text = error
-                                ?: "Anodex writes these as it learns them, at the computer.",
-                            style = type.meta,
-                            color = colors.textFaint,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
+        when {
+            // The shape of the answer while the answer is on its way, rather than a
+            // blank page and then a list arriving in one frame.
+            loading && entries.isEmpty() -> ListSkeleton(
+                rows = 3,
+                lines = 2,
+                caption = "Asking your computer…",
+                modifier = Modifier.padding(horizontal = Spacing.x3),
+            )
+
+            error != null -> EmptyState(
+                headline = "Could not read your memory",
+                detail = error,
+                tone = EmptyTone.PROBLEM,
+                icon = AnodexIcon.MEMORY,
+            )
+
+            entries.isEmpty() -> EmptyState(
+                headline = "Nothing remembered yet",
+                detail = "Anodex writes these as it learns them, at the computer.",
+                icon = AnodexIcon.MEMORY,
+            )
+
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = Spacing.x3,
+                    end = Spacing.x3,
+                    bottom = Spacing.x8,
+                ),
+                verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+            ) {
+                items(entries, key = { it.id }) { entry ->
+                    EntryCard(entry, onForget)
                 }
-            }
-            return@Column
-        }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(Spacing.x3),
-            verticalArrangement = Arrangement.spacedBy(Spacing.x3),
-        ) {
-            items(entries, key = { it.id }) { entry ->
-                EntryCard(entry, onForget)
-            }
-
-            item(key = "footnote") {
-                Text(
-                    text = "New memories are written at the computer. From here you can " +
-                        "read them and take one back.",
-                    style = type.meta,
-                    color = colors.textFaint,
-                    modifier = Modifier.padding(Spacing.x2),
-                )
+                item(key = "footnote") {
+                    Text(
+                        text = "New memories are written at the computer. From here you can " +
+                            "read them and take one back.",
+                        style = AnodexTheme.type.meta,
+                        color = AnodexTheme.colors.textFaint,
+                        modifier = Modifier.padding(Spacing.x2),
+                    )
+                }
             }
         }
     }
@@ -149,14 +136,7 @@ private fun EntryCard(entry: MemoryEntry, onForget: ((MemoryEntry) -> Unit)?) {
     // single shared flag would arm every row at once.
     var confirming by remember(entry.id) { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(Radii.xl)
-            .background(colors.bgSurface)
-            .padding(Spacing.x4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-    ) {
+    AnodexCard {
         Text(entry.text, style = type.body, color = colors.text)
 
         Row(
@@ -177,7 +157,7 @@ private fun EntryCard(entry: MemoryEntry, onForget: ((MemoryEntry) -> Unit)?) {
                 Text(
                     text = if (confirming) "Tap again to forget" else "Forget",
                     style = type.label,
-                    color = if (confirming) colors.danger else colors.textMuted,
+                    color = if (confirming) colors.dangerInk else colors.textMuted,
                     modifier = Modifier
                         .heightIn(min = Touch.minTarget)
                         .clip(Radii.md)

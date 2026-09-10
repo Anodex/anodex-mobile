@@ -3,7 +3,6 @@ package dev.anodex.mobile.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,12 +21,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ConversationSummary
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.ListSkeleton
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.fadingEdges
+import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.components.SearchField
 import dev.anodex.mobile.ui.components.matchesQuery
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -76,76 +80,81 @@ fun ConversationsScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.bgApp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("Conversations", style = type.heading, color = colors.text)
-            PrimaryButton(label = "New", onClick = onNewChat)
-        }
-
-        // Offered once there are enough of them to be worth searching. Below that
-        // the field is a control taking up room above a list you can already see
-        // all of.
-        if (conversations.size >= SEARCH_WORTH_IT) {
-            SearchField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = "Search conversations",
-                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x1),
-            )
-        }
-
-        if (query.isNotBlank() && shown.isEmpty()) {
-            Text(
-                text = "Nothing matches “$query”.",
-                style = type.meta,
-                color = colors.textFaint,
-                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x4),
-            )
-        }
-
-        // Which project the *computer* has open — for the workspace and for agent
-        // runs, not for the chat below.
-        //
-        // This used to say what a turn would run against, and the phone made that
-        // true by filing every new chat into the active project. That was wrong: a
-        // plain chat belongs to no project, only the workspace and agents touch work
-        // files, and a chat that quietly acquired one could edit real files because
-        // of a setting changed for an unrelated reason.
-        if (onChooseProject != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = Touch.minTarget)
-                    .clickable(onClick = onChooseProject)
-                    .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-            ) {
-                Text("Computer is working in", style = type.meta, color = colors.textFaint)
-                Text(
-                    text = activeProjectName ?: "no project",
-                    style = type.label,
-                    color = if (activeProjectName != null) colors.accent else colors.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+    ScreenScaffold(
+        title = "Conversations",
+        modifier = modifier,
+        trailing = { PrimaryButton(label = "New", onClick = onNewChat) },
+        beneath = {
+            // Offered once there are enough of them to be worth searching. Below that
+            // the field is a control taking up room above a list you can already see
+            // all of.
+            if (conversations.size >= SEARCH_WORTH_IT) {
+                SearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = "Search conversations",
+                    modifier = Modifier.padding(top = Spacing.x2),
                 )
             }
-        }
 
+            // Which project the *computer* has open — for the workspace and for agent
+            // runs, not for the chat below.
+            //
+            // This used to say what a turn would run against, and the phone made that
+            // true by filing every new chat into the active project. That was wrong: a
+            // plain chat belongs to no project, only the workspace and agents touch work
+            // files, and a chat that quietly acquired one could edit real files because
+            // of a setting changed for an unrelated reason.
+            if (onChooseProject != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = Touch.minTarget)
+                        .clip(Radii.md)
+                        .clickable(onClick = onChooseProject),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                ) {
+                    Text("Computer is working in", style = type.meta, color = colors.textFaint)
+                    Text(
+                        text = activeProjectName ?: "no project",
+                        style = type.label,
+                        color = if (activeProjectName != null) colors.accentInk else colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        },
+    ) { topInset ->
         when {
-            loading && conversations.isEmpty() ->
-                Centred("Reading from your computer…", colors.textFaint)
+            loading && conversations.isEmpty() -> ListSkeleton(
+                rows = 5,
+                lines = 2,
+                caption = "Reading from your computer…",
+                modifier = Modifier.padding(listPadding(topInset)),
+            )
 
-            conversations.isEmpty() ->
-                Centred("No conversations yet. Start one.", colors.textFaint)
+            conversations.isEmpty() -> EmptyState(
+                headline = "No conversations yet",
+                detail = "Start one and it will be here — and on the computer.",
+                icon = AnodexIcon.CHAT,
+                modifier = Modifier.padding(top = topInset),
+                action = { PrimaryButton(label = "Start one", onClick = onNewChat) },
+            )
 
-            else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+            query.isNotBlank() && shown.isEmpty() -> EmptyState(
+                headline = "Nothing matches “$query”.",
+                icon = AnodexIcon.SEARCH,
+                modifier = Modifier.padding(top = topInset),
+            )
+
+            else -> LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .fadingEdges(topInset, 0.dp),
+                contentPadding = listPadding(topInset, horizontal = 0.dp),
+            ) {
                 // Flat while searching, for the same reason the workspace list is:
                 // results are an answer to a question, and four matches split across
                 // three project headings and an "Active now" is more structure than
@@ -259,7 +268,7 @@ private fun ProjectTag(name: String) {
     Text(
         text = name,
         style = AnodexTheme.type.badge,
-        color = colors.accent,
+        color = colors.accentInk,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
@@ -342,19 +351,6 @@ internal fun groupConversations(
  * conversation by scrolling stops being reasonable.
  */
 private const val SEARCH_WORTH_IT = 12
-
-@Composable
-private fun Centred(text: String, color: androidx.compose.ui.graphics.Color) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = text,
-            style = AnodexTheme.type.body,
-            color = color,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(Spacing.x6),
-        )
-    }
-}
 
 private const val PREVIEW_NOW = 1_757_000_000_000L
 

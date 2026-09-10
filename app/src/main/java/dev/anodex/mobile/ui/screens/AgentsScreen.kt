@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,7 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -35,7 +34,15 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Plan
 import dev.anodex.mobile.agents.PlanStep
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.EmptyTone
+import dev.anodex.mobile.ui.components.InlineProblem
+import dev.anodex.mobile.ui.components.ListSkeleton
+import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.fadingEdges
+import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.StatusDot
@@ -89,100 +96,84 @@ fun AgentsScreen(
     var goal by rememberSaveable { mutableStateOf("") }
     var lookOnly by rememberSaveable { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.bgApp)) {
-        Text(
-            text = "Agent runs",
-            style = type.heading,
-            color = colors.text,
-            modifier = Modifier.padding(
-                start = Spacing.x4,
-                end = Spacing.x4,
-                top = Spacing.x4,
-                bottom = Spacing.x2,
-            ),
-        )
-
-        if (error != null) {
-            Text(
-                text = error,
-                style = type.meta,
-                color = colors.danger,
-                modifier = Modifier
-                    .padding(horizontal = Spacing.x3)
-                    .fillMaxWidth()
-                    .clip(Radii.lg)
-                    .background(colors.dangerSoft)
-                    .padding(Spacing.x3),
-            )
-        }
-
-        when {
-            loading && runs.isEmpty() -> Centred("Reading from your computer…", colors.textFaint)
-
-            runs.isEmpty() -> Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-                    modifier = Modifier.padding(Spacing.x6),
-                ) {
-                    Text(
-                        text = "Nothing running",
-                        style = type.bodyEmphasis,
-                        color = colors.textMuted,
-                        textAlign = TextAlign.Center,
+    ScreenScaffold(
+        title = "Agent runs",
+        modifier = modifier,
+        subtitle = projectName?.let { "Working in $it" },
+    ) { topInset ->
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                when {
+                    loading && runs.isEmpty() -> ListSkeleton(
+                        rows = 3,
+                        caption = "Reading from your computer…",
+                        modifier = Modifier.padding(listPadding(topInset)),
                     )
-                    Text(
-                        text = if (onStart != null) {
+
+                    runs.isEmpty() -> EmptyState(
+                        headline = if (error != null) "Could not read your runs" else "Nothing running",
+                        detail = error ?: if (onStart != null) {
                             "Describe a job below and your computer will plan it first."
                         } else {
                             "Runs are started at the computer."
                         },
-                        style = type.meta,
-                        color = colors.textFaint,
-                        textAlign = TextAlign.Center,
+                        tone = if (error != null) EmptyTone.PROBLEM else EmptyTone.QUIET,
+                        icon = AnodexIcon.BOT,
+                        modifier = Modifier.padding(top = topInset),
                     )
+
+                    else -> LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .fadingEdges(topInset, 0.dp),
+                        contentPadding = listPadding(topInset),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+                    ) {
+                        // Said above the runs rather than instead of them. A failed
+                        // refresh with a list already on screen is exactly the case
+                        // the old placement could not cover: it drew the error, then
+                        // drew the stale runs underneath with nothing marking them
+                        // as stale.
+                        if (error != null) {
+                            item(key = "read-failed") { InlineProblem(error) }
+                        }
+
+                        items(runs, key = { it.id }) { run ->
+                            RunCard(
+                                run = run,
+                                busy = run.id == busyRunId,
+                                onApprove = { onApprove(run.id) },
+                                onReject = { onReject(run.id) },
+                                onStop = { onStop(run.id) },
+                                onOpen = { onOpenConversation(run.conversationId) },
+                            )
+                        }
+                    }
                 }
             }
 
-            else -> LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(Spacing.x3),
-                verticalArrangement = Arrangement.spacedBy(Spacing.x3),
-            ) {
-                items(runs, key = { it.id }) { run ->
-                    RunCard(
-                        run = run,
-                        busy = run.id == busyRunId,
-                        onApprove = { onApprove(run.id) },
-                        onReject = { onReject(run.id) },
-                        onStop = { onStop(run.id) },
-                        onOpen = { onOpenConversation(run.conversationId) },
-                    )
-                }
+            if (onStart != null) {
+                StartRun(
+                    goal = goal,
+                    lookOnly = lookOnly,
+                    starting = starting,
+                    projectName = projectName,
+                    onGoalChanged = { goal = it },
+                    onLookOnlyChanged = { lookOnly = it },
+                    onStart = {
+                        onStart(goal, lookOnly)
+                        goal = ""
+                    },
+                )
             }
-        }
 
-        if (onStart != null) {
-            StartRun(
-                goal = goal,
-                lookOnly = lookOnly,
-                starting = starting,
-                projectName = projectName,
-                onGoalChanged = { goal = it },
-                onLookOnlyChanged = { lookOnly = it },
-                onStart = {
-                    onStart(goal, lookOnly)
-                    goal = ""
-                },
-            )
-        }
-
-        if (onClose != null) {
-            SecondaryButton(
-                label = "Close",
-                onClick = onClose,
-                modifier = Modifier.padding(Spacing.x4),
-            )
+            if (onClose != null) {
+                SecondaryButton(
+                    label = "Close",
+                    onClick = onClose,
+                    modifier = Modifier.padding(Spacing.x4),
+                )
+            }
         }
     }
 }
@@ -226,7 +217,7 @@ private fun StartRun(
             value = goal,
             onValueChange = onGoalChanged,
             textStyle = type.body.copy(color = colors.text),
-            cursorBrush = SolidColor(colors.accent),
+            cursorBrush = SolidColor(colors.accentInk),
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { inner ->
                 if (goal.isEmpty()) {
@@ -263,7 +254,7 @@ private fun StartRun(
                     else -> "Plans first, then waits for you to approve"
                 },
                 style = type.meta,
-                color = if (projectName == null) colors.warn else colors.textFaint,
+                color = if (projectName == null) colors.warnInk else colors.textFaint,
                 modifier = Modifier.weight(1f),
             )
 
@@ -272,13 +263,14 @@ private fun StartRun(
                     .size(Touch.minTarget)
                     .clip(Radii.pill)
                     .background(if (ready) colors.accent else colors.bgElevated)
-                    .clickable(enabled = ready, onClick = onStart),
+                    .clickable(enabled = ready, role = Role.Button, onClick = onStart),
                 contentAlignment = Alignment.Center,
             ) {
                 AnodexIcon(
                     AnodexIcon.SEND,
                     size = 16.dp,
                     tint = if (ready) colors.textOnAccent else colors.textFaint,
+                    contentDescription = "Start the run",
                 )
             }
         }
@@ -316,17 +308,11 @@ private fun RunCard(
     val waiting = run.status == AgentRun.Status.NEEDS_REVIEW
     val running = run.status == AgentRun.Status.RUNNING
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(Radii.xl)
-            .background(colors.bgSurface)
-            // Only the blocked one is outlined. A border on every card is a border
-            // that says nothing; here it means "this one is waiting on you".
-            .then(if (waiting) Modifier.border(1.dp, colors.accent, Radii.xl) else Modifier)
-            .clickable(onClick = onOpen)
-            .padding(Spacing.x4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    AnodexCard(
+        // Only the blocked one is outlined. A border on every card is a border
+        // that says nothing; here it means "this one is waiting on you".
+        edge = if (waiting) colors.accent else null,
+        onClick = onOpen,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -340,7 +326,7 @@ private fun RunCard(
             Text(
                 text = statusLabel(run),
                 style = type.label,
-                color = if (waiting) colors.accent else colors.textMuted,
+                color = if (waiting) colors.accentInk else colors.textMuted,
                 modifier = Modifier.weight(1f),
             )
 
@@ -364,7 +350,7 @@ private fun RunCard(
             Text(
                 text = it,
                 style = type.meta,
-                color = colors.danger,
+                color = colors.dangerInk,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -443,7 +429,7 @@ private fun TurnBudget(used: Int, of: Int) {
                 .fillMaxWidth(fraction)
                 .height(3.dp)
                 .clip(Radii.pill)
-                .background(if (fraction > 0.85f) colors.warn else colors.accentCyan),
+                .background(if (fraction > 0.85f) colors.warnInk else colors.accentCyanInk),
         )
     }
 }
@@ -478,19 +464,6 @@ private fun PlanView(plan: Plan) {
     }
 }
 
-@Composable
-private fun Centred(text: String, color: Color) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = text,
-            style = AnodexTheme.type.body,
-            color = color,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(Spacing.x6),
-        )
-    }
-}
-
 /** A pasted prompt as one line, so a title cannot arrive already broken. */
 private fun oneLine(text: String): String = text.replace(Regex("\\s+"), " ").trim()
 
@@ -498,10 +471,10 @@ private fun oneLine(text: String): String = text.replace(Regex("\\s+"), " ").tri
 private fun statusColour(status: AgentRun.Status): Color {
     val colors = AnodexTheme.colors
     return when (status) {
-        AgentRun.Status.NEEDS_REVIEW -> colors.accent
-        AgentRun.Status.RUNNING -> colors.accentCyan
-        AgentRun.Status.DONE -> colors.success
-        AgentRun.Status.ERROR -> colors.danger
+        AgentRun.Status.NEEDS_REVIEW -> colors.accentInk
+        AgentRun.Status.RUNNING -> colors.accentCyanInk
+        AgentRun.Status.DONE -> colors.successInk
+        AgentRun.Status.ERROR -> colors.dangerInk
         AgentRun.Status.STOPPED -> colors.textFaint
     }
 }

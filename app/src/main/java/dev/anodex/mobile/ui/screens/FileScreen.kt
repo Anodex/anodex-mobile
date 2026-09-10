@@ -1,24 +1,21 @@
 package dev.anodex.mobile.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.EmptyTone
+import dev.anodex.mobile.ui.components.ScreenScaffold
 import dev.anodex.mobile.ui.components.SecondaryButton
+import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.workspace.FileContent
@@ -46,46 +43,43 @@ fun FileScreen(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(Spacing.x3),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
-        ) {
-            SecondaryButton(label = "Back", onClick = onClose)
+    // Split rather than ellipsised. A path is too long for a phone header, and
+    // clipping the end removes the filename — the only part that identifies which
+    // file this is. So the directory becomes the subtitle and the name the title.
+    val directory = path.substringBeforeLast('/', missingDelimiterValue = "")
 
-            // Split rather than ellipsised. A path is too long for a phone header,
-            // and clipping the end removes the filename — the only part that
-            // identifies which file this is.
-            Column(Modifier.weight(1f)) {
-                val directory = path.substringBeforeLast('/', missingDelimiterValue = "")
-                if (directory.isNotEmpty()) {
-                    Text(
-                        text = directory,
-                        style = type.meta,
-                        color = colors.textFaint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    text = path.substringAfterLast('/'),
-                    style = type.mono,
-                    color = colors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
+    ScreenScaffold(
+        title = path.substringAfterLast('/'),
+        modifier = modifier,
+        subtitle = directory.takeIf { it.isNotEmpty() },
+        // A filename set in the body face stops looking like a filename.
+        titleStyle = type.mono,
+        leading = { SecondaryButton(label = "Back", onClick = onClose) },
+    ) { topInset ->
         when {
-            loading || content == null -> Centred("Reading from your computer…", colors.textFaint)
+            loading || content == null -> EmptyState(
+                headline = "Reading from your computer…",
+                tone = EmptyTone.WAITING,
+                icon = AnodexIcon.FOLDER,
+                modifier = Modifier.padding(top = topInset),
+            )
 
-            content is FileContent.Failed -> Centred(content.reason, colors.danger)
+            content is FileContent.Failed -> EmptyState(
+                headline = "Could not read this file",
+                detail = content.reason,
+                tone = EmptyTone.PROBLEM,
+                icon = AnodexIcon.FOLDER,
+                modifier = Modifier.padding(top = topInset),
+            )
 
             // Not an error: an image or a 40MB log is a perfectly good file, and the
             // reader should say what it is rather than look like it failed.
-            content is FileContent.Unreadable -> Centred(content.reason, colors.textMuted)
+            content is FileContent.Unreadable -> EmptyState(
+                headline = "Not shown here",
+                detail = content.reason,
+                icon = AnodexIcon.FOLDER,
+                modifier = Modifier.padding(top = topInset),
+            )
 
             content is FileContent.Text -> Text(
                 text = content.content,
@@ -96,26 +90,20 @@ fun FileScreen(
                 softWrap = false,
                 modifier = Modifier
                     .fillMaxSize()
+                    .fadingEdges(topInset, 0.dp)
                     .verticalScroll(rememberScrollState())
                     .horizontalScroll(rememberScrollState())
-                    .padding(Spacing.x4),
+                    .padding(
+                        start = Spacing.x4,
+                        end = Spacing.x4,
+                        top = topInset + Spacing.x2,
+                        bottom = Spacing.x6,
+                    ),
             )
         }
     }
 }
 
-@Composable
-private fun Centred(text: String, color: androidx.compose.ui.graphics.Color) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = text,
-            style = AnodexTheme.type.body,
-            color = color,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(Spacing.x6),
-        )
-    }
-}
 
 @Preview(name = "File", showBackground = true, backgroundColor = 0xFF0C0C0C)
 @Composable

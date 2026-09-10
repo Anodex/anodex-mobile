@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -45,15 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -72,6 +69,10 @@ import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexSpinner
+import dev.anodex.mobile.ui.components.SCRIM_ALPHA
+import dev.anodex.mobile.ui.components.SCRIM_FADE
+import dev.anodex.mobile.ui.components.SCRIM_HOLD
+import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.AttachmentThumb
 import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.ImageViewer
@@ -423,7 +424,7 @@ fun ChatScreen(
                 Text(
                     text = error,
                     style = type.meta,
-                    color = colors.danger,
+                    color = colors.dangerInk,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = Spacing.x4)
@@ -450,43 +451,6 @@ fun ChatScreen(
         }
     }
 }
-
-/**
- * Dissolve the top and bottom of whatever this draws, over the given distances.
- *
- * The conversation runs under the floating bars rather than stopping at them, and a
- * line of text sliced in half by an edge looks like a rendering fault. Fading it out
- * instead says the same thing — there is more up there — without drawing anything to
- * say it.
- *
- * `DstIn` multiplies what is already drawn by the alpha of this rectangle, so black
- * keeps a pixel and transparent removes it. It needs its own layer to blend against,
- * which is what `CompositingStrategy.Offscreen` buys; without it the blend would
- * reach the whole canvas and take the page with it.
- */
-private fun Modifier.fadingEdges(top: Dp, bottom: Dp): Modifier =
-    this
-        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-
-            val height = size.height
-            if (height <= 0f) return@drawWithContent
-
-            val topStop = (top.toPx() / height).coerceIn(0f, 1f)
-            val bottomStop = (1f - bottom.toPx() / height).coerceIn(topStop, 1f)
-            if (topStop == 0f && bottomStop == 1f) return@drawWithContent
-
-            drawRect(
-                brush = Brush.verticalGradient(
-                    0f to Color.Transparent,
-                    topStop to Color.Black,
-                    bottomStop to Color.Black,
-                    1f to Color.Transparent,
-                ),
-                blendMode = BlendMode.DstIn,
-            )
-        }
 
 @Composable
 private fun MessageRow(
@@ -533,7 +497,11 @@ private fun MessageRow(
                                 .padding(bottom = Spacing.x2)
                                 .then(
                                     if (openable != null) {
-                                        Modifier.clickable { viewing = openable }
+                                        // Clipped first so the press wash is the tile,
+                                        // not a square behind its rounded corners.
+                                        Modifier
+                                            .clip(Radii.lg)
+                                            .clickable { viewing = openable }
                                     } else {
                                         Modifier
                                     },
@@ -710,7 +678,7 @@ private fun MessageActions(
     ) {
         ActionButton(
             label = if (copied) "Copied" else "Copy",
-            tint = if (copied) colors.success else colors.textFaint,
+            tint = if (copied) colors.successInk else colors.textFaint,
             enabled = enabled,
         ) {
             clipboard.setText(AnnotatedString(text))
@@ -768,7 +736,7 @@ private fun QueuedNotice(onClear: () -> Unit) {
         Text(
             text = "Sends when this turn ends",
             style = type.meta,
-            color = colors.accent,
+            color = colors.accentInk,
             modifier = Modifier.weight(1f),
         )
 
@@ -776,10 +744,20 @@ private fun QueuedNotice(onClear: () -> Unit) {
             modifier = Modifier
                 .size(Touch.minTarget)
                 .clip(CircleShape)
-                .clickable(onClick = onClear),
+                .clickable(role = Role.Button, onClick = onClear),
             contentAlignment = Alignment.Center,
         ) {
-            Text("\u2715", style = type.meta, color = colors.accent)
+            // The glyph is the picture of the control, not its name. Left as it was,
+            // a screen reader reads out the character itself, which is worse than
+            // silence on a button that stops a message being sent.
+            Text(
+                text = "\u2715",
+                style = type.meta,
+                color = colors.accentInk,
+                modifier = Modifier.clearAndSetSemantics {
+                    contentDescription = "Do not send this message"
+                },
+            )
         }
     }
 }
@@ -836,7 +814,7 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
                         is UploadState.Failed -> state.message
                     },
                     style = type.meta,
-                    color = if (state is UploadState.Failed) colors.danger else colors.textFaint,
+                    color = if (state is UploadState.Failed) colors.dangerInk else colors.textFaint,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -846,10 +824,17 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
                 modifier = Modifier
                     .size(Touch.minTarget)
                     .clip(CircleShape)
-                    .clickable(onClick = onRemove),
+                    .clickable(role = Role.Button, onClick = onRemove),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("\u2715", style = type.body, color = colors.textFaint)
+                Text(
+                    text = "\u2715",
+                    style = type.body,
+                    color = colors.textFaint,
+                    modifier = Modifier.clearAndSetSemantics {
+                        contentDescription = "Remove this attachment"
+                    },
+                )
             }
         }
 
@@ -1042,7 +1027,7 @@ private fun RunningLine(title: String) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         modifier = Modifier.padding(vertical = Spacing.x1),
     ) {
-        AnodexSpinner(size = 13.dp, thickness = 1.5.dp, tint = colors.accent)
+        AnodexSpinner(size = 13.dp, thickness = 1.5.dp, tint = colors.accentInk)
         Text(
             text = title,
             style = type.meta,
@@ -1102,11 +1087,18 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            modifier = Modifier
+                .fillMaxWidth()
+                // A row of 14dp icon and 13sp label came out around twenty dp tall —
+                // under half the floor everything else in this app clears, on a
+                // control that is genuinely tapped.
+                .heightIn(min = Touch.minTarget)
+                .clip(Radii.md)
+                .clickable { expanded = !expanded },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
-            AnodexIcon(AnodexIcon.FOLDER, size = 14.dp, tint = colors.accentGreen)
+            AnodexIcon(AnodexIcon.FOLDER, size = 14.dp, tint = colors.accentGreenInk)
             Text(
                 text = if (files.size == 1) "Changed 1 file" else "Changed ${files.size} files",
                 style = type.label,
@@ -1116,7 +1108,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
             Text(
                 text = if (expanded) "Hide" else "Show",
                 style = type.meta,
-                color = colors.accent,
+                color = colors.accentInk,
             )
         }
 
@@ -1164,7 +1156,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
                 Text(
                     text = "Edited again since this turn.",
                     style = type.meta,
-                    color = colors.warn,
+                    color = colors.warnInk,
                 )
             }
         }
@@ -1181,8 +1173,8 @@ private fun kindMark(kind: String?): String = when (kind) {
 @Composable
 private fun kindColour(kind: String?, colors: dev.anodex.mobile.ui.theme.AnodexColors) =
     when (kind) {
-        "added" -> colors.accentGreen
-        "deleted" -> colors.danger
+        "added" -> colors.accentGreenInk
+        "deleted" -> colors.dangerInk
         else -> colors.textFaint
     }
 
@@ -1322,10 +1314,15 @@ private fun Composer(
                     modifier = Modifier
                         .size(Touch.minTarget)
                         .clip(CircleShape)
-                        .clickable(onClick = onAttach),
+                        .clickable(role = Role.Button, onClick = onAttach),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AnodexIcon(AnodexIcon.PAPERCLIP, size = 20.dp, tint = colors.textMuted)
+                    AnodexIcon(
+                        AnodexIcon.PAPERCLIP,
+                        size = 20.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Attach a file",
+                    )
                 }
             }
 
@@ -1358,7 +1355,7 @@ private fun Composer(
                     value = draft,
                     onValueChange = onDraftChange,
                     textStyle = type.chatBody.copy(color = colors.text),
-                    cursorBrush = SolidColor(colors.accent),
+                    cursorBrush = SolidColor(colors.accentInk),
                     // Past this the field scrolls instead of growing. Without it a
                     // long message pushed the conversation off the top of the screen
                     // and kept going — a prompt of a few paragraphs left nothing on
@@ -1400,25 +1397,8 @@ private fun Composer(
  */
 private val COMPOSER_SHAPE = RoundedCornerShape((Touch.minTarget + Spacing.x1 * 2) / 2)
 
-/**
- * How far past a floating bar its scrim keeps fading.
- *
- * Short. The scrim exists to give the controls something to sit against, not to put
- * the bar back — past this the conversation is at full strength again.
- */
-internal val SCRIM_FADE = 28.dp
 
-/** How far into the scrim the page's colour has arrived, as a fraction of its height. */
-internal const val SCRIM_HOLD = 0.55f
 
-/**
- * How much of the page's colour the scrim carries behind the bar itself.
- *
- * Not all of it. Solid would be a bar again, and watching the conversation continue
- * behind the chrome is the thing worth keeping — it just cannot cost you the send
- * button.
- */
-internal const val SCRIM_ALPHA = 0.82f
 
 /**
  * Six lines.
@@ -1449,7 +1429,7 @@ private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) 
         else -> colors.bgSurface2
     }
     val foreground = when {
-        sending -> colors.danger
+        sending -> colors.dangerInk
         enabled -> colors.textOnAccent
         else -> colors.textFaint
     }

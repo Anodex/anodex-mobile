@@ -16,6 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -66,7 +69,7 @@ fun SearchField(
                 onValueChange = onValueChange,
                 singleLine = true,
                 textStyle = type.body.copy(color = colors.text),
-                cursorBrush = SolidColor(colors.accent),
+                cursorBrush = SolidColor(colors.accentInk),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -79,10 +82,17 @@ fun SearchField(
                 modifier = Modifier
                     .size(Touch.minTarget)
                     .clip(Radii.pill)
-                    .clickable { onValueChange("") },
+                    .clickable(role = Role.Button) { onValueChange("") },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("✕", style = type.body, color = colors.textFaint)
+                Text(
+                    text = "✕",
+                    style = type.body,
+                    color = colors.textFaint,
+                    modifier = Modifier.clearAndSetSemantics {
+                        contentDescription = "Clear the search"
+                    },
+                )
             }
         }
     }

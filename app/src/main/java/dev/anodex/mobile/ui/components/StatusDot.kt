@@ -73,4 +73,4 @@ fun StatusDot(
 
 /** The dot's colour for a run's state, so two screens cannot disagree about it. */
 @Composable
-fun runningColour(): Color = AnodexTheme.colors.accent
+fun runningColour(): Color = AnodexTheme.colors.accentInk

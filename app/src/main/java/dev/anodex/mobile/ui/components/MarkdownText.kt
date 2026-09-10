@@ -19,7 +19,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.Inline
 import dev.anodex.mobile.chat.MarkdownBlock
 import dev.anodex.mobile.chat.parseMarkdown
