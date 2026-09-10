@@ -58,6 +58,7 @@ import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.scheduler.ScheduledTask
+import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.SCRIM_ALPHA
 import dev.anodex.mobile.ui.components.SCRIM_FADE
 import dev.anodex.mobile.ui.components.SCRIM_HOLD
@@ -854,7 +855,7 @@ private fun ConnectedScaffold(
                     state = state,
                     onOpenDrawer = { drawerOpen = true },
                 )
-                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+                Hairline()
             }
 
             // Under the header on every screen rather than inside chat: a newer app is
@@ -1299,7 +1300,7 @@ private fun DesignStateHarness(onExit: () -> Unit) {
 
             else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 ConnectionHeader(state)
-                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+                Hairline()
                 Column(
                     modifier = Modifier.fillMaxSize().padding(Spacing.x6),
                     verticalArrangement = Arrangement.Center,

@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,7 +14,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,7 +30,11 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.ui.components.AnodexCard
+import dev.anodex.mobile.ui.components.AnodexTextField
 import dev.anodex.mobile.ui.components.ConfirmDialog
+import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.DangerButton
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -74,117 +76,126 @@ fun HostScreen(
     val type = AnodexTheme.type
     var confirmingUnpair by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.bgApp)
-            .verticalScroll(rememberScrollState())
-            .padding(Spacing.x4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.x4),
-    ) {
-        Text("Your computer", style = type.heading, color = colors.text)
-
-        if (newerVersion != null) {
-            // Stated, not acted on. The app cannot install anything and should not
-            // pretend it can — a button that turns out to mean "go and find a file"
-            // is worse than a sentence that says so.
-            Card {
-                Text("A newer app is available", style = type.bodyEmphasis, color = colors.text)
-                Text(
-                    text = "Your computer ships with $newerVersion and this phone is on " +
-                        "$installedVersion. Install the newer one over the top — your " +
-                        "pairing is kept.",
-                    style = type.meta,
-                    color = colors.textMuted,
-                )
+    ScreenScaffold(
+        title = "Your computer",
+        modifier = modifier,
+        subtitle = hostName(state),
+    ) { topInset ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .fadingEdges(topInset, 0.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = Spacing.x4,
+                    end = Spacing.x4,
+                    top = topInset + Spacing.x2,
+                    bottom = Spacing.x6,
+                ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.x4),
+        ) {
+            if (newerVersion != null) {
+                // Stated, not acted on. The app cannot install anything and should not
+                // pretend it can — a button that turns out to mean "go and find a file"
+                // is worse than a sentence that says so.
+                AnodexCard {
+                    Text("A newer app is available", style = type.bodyEmphasis, color = colors.text)
+                    Text(
+                        text = "Your computer ships with $newerVersion and this phone is on " +
+                            "$installedVersion. Install the newer one over the top — your " +
+                            "pairing is kept.",
+                        style = type.meta,
+                        color = colors.textMuted,
+                    )
+                }
             }
-        }
 
-        Card {
-            Field("Machine", hostName(state) ?: "Not paired")
-            Field("Connection", connectionLine(state))
-        }
+            AnodexCard {
+                Field("Machine", hostName(state) ?: "Not paired")
+                Field("Connection", connectionLine(state))
+            }
 
-        val model = (state as? ConnectionState.Connected)?.model
-        Card {
-            if (model == null) {
-                // Distinguished from "not connected" on purpose: a reachable computer
-                // with nothing loaded cannot answer either, and the remedy is at the
-                // machine rather than on the phone.
-                Field("Model", "None loaded")
-                Text(
-                    text = "Load a model on the computer. Nothing can run until one is.",
-                    style = type.meta,
-                    color = colors.textFaint,
-                )
-            } else {
-                Field("Model", model.name)
-                Field("Context", contextLine(model))
+            val model = (state as? ConnectionState.Connected)?.model
+            AnodexCard {
+                if (model == null) {
+                    // Distinguished from "not connected" on purpose: a reachable computer
+                    // with nothing loaded cannot answer either, and the remedy is at the
+                    // machine rather than on the phone.
+                    Field("Model", "None loaded")
+                    Text(
+                        text = "Load a model on the computer. Nothing can run until one is.",
+                        style = type.meta,
+                        color = colors.textFaint,
+                    )
+                } else {
+                    Field("Model", model.name)
+                    Field("Context", contextLine(model))
 
-                val fraction = model.contextFraction
-                if (fraction != null) {
-                    Meter(fraction)
-                    if (fraction > 0.85f) {
-                        // Said before the conversation starts dropping its own history,
-                        // rather than after the model appears to forget something.
-                        Text(
-                            text = "Nearly full. The oldest turns will start being " +
-                                "summarised away.",
-                            style = type.meta,
-                            color = colors.warn,
-                        )
+                    val fraction = model.contextFraction
+                    if (fraction != null) {
+                        Meter(fraction)
+                        if (fraction > 0.85f) {
+                            // Said before the conversation starts dropping its own history,
+                            // rather than after the model appears to forget something.
+                            Text(
+                                text = "Nearly full. The oldest turns will start being " +
+                                    "summarised away.",
+                                style = type.meta,
+                                color = colors.warn,
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        Card {
-            Field("Working in", activeProjectName ?: "No project — plain chat")
-            Text(
-                text = if (activeProjectName != null) {
-                    "Turns can read and write files in this project."
-                } else {
-                    // The single most consequential setting on the phone, and invisible
-                    // until something is asked that needs a project.
-                    "Without a project Anodex is only talking. Pick one to let it edit " +
-                        "real files."
-                },
-                style = type.meta,
-                color = colors.textFaint,
-            )
-            if (onChooseProject != null) {
-                SecondaryButton(
-                    label = if (activeProjectName != null) "Change project" else "Choose a project",
-                    onClick = onChooseProject,
-                    modifier = Modifier.padding(top = Spacing.x1),
-                )
-            }
-        }
-
-        if (knownAddresses.isNotEmpty() || onAddAddress != null) {
-            AddressCard(
-                addresses = knownAddresses,
-                port = port,
-                onAdd = onAddAddress,
-                error = addressError,
-                onDismissError = onDismissAddressError,
-            )
-        }
-
-        if (onUnpair != null) {
-            Card {
-                Text("Unpair this phone", style = type.bodyEmphasis, color = colors.text)
+            AnodexCard {
+                Field("Working in", activeProjectName ?: "No project — plain chat")
                 Text(
-                    text = "Its saved key stops working immediately, and the computer " +
-                        "goes back to accepting no one.",
+                    text = if (activeProjectName != null) {
+                        "Turns can read and write files in this project."
+                    } else {
+                        // The single most consequential setting on the phone, and invisible
+                        // until something is asked that needs a project.
+                        "Without a project Anodex is only talking. Pick one to let it edit " +
+                            "real files."
+                    },
                     style = type.meta,
                     color = colors.textFaint,
                 )
-                DangerButton(
-                    label = "Unpair…",
-                    onClick = { confirmingUnpair = true },
-                    modifier = Modifier.padding(top = Spacing.x1),
+                if (onChooseProject != null) {
+                    SecondaryButton(
+                        label = if (activeProjectName != null) "Change project" else "Choose a project",
+                        onClick = onChooseProject,
+                        modifier = Modifier.padding(top = Spacing.x1),
+                    )
+                }
+            }
+
+            if (knownAddresses.isNotEmpty() || onAddAddress != null) {
+                AddressCard(
+                    addresses = knownAddresses,
+                    port = port,
+                    onAdd = onAddAddress,
+                    error = addressError,
+                    onDismissError = onDismissAddressError,
                 )
+            }
+
+            if (onUnpair != null) {
+                AnodexCard {
+                    Text("Unpair this phone", style = type.bodyEmphasis, color = colors.text)
+                    Text(
+                        text = "Its saved key stops working immediately, and the computer " +
+                            "goes back to accepting no one.",
+                        style = type.meta,
+                        color = colors.textFaint,
+                    )
+                    DangerButton(
+                        label = "Unpair…",
+                        onClick = { confirmingUnpair = true },
+                        modifier = Modifier.padding(top = Spacing.x1),
+                    )
+                }
             }
         }
     }
@@ -232,7 +243,7 @@ private fun AddressCard(
     var adding by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") }
 
-    Card {
+    AnodexCard {
         Text("How this phone finds it", style = type.bodyEmphasis, color = colors.text)
 
         if (addresses.isEmpty()) {
@@ -260,7 +271,7 @@ private fun AddressCard(
             color = colors.textFaint,
         )
 
-        if (onAdd == null) return@Card
+        if (onAdd == null) return@AnodexCard
 
         if (!adding) {
             SecondaryButton(
@@ -268,24 +279,26 @@ private fun AddressCard(
                 onClick = { adding = true },
                 modifier = Modifier.padding(top = Spacing.x1),
             )
-            return@Card
+            return@AnodexCard
         }
 
-        OutlinedTextField(
+        AnodexTextField(
             value = typed,
             onValueChange = {
                 typed = it
                 onDismissError()
             },
-            singleLine = true,
+            placeholder = "76.120.41.76",
             isError = error != null,
-            placeholder = { Text("76.120.41.76", style = type.body) },
+            // An address is a literal, and a literal set in the body face is harder
+            // to check a digit at a time. The same reason the stored ones above it
+            // are monospaced.
+            textStyle = type.mono,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Uri,
                 imeAction = ImeAction.Done,
             ),
             keyboardActions = KeyboardActions(onDone = { onAdd(typed) }),
-            modifier = Modifier.fillMaxWidth(),
         )
 
         if (error != null) {
@@ -309,19 +322,6 @@ private fun AddressCard(
     }
 }
 
-@Composable
-private fun Card(content: @Composable ColumnScope.() -> Unit) {
-    val colors = AnodexTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, colors.border, Radii.lg)
-            .background(colors.bgSurface, Radii.lg)
-            .padding(Spacing.x4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-        content = content,
-    )
-}
 
 /** A label and its value on one line, the label fixed-width so the values line up. */
 @Composable

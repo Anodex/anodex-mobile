@@ -149,13 +149,7 @@ fun AppDrawer(
                 )
             }
 
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.x4, vertical = Spacing.x4)
-                    .height(1.dp)
-                    .background(colors.border)
-            )
+            Hairline(Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x4))
 
             // No "RECENT" heading. What follows is grouped by workspace now, and a
             // recency heading over it named the wrong axis — the desktop's sidebar
@@ -517,7 +511,7 @@ private fun HostFooter(
     val type = AnodexTheme.type
 
     Column {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+        Hairline()
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,

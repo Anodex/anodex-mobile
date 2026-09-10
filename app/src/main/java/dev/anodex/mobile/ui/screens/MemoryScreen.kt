@@ -2,6 +2,8 @@ package dev.anodex.mobile.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
@@ -18,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexCard
@@ -26,9 +27,6 @@ import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.EmptyState
 import dev.anodex.mobile.ui.components.EmptyTone
 import dev.anodex.mobile.ui.components.ListSkeleton
-import dev.anodex.mobile.ui.components.ScreenScaffold
-import dev.anodex.mobile.ui.components.fadingEdges
-import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -59,14 +57,26 @@ fun MemoryScreen(
     error: String? = null,
     onForget: ((MemoryEntry) -> Unit)? = null,
 ) {
-    ScreenScaffold(
-        title = "Memory",
-        modifier = modifier,
-        // Where it lives is the sentence worth putting on this screen. It is the
-        // one real difference between this and everything else on the phone, and
-        // this is where somebody wonders about it.
-        subtitle = "Kept on your computer. Never leaves it.",
-    ) { topInset ->
+    // No title of its own, and no floating chrome. This is a section of Settings
+    // rather than a destination — Settings already names it in the header above,
+    // and a screen that titles itself inside something that has just titled it says
+    // "Memory" twice.
+    Column(modifier.fillMaxSize()) {
+        // Where it lives is the sentence worth putting here. It is the one real
+        // difference between this and everything else on the phone, and this is
+        // where somebody wonders about it.
+        Text(
+            text = "Kept on your computer. Never leaves it.",
+            style = AnodexTheme.type.meta,
+            color = AnodexTheme.colors.textFaint,
+            modifier = Modifier.padding(
+                start = Spacing.x4,
+                end = Spacing.x4,
+                top = Spacing.x2,
+                bottom = Spacing.x3,
+            ),
+        )
+
         when {
             // The shape of the answer while the answer is on its way, rather than a
             // blank page and then a list arriving in one frame.
@@ -74,7 +84,7 @@ fun MemoryScreen(
                 rows = 3,
                 lines = 2,
                 caption = "Asking your computer…",
-                modifier = Modifier.padding(listPadding(topInset)),
+                modifier = Modifier.padding(horizontal = Spacing.x3),
             )
 
             error != null -> EmptyState(
@@ -82,21 +92,21 @@ fun MemoryScreen(
                 detail = error,
                 tone = EmptyTone.PROBLEM,
                 icon = AnodexIcon.MEMORY,
-                modifier = Modifier.padding(top = topInset),
             )
 
             entries.isEmpty() -> EmptyState(
                 headline = "Nothing remembered yet",
                 detail = "Anodex writes these as it learns them, at the computer.",
                 icon = AnodexIcon.MEMORY,
-                modifier = Modifier.padding(top = topInset),
             )
 
             else -> LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .fadingEdges(topInset, 0.dp),
-                contentPadding = listPadding(topInset),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = Spacing.x3,
+                    end = Spacing.x3,
+                    bottom = Spacing.x8,
+                ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.x3),
             ) {
                 items(entries, key = { it.id }) { entry ->

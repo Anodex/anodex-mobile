@@ -34,11 +34,11 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Personality
 import dev.anodex.mobile.chat.detailLabel
+import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.PersonalityAvatar
-import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -475,13 +475,7 @@ private fun Group(content: @Composable ColumnScope.() -> Unit) {
 /** Inset, so it reads as separating two rows rather than cutting the card in half. */
 @Composable
 private fun RowDivider() {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.x4)
-            .heightIn(min = 1.dp, max = 1.dp)
-            .background(AnodexTheme.colors.border)
-    )
+    Hairline(Modifier.padding(horizontal = Spacing.x4))
 }
 
 @Composable
