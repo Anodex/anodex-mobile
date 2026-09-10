@@ -141,7 +141,7 @@ fun HostScreen(
                                 text = "Nearly full. The oldest turns will start being " +
                                     "summarised away.",
                                 style = type.meta,
-                                color = colors.warn,
+                                color = colors.warnInk,
                             )
                         }
                     }
@@ -302,7 +302,7 @@ private fun AddressCard(
         )
 
         if (error != null) {
-            Text(error, style = type.meta, color = colors.danger)
+            Text(error, style = type.meta, color = colors.dangerInk)
         }
 
         Row(
@@ -361,7 +361,7 @@ private fun Meter(fraction: Float) {
             Modifier
                 .fillMaxWidth(fraction)
                 .heightIn(min = 4.dp, max = 4.dp)
-                .background(if (fraction > 0.85f) colors.warn else colors.accent, Radii.pill),
+                .background(if (fraction > 0.85f) colors.warnInk else colors.accentInk, Radii.pill),
         )
     }
 }

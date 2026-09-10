@@ -422,7 +422,7 @@ fun ChatScreen(
                 Text(
                     text = error,
                     style = type.meta,
-                    color = colors.danger,
+                    color = colors.dangerInk,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = Spacing.x4)
@@ -676,7 +676,7 @@ private fun MessageActions(
     ) {
         ActionButton(
             label = if (copied) "Copied" else "Copy",
-            tint = if (copied) colors.success else colors.textFaint,
+            tint = if (copied) colors.successInk else colors.textFaint,
             enabled = enabled,
         ) {
             clipboard.setText(AnnotatedString(text))
@@ -734,7 +734,7 @@ private fun QueuedNotice(onClear: () -> Unit) {
         Text(
             text = "Sends when this turn ends",
             style = type.meta,
-            color = colors.accent,
+            color = colors.accentInk,
             modifier = Modifier.weight(1f),
         )
 
@@ -745,7 +745,7 @@ private fun QueuedNotice(onClear: () -> Unit) {
                 .clickable(onClick = onClear),
             contentAlignment = Alignment.Center,
         ) {
-            Text("\u2715", style = type.meta, color = colors.accent)
+            Text("\u2715", style = type.meta, color = colors.accentInk)
         }
     }
 }
@@ -802,7 +802,7 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
                         is UploadState.Failed -> state.message
                     },
                     style = type.meta,
-                    color = if (state is UploadState.Failed) colors.danger else colors.textFaint,
+                    color = if (state is UploadState.Failed) colors.dangerInk else colors.textFaint,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1008,7 +1008,7 @@ private fun RunningLine(title: String) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         modifier = Modifier.padding(vertical = Spacing.x1),
     ) {
-        AnodexSpinner(size = 13.dp, thickness = 1.5.dp, tint = colors.accent)
+        AnodexSpinner(size = 13.dp, thickness = 1.5.dp, tint = colors.accentInk)
         Text(
             text = title,
             style = type.meta,
@@ -1079,7 +1079,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
-            AnodexIcon(AnodexIcon.FOLDER, size = 14.dp, tint = colors.accentGreen)
+            AnodexIcon(AnodexIcon.FOLDER, size = 14.dp, tint = colors.accentGreenInk)
             Text(
                 text = if (files.size == 1) "Changed 1 file" else "Changed ${files.size} files",
                 style = type.label,
@@ -1089,7 +1089,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
             Text(
                 text = if (expanded) "Hide" else "Show",
                 style = type.meta,
-                color = colors.accent,
+                color = colors.accentInk,
             )
         }
 
@@ -1137,7 +1137,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
                 Text(
                     text = "Edited again since this turn.",
                     style = type.meta,
-                    color = colors.warn,
+                    color = colors.warnInk,
                 )
             }
         }
@@ -1154,8 +1154,8 @@ private fun kindMark(kind: String?): String = when (kind) {
 @Composable
 private fun kindColour(kind: String?, colors: dev.anodex.mobile.ui.theme.AnodexColors) =
     when (kind) {
-        "added" -> colors.accentGreen
-        "deleted" -> colors.danger
+        "added" -> colors.accentGreenInk
+        "deleted" -> colors.dangerInk
         else -> colors.textFaint
     }
 
@@ -1331,7 +1331,7 @@ private fun Composer(
                     value = draft,
                     onValueChange = onDraftChange,
                     textStyle = type.chatBody.copy(color = colors.text),
-                    cursorBrush = SolidColor(colors.accent),
+                    cursorBrush = SolidColor(colors.accentInk),
                     // Past this the field scrolls instead of growing. Without it a
                     // long message pushed the conversation off the top of the screen
                     // and kept going — a prompt of a few paragraphs left nothing on
@@ -1405,7 +1405,7 @@ private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) 
         else -> colors.bgSurface2
     }
     val foreground = when {
-        sending -> colors.danger
+        sending -> colors.dangerInk
         enabled -> colors.textOnAccent
         else -> colors.textFaint
     }

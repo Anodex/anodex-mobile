@@ -120,7 +120,7 @@ fun AppDrawer(
                     // between the two apps.
                     text = buildAnnotatedString {
                         append("Anode")
-                        withStyle(SpanStyle(color = colors.accent)) { append("x") }
+                        withStyle(SpanStyle(color = colors.accentInk)) { append("x") }
                     },
                     style = type.title,
                     color = colors.text,
@@ -378,7 +378,7 @@ private fun WorkspaceRow(
             size = 16.dp,
             // The accent marks the workspace the computer is actually in. Without
             // it, a list of folders says nothing about where a message would land.
-            tint = if (active) colors.accent else colors.textFaint,
+            tint = if (active) colors.accentInk else colors.textFaint,
             // There is no chevron any more — the folder is the control, and a second
             // glyph beside it was a disclosure arrow explaining a row that already
             // explains itself the moment it opens. The state still has to be said out
@@ -432,7 +432,7 @@ private fun MoreRow(text: String, indented: Boolean, onClick: () -> Unit) {
     Text(
         text = text,
         style = AnodexTheme.type.label,
-        color = AnodexTheme.colors.accent,
+        color = AnodexTheme.colors.accentInk,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
@@ -479,7 +479,11 @@ private fun DestinationRow(
                 Modifier
                     .heightIn(min = 17.dp)
                     .clip(Radii.pill)
-                    .background(colors.warn)
+                    // Ink rather than the base amber: the count is drawn in the
+                    // page's own ground colour, and that on #F5A623 measures 1.79:1
+                    // in the light theme — a badge nobody can read is a badge that
+                    // may as well not be there.
+                    .background(colors.warnInk)
                     .padding(horizontal = Spacing.x2),
                 contentAlignment = Alignment.Center,
             ) {
@@ -529,7 +533,7 @@ private fun HostFooter(
                     Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(if (connected) colors.success else colors.textFaint)
+                        .background(if (connected) colors.successInk else colors.textFaint)
                 )
                 Column(Modifier.weight(1f)) {
                     Text(

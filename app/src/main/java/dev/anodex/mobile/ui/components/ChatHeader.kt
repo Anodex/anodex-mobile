@@ -192,7 +192,7 @@ fun ChatHeader(
                             // fact and not the conversation's. It is also the only
                             // thing up here that can change while you are reading.
                             StatusDot(
-                                colour = if (connected) colors.success else colors.warn,
+                                colour = if (connected) colors.successInk else colors.warnInk,
                                 running = !connected,
                                 size = 6.dp,
                             )
@@ -320,7 +320,7 @@ private fun MenuItem(label: String, danger: Boolean = false, onClick: () -> Unit
     Text(
         text = label,
         style = AnodexTheme.type.body,
-        color = if (danger) AnodexTheme.colors.danger else AnodexTheme.colors.text,
+        color = if (danger) AnodexTheme.colors.dangerInk else AnodexTheme.colors.text,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
@@ -346,7 +346,7 @@ private fun StatusPanel(status: HostStatus, onCopyId: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
             StatusDot(
-                colour = if (status.connected) colors.success else colors.warn,
+                colour = if (status.connected) colors.successInk else colors.warnInk,
                 running = !status.connected,
                 size = 6.dp,
             )

@@ -66,7 +66,7 @@ fun SearchField(
                 onValueChange = onValueChange,
                 singleLine = true,
                 textStyle = type.body.copy(color = colors.text),
-                cursorBrush = SolidColor(colors.accent),
+                cursorBrush = SolidColor(colors.accentInk),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier.fillMaxWidth(),
             )

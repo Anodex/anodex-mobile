@@ -140,6 +140,15 @@ is asking the user to trust it.
 Both themes are first-class. The warm light palette is a deliberate
 differentiator, not an afterthought — validate it as carefully as dark.
 
+**Colour that carries meaning has two steps, and the second one is not optional.**
+`accent`, `danger`, `warn`, `success`, `accentGreen` and `accentCyan` were picked
+against a near-black field. As *text* on the light palette's cream they measured
+between 1.14:1 and 3.13:1 — the same values measure 5.3 to 12 on Midnight, which
+is why nobody working in dark ever saw it. Use the `*Ink` variant for anything
+read at text size, including glyphs; keep the base for fills, borders and
+anything else large enough to answer to the 3:1 threshold. `ContrastTest`
+enforces this on every push, and a new token that skips it will fail there.
+
 Keep 48dp touch targets. Never communicate a waiting state with motion alone;
 pair it with text and a static shape or colour.
 

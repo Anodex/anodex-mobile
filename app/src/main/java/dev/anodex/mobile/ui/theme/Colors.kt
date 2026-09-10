@@ -69,6 +69,51 @@ data class AnodexColors(
     // readable against bgBase in both light and dark.
     val codeInlineText: Color,
 
+    /**
+     * The same four colours again, re-stepped to be legible **as text**.
+     *
+     * `accent`, `danger`, `warn` and `success` were shared across both themes, and
+     * they were chosen against a near-black field. Measured as text on the light
+     * palette's cream, every one of them fails WCAG AA — accent at 3.03:1, danger at
+     * 3.13:1, and warn and success at 1.91:1 and 1.90:1, which is barely legible at
+     * all. On Midnight the same values measure 5.3 to 9.7. The light theme was
+     * genuinely a second-class citizen here, which `AGENTS.md` says it must not be.
+     *
+     * A re-stepping, not a dimming — the same thing the series colours already do,
+     * and for the same reason. Each ink is its base colour walked down in lightness
+     * at constant hue and saturation until it clears 4.5:1 against every ground it
+     * lands on: `bgApp`, `bgSurface2`, `bgElevated`, `bgBase` and its own 12% soft
+     * wash. On Midnight the bases already clear all of those, so the inks *are* the
+     * bases and nothing changes.
+     *
+     * **Ink is for text and for glyphs read at text size.** Fills, borders, status
+     * dots and meter bars keep the base colour: those are large blocks, they answer
+     * to the 3:1 non-text threshold, and they already pass.
+     *
+     * `ContrastTest` measures all of this on every push. It is not decoration: the
+     * failure here was never writing an obviously wrong colour, it was adding a
+     * token and never once looking at it against the pale ground.
+     */
+    val accentInk: Color,
+    val dangerInk: Color,
+    val warnInk: Color,
+    val successInk: Color,
+
+    /**
+     * The logo ramp's two brightest steps, same treatment.
+     *
+     * These are worse than the four above, not better: on cream, `accentGreen`
+     * measures 1.14:1 and `accentCyan` 1.72:1 — under the 3:1 floor for a *graphical*
+     * object, never mind text. A diff's added lines and an agent run's "working" dot
+     * were effectively invisible in the light theme.
+     *
+     * `accentViolet` is left alone. It clears 3:1 as a shape, and the only places it
+     * appears are an avatar fill and the two flat planes behind an empty
+     * conversation, which are both large blocks by design.
+     */
+    val accentGreenInk: Color,
+    val accentCyanInk: Color,
+
     /** True for Midnight and any other dark rendition. Drives status-bar icon polarity. */
     val isDark: Boolean,
 ) {
@@ -148,6 +193,16 @@ val MidnightColors = AnodexColors(
 
     codeInlineText = Color(0xFFA5D6FF),
 
+    // Nothing to re-step. Measured against every dark ground these read between
+    // 5.3:1 and 9.7:1, so an ink of their own would be a second name for the same
+    // colour and a second thing to keep in step.
+    accentInk = Color(0xFF4F8CFF),
+    dangerInk = Color(0xFFF05A5A),
+    warnInk = Color(0xFFF5A623),
+    successInk = Color(0xFF3CCF7A),
+    accentGreenInk = Color(0xFF74F0A8),
+    accentCyanInk = Color(0xFF38BDF8),
+
     isDark = true,
 )
 
@@ -185,6 +240,16 @@ val LightColors = MidnightColors.copy(
 
     // The dark-mode pastel blue reads as near-invisible on a light surface.
     codeInlineText = Color(0xFF1A56DB),
+
+    // Worst-case ratios against bgApp, bgSurface2, bgElevated, bgBase and the 12%
+    // wash of the matching base colour: 5.14, 5.24, 4.76, 5.27. Same hues.
+    accentInk = Color(0xFF1F58C7),
+    dangerInk = Color(0xFFB3261E),
+    warnInk = Color(0xFF8A5A00),
+    successInk = Color(0xFF146B3C),
+    // Worst case 4.66 apiece, on the same four grounds.
+    accentGreenInk = Color(0xFF0D7538),
+    accentCyanInk = Color(0xFF056C9A),
 
     isDark = false,
 )

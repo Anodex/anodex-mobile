@@ -119,7 +119,7 @@ fun ConversationsScreen(
                     Text(
                         text = activeProjectName ?: "no project",
                         style = type.label,
-                        color = if (activeProjectName != null) colors.accent else colors.textMuted,
+                        color = if (activeProjectName != null) colors.accentInk else colors.textMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -268,7 +268,7 @@ private fun ProjectTag(name: String) {
     Text(
         text = name,
         style = AnodexTheme.type.badge,
-        color = colors.accent,
+        color = colors.accentInk,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
