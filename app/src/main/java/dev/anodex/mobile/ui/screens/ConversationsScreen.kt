@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.EmptyTone
+import dev.anodex.mobile.ui.components.InlineProblem
 import dev.anodex.mobile.ui.components.ListSkeleton
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.ScreenScaffold
@@ -52,6 +54,8 @@ fun ConversationsScreen(
     conversations: List<ConversationSummary>,
     loading: Boolean,
     activeId: String?,
+    /** Why the list is empty, when the reason is not "you have no conversations". */
+    error: String? = null,
     onOpen: (String) -> Unit,
     onNewChat: () -> Unit,
     modifier: Modifier = Modifier,
@@ -135,6 +139,18 @@ fun ConversationsScreen(
                 modifier = Modifier.padding(listPadding(topInset)),
             )
 
+            // Told apart on purpose. This is where the app opens, so "No
+            // conversations yet. Start one." was the first thing it said to
+            // somebody whose very first read had failed — an invitation phrased
+            // as a fact about their history.
+            conversations.isEmpty() && error != null -> EmptyState(
+                headline = "Could not read your conversations",
+                detail = error,
+                tone = EmptyTone.PROBLEM,
+                icon = AnodexIcon.CHAT,
+                modifier = Modifier.padding(top = topInset),
+            )
+
             conversations.isEmpty() -> EmptyState(
                 headline = "No conversations yet",
                 detail = "Start one and it will be here — and on the computer.",
@@ -155,6 +171,23 @@ fun ConversationsScreen(
                     .fadingEdges(topInset, 0.dp),
                 contentPadding = listPadding(topInset, horizontal = 0.dp),
             ) {
+                // A refresh that failed while there was still a list to show. The
+                // conversations below are real and still on the computer — they are
+                // stale rather than wrong — so they stay, with a line saying the
+                // newest of them may be missing.
+                if (error != null) {
+                    item(key = "read-failed") {
+                        InlineProblem(
+                            text = error,
+                            modifier = Modifier.padding(
+                                start = Spacing.x4,
+                                end = Spacing.x4,
+                                bottom = Spacing.x2,
+                            ),
+                        )
+                    }
+                }
+
                 // Flat while searching, for the same reason the workspace list is:
                 // results are an answer to a question, and four matches split across
                 // three project headings and an "Active now" is more structure than
