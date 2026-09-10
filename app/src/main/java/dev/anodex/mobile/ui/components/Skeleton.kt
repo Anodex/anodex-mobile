@@ -87,10 +87,12 @@ fun SkeletonBar(
             .fillMaxWidth(widthFraction)
             .height(height)
             .clip(Radii.sm)
-            // A step up from the card it sits on rather than a grey of its own, so it
-            // stays a surface relationship and holds in both themes: the light palette
-            // is warm, and any neutral placeholder would read as a stain on it.
-            .background(AnodexTheme.colors.bgElevated)
+            // A wash of the page's own text colour rather than a surface token. It
+            // stands in for words, so it is a tint of the words — which comes out
+            // darker than its ground on Light and lighter on Midnight, correct in
+            // both. Pointed at `bgElevated` it went white on cream and read as a
+            // highlight instead of as something missing.
+            .background(AnodexTheme.colors.placeholder)
     )
 }
 

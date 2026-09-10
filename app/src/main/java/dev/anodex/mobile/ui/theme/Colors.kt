@@ -132,6 +132,18 @@ data class AnodexColors(
      * sit much closer to the tint than the dark theme's do.
      */
     val pressTint: Color get() = text.copy(alpha = if (isDark) 0.09f else 0.06f)
+
+    /**
+     * The block drawn where a line of text has not arrived yet — see [ListSkeleton].
+     *
+     * A wash of the page's own text colour, for the reason a placeholder exists: it
+     * stands in for words. Derived rather than pointed at a surface token, because
+     * the surface that used to serve — `bgElevated` — climbs *towards* white on the
+     * light theme, and a white bar on a cream card reads as a highlight rather than
+     * as something missing. A tint of the text is darker than its ground in Light
+     * and lighter than its ground in Midnight, which is correct in both.
+     */
+    val placeholder: Color get() = text.copy(alpha = 0.09f)
 }
 
 /**
@@ -219,18 +231,34 @@ val MidnightColors = AnodexColors(
  * re-stepping, not a dimming.
  */
 val LightColors = MidnightColors.copy(
-    bgBase = Color(0xFFF2F0EB),
-    bgApp = Color(0xFFF9F8F5),
-    bgSurface = Color(0xFFF9F8F5),
-    bgSurface2 = Color(0xFFF0EEE8),
-    bgElevated = Color(0xFFE9E6DF),
-    bgInput = Color(0xFFF9F8F5),
+    // A ladder, and it did not used to be one.
+    //
+    // `bgApp` and `bgSurface` were the same value, byte for byte, and so was
+    // `bgInput`. In a theme that separates surfaces by colour rather than by shadow
+    // — which this one does, deliberately; see [Elevation] — that means a filled
+    // card had no boundary at all on the light theme, and neither did a search
+    // field or the resting shape of a loading list. Only the things that happened
+    // to draw a border survived.
+    //
+    // Midnight climbs from near-black towards grey as a surface rises. Light climbs
+    // from a warm ground towards white, which is the same relationship rather than
+    // the same direction. Every step here is at least as separated as the matching
+    // step in Midnight — `ContrastTest` measures exactly that, holding the light
+    // theme to the dark theme's own weakest step so neither can quietly flatten.
+    bgBase = Color(0xFFE8E4DB),
+    bgApp = Color(0xFFF1EEE7),
+    bgSurface = Color(0xFFF8F6F2),
+    bgSurface2 = Color(0xFFFDFCFA),
+    bgElevated = Color(0xFFFFFFFF),
+    bgInput = Color(0xFFFFFFFF),
 
     border = Color(0xFFE3E0D8),
     borderStrong = Color(0xFFD1CDC2),
 
     text = Color(0xFF23211D),
-    textMuted = Color(0xFF6F6A60),
+    // Half a step deeper than it was. Against the new deepest ground — the drawer's
+    // — the old value measured 4.24:1, just under the floor. Same warm hue.
+    textMuted = Color(0xFF645E54),
     textFaint = Color(0xFFA29C8F),
 
     series1 = Color(0xFF5B4EC6),

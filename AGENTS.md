@@ -148,6 +148,15 @@ is why nobody working in dark ever saw it. Use the `*Ink` variant for anything
 read at text size, including glyphs; keep the base for fills, borders and
 anything else large enough to answer to the 3:1 threshold. `ContrastTest`
 enforces this on every push, and a new token that skips it will fail there.
+
+**Surfaces are separated by colour, not by shadow** — that is `Tokens.kt`'s
+deliberate choice — so two surface tokens holding the same value is not a
+cosmetic tie, it is a boundary that does not exist. `bgApp`, `bgSurface` and
+`bgInput` were once identical in the light theme, and a filled card, a search
+field and a loading list had no edge at all there. `ContrastTest` now holds
+every surface step to **Midnight's own weakest step**, measured rather than
+picked: the dark theme is the one that gets looked at daily, so whatever
+separation it settles for is by definition enough.
 `ui/components/Gallery.kt` is where you *look* at both — every shared component
 and both colour columns on one page, previewed in each theme. Anything added to
 the shared components belongs there too: a component nobody can see in both
