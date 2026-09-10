@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -263,13 +264,14 @@ private fun Composer(
                     .size(Touch.minTarget)
                     .clip(Radii.pill)
                     .background(if (ready) colors.accent else colors.bgElevated)
-                    .clickable(enabled = ready, onClick = onSend),
+                    .clickable(enabled = ready, role = Role.Button, onClick = onSend),
                 contentAlignment = Alignment.Center,
             ) {
                 AnodexIcon(
                     AnodexIcon.SEND,
                     size = 16.dp,
                     tint = if (ready) colors.textOnAccent else colors.textFaint,
+                    contentDescription = "Create the task",
                 )
             }
         }

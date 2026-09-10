@@ -15,6 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -97,10 +100,17 @@ fun UpdateBanner(
                     modifier = Modifier
                         .size(Touch.minTarget)
                         .clip(Radii.md)
-                        .clickable(onClick = onDismiss),
+                        .clickable(role = Role.Button, onClick = onDismiss),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("✕", style = type.body, color = colors.textFaint)
+                    Text(
+                        text = "✕",
+                        style = type.body,
+                        color = colors.textFaint,
+                        modifier = Modifier.clearAndSetSemantics {
+                            contentDescription = "Dismiss this notice"
+                        },
+                    )
                 }
             }
         }

@@ -49,6 +49,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -742,10 +744,20 @@ private fun QueuedNotice(onClear: () -> Unit) {
             modifier = Modifier
                 .size(Touch.minTarget)
                 .clip(CircleShape)
-                .clickable(onClick = onClear),
+                .clickable(role = Role.Button, onClick = onClear),
             contentAlignment = Alignment.Center,
         ) {
-            Text("\u2715", style = type.meta, color = colors.accentInk)
+            // The glyph is the picture of the control, not its name. Left as it was,
+            // a screen reader reads out the character itself, which is worse than
+            // silence on a button that stops a message being sent.
+            Text(
+                text = "\u2715",
+                style = type.meta,
+                color = colors.accentInk,
+                modifier = Modifier.clearAndSetSemantics {
+                    contentDescription = "Do not send this message"
+                },
+            )
         }
     }
 }
@@ -812,10 +824,17 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
                 modifier = Modifier
                     .size(Touch.minTarget)
                     .clip(CircleShape)
-                    .clickable(onClick = onRemove),
+                    .clickable(role = Role.Button, onClick = onRemove),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("\u2715", style = type.body, color = colors.textFaint)
+                Text(
+                    text = "\u2715",
+                    style = type.body,
+                    color = colors.textFaint,
+                    modifier = Modifier.clearAndSetSemantics {
+                        contentDescription = "Remove this attachment"
+                    },
+                )
             }
         }
 
@@ -1295,10 +1314,15 @@ private fun Composer(
                     modifier = Modifier
                         .size(Touch.minTarget)
                         .clip(CircleShape)
-                        .clickable(onClick = onAttach),
+                        .clickable(role = Role.Button, onClick = onAttach),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AnodexIcon(AnodexIcon.PAPERCLIP, size = 20.dp, tint = colors.textMuted)
+                    AnodexIcon(
+                        AnodexIcon.PAPERCLIP,
+                        size = 20.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Attach a file",
+                    )
                 }
             }
 
