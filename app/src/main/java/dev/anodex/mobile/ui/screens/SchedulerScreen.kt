@@ -1,12 +1,12 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,16 +26,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.EmptyTone
+import dev.anodex.mobile.ui.components.InlineProblem
+import dev.anodex.mobile.ui.components.ListSkeleton
+import dev.anodex.mobile.ui.components.ScreenScaffold
 import dev.anodex.mobile.ui.components.StatusDot
+import dev.anodex.mobile.ui.components.fadingEdges
+import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Motion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -74,86 +81,95 @@ fun SchedulerScreen(
     val type = AnodexTheme.type
     var draft by rememberSaveable { mutableStateOf("") }
 
-    Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        if (tasks.isEmpty() && onCreate == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-                    modifier = Modifier.padding(Spacing.x6),
-                ) {
-                    Text(
-                        text = when {
-                            loading -> "Asking your computer…"
-                            error != null -> "Could not read your tasks"
-                            else -> "Nothing scheduled"
-                        },
-                        style = type.bodyEmphasis,
-                        color = if (error != null) colors.danger else colors.textMuted,
-                        textAlign = TextAlign.Center,
+    ScreenScaffold(
+        title = "Scheduled",
+        modifier = modifier,
+        // Where the work happens, said once. A task that only runs while the phone is
+        // awake would be a different promise, and people assume the weaker one.
+        subtitle = "Runs on your computer, whether or not this is open.",
+    ) { topInset ->
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                when {
+                    loading && tasks.isEmpty() -> ListSkeleton(
+                        rows = 3,
+                        caption = "Asking your computer…",
+                        modifier = Modifier.padding(listPadding(topInset)),
                     )
-                    if (!loading) {
+
+                    // Nothing to show and nothing to offer: the only case where the
+                    // whole screen is the message.
+                    tasks.isEmpty() && onCreate == null -> EmptyState(
+                        headline = if (error != null) "Could not read your tasks" else "Nothing scheduled",
                         // The reason, when there is one. An empty list and a failed
                         // read looked identical before, so a broken feature was
                         // indistinguishable from a working one with nothing to show.
-                        Text(
-                            text = error ?: "Tasks are created at the computer.",
-                            style = type.meta,
-                            color = colors.textFaint,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-            }
-            return@Column
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(Spacing.x3),
-            verticalArrangement = Arrangement.spacedBy(Spacing.x3),
-        ) {
-            items(tasks, key = { it.id }) { task ->
-                TaskCard(task, onClick = onOpenTask?.let { open -> { open(task.id) } })
-            }
-
-            // Offered under whatever is already there, so the screen is never a dead
-            // end — and phrased as things this computer can actually do. Cards
-            // promising what Anodex has no way to carry out would be the worst
-            // version of this screen: an invitation that fails after you accept it.
-            if (onCreate != null) {
-                item(key = "starters-label") {
-                    Text(
-                        text = if (tasks.isEmpty()) "START SOMETHING" else "OR START SOMETHING",
-                        style = type.badge,
-                        color = colors.textFaint,
-                        modifier = Modifier.padding(top = Spacing.x2),
+                        detail = error ?: "Tasks are created at the computer.",
+                        tone = if (error != null) EmptyTone.PROBLEM else EmptyTone.QUIET,
+                        icon = AnodexIcon.CLOCK,
+                        modifier = Modifier.padding(top = topInset),
                     )
-                }
 
-                items(STARTERS, key = { it.phrase }) { starter ->
-                    StarterCard(starter) {
-                        draft = starter.phrase
-                        onDraftChanged(starter.phrase)
+                    else -> LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .fadingEdges(topInset, 0.dp),
+                        contentPadding = listPadding(topInset),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+                    ) {
+                        // Said here rather than swallowed. This screen has two
+                        // sources — the tasks it reads and the starters it offers —
+                        // and having something to draw is not evidence the read
+                        // worked. Before this, a failed read rendered as a page of
+                        // suggestions with no sign anything had gone wrong.
+                        if (error != null) {
+                            item(key = "read-failed") { InlineProblem(error) }
+                        }
+
+                        items(tasks, key = { it.id }) { task ->
+                            TaskCard(task, onClick = onOpenTask?.let { open -> { open(task.id) } })
+                        }
+
+                        // Offered under whatever is already there, so the screen is never a dead
+                        // end — and phrased as things this computer can actually do. Cards
+                        // promising what Anodex has no way to carry out would be the worst
+                        // version of this screen: an invitation that fails after you accept it.
+                        if (onCreate != null) {
+                            item(key = "starters-label") {
+                                Text(
+                                    text = if (tasks.isEmpty()) "START SOMETHING" else "OR START SOMETHING",
+                                    style = type.badge,
+                                    color = colors.textFaint,
+                                    modifier = Modifier.padding(top = Spacing.x2),
+                                )
+                            }
+
+                            items(STARTERS, key = { it.phrase }) { starter ->
+                                StarterCard(starter) {
+                                    draft = starter.phrase
+                                    onDraftChanged(starter.phrase)
+                                }
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        if (onCreate != null) {
-            Composer(
-                draft = draft,
-                parsed = parsed,
-                creating = creating,
-                onDraftChanged = {
-                    draft = it
-                    onDraftChanged(it)
-                },
-                onSend = {
-                    onCreate(draft)
-                    draft = ""
-                },
-            )
+            if (onCreate != null) {
+                Composer(
+                    draft = draft,
+                    parsed = parsed,
+                    creating = creating,
+                    onDraftChanged = {
+                        draft = it
+                        onDraftChanged(it)
+                    },
+                    onSend = {
+                        onCreate(draft)
+                        draft = ""
+                    },
+                )
+            }
         }
     }
 }
@@ -178,12 +194,22 @@ private fun Composer(
     val type = AnodexTheme.type
     val ready = parsed != null && draft.isNotBlank() && !creating
 
+    // The edge says whether this is ready to go, exactly as the chat composer's pill
+    // does. Two fields on two screens that both send a sentence to the computer
+    // should not disagree about how they say they are ready.
+    val edge by animateColorAsState(
+        targetValue = if (ready) colors.accent else colors.border,
+        animationSpec = Motion.fast(),
+        label = "composerEdge",
+    )
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(Spacing.x3)
             .clip(Radii.xl)
             .background(colors.bgInput)
+            .border(1.dp, edge, Radii.xl)
             .padding(Spacing.x3),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
@@ -283,17 +309,13 @@ private fun StarterCard(starter: Starter, onClick: () -> Unit) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(Radii.xl)
-            // Outlined rather than filled, because it is not a task yet. A live task
-            // and an offer that looks identical is the fastest way to make somebody
-            // believe something is scheduled when nothing is.
-            .border(1.dp, colors.borderStrong, Radii.xl)
-            .clickable(onClick = onClick)
-            .padding(Spacing.x4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    AnodexCard(
+        // Outlined rather than filled, because it is not a task yet. A live task
+        // and an offer that looks identical is the fastest way to make somebody
+        // believe something is scheduled when nothing is.
+        fill = false,
+        edge = colors.borderStrong,
+        onClick = onClick,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -317,15 +339,7 @@ private fun TaskCard(task: ScheduledTask, onClick: (() -> Unit)? = null) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(Radii.xl)
-            .background(colors.bgSurface)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(Spacing.x4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-    ) {
+    AnodexCard(onClick = onClick) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
