@@ -148,6 +148,10 @@ is why nobody working in dark ever saw it. Use the `*Ink` variant for anything
 read at text size, including glyphs; keep the base for fills, borders and
 anything else large enough to answer to the 3:1 threshold. `ContrastTest`
 enforces this on every push, and a new token that skips it will fail there.
+`ui/components/Gallery.kt` is where you *look* at both — every shared component
+and both colour columns on one page, previewed in each theme. Anything added to
+the shared components belongs there too: a component nobody can see in both
+themes has only been designed for one.
 
 Keep 48dp touch targets. Never communicate a waiting state with motion alone;
 pair it with text and a static shape or colour.
