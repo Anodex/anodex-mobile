@@ -162,6 +162,22 @@ and both colour columns on one page, previewed in each theme. Anything added to
 the shared components belongs there too: a component nobody can see in both
 themes has only been designed for one.
 
+**`textFaint` is deliberately below AA, and this is the decision, not an
+oversight.** It measures 2.71:1 at worst on Midnight and 2.15:1 on Light, against
+the 4.5 that `type.meta` and `type.badge` would need to pass — so every timestamp,
+section label and second line on an empty screen is under the bar. It was weighed
+and kept: lifting it collides with `textMuted` (5.06:1 on Light), so the whole
+three-step ramp has to move — about 15/7/4.7 on Midnight and 12.7/7/4.7 on Light
+is what works — and that visibly changes 112 sites, trading the quietest step in
+the hierarchy for legibility. That is a design call, not a bug fix, and it is the
+user's to make rather than a passing contributor's.
+
+Two things follow. It is **not** symmetric — Light is about twenty percent worse
+than Midnight, and it is the theme where pale-on-cream is harder to begin with —
+so do not repeat the claim that it is even. And `ContrastTest` pins it: a floor it
+may not sink below, and a check that Light does not drift further from Midnight
+than it already has. Changing the ramp means changing that test on purpose.
+
 Keep 48dp touch targets. Never communicate a waiting state with motion alone;
 pair it with text and a static shape or colour.
 
@@ -191,6 +207,11 @@ Two rules that are not obvious from the signatures:
   it two things: `fadingEdges(topInset, 0.dp)` so it dissolves under the bar
   rather than being sliced by it, and `listPadding(topInset)` so its first row
   can be read.
+- **Settings is the one screen that does not use it, on purpose.** It is a modal
+  stack rather than a destination, and a centred title over a back chevron is the
+  idiom for that everywhere on the phone. It is an exception that was considered,
+  not a screen that was missed — leave it unless you are changing what Settings
+  *is*.
 
 ### Absence, failure and delay are three states, not one
 
