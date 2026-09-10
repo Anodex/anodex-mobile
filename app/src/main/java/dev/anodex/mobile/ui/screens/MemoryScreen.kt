@@ -157,7 +157,7 @@ private fun EntryCard(entry: MemoryEntry, onForget: ((MemoryEntry) -> Unit)?) {
                 Text(
                     text = if (confirming) "Tap again to forget" else "Forget",
                     style = type.label,
-                    color = if (confirming) colors.danger else colors.textMuted,
+                    color = if (confirming) colors.dangerInk else colors.textMuted,
                     modifier = Modifier
                         .heightIn(min = Touch.minTarget)
                         .clip(Radii.md)

@@ -69,6 +69,51 @@ data class AnodexColors(
     // readable against bgBase in both light and dark.
     val codeInlineText: Color,
 
+    /**
+     * The same four colours again, re-stepped to be legible **as text**.
+     *
+     * `accent`, `danger`, `warn` and `success` were shared across both themes, and
+     * they were chosen against a near-black field. Measured as text on the light
+     * palette's cream, every one of them fails WCAG AA — accent at 3.03:1, danger at
+     * 3.13:1, and warn and success at 1.91:1 and 1.90:1, which is barely legible at
+     * all. On Midnight the same values measure 5.3 to 9.7. The light theme was
+     * genuinely a second-class citizen here, which `AGENTS.md` says it must not be.
+     *
+     * A re-stepping, not a dimming — the same thing the series colours already do,
+     * and for the same reason. Each ink is its base colour walked down in lightness
+     * at constant hue and saturation until it clears 4.5:1 against every ground it
+     * lands on: `bgApp`, `bgSurface2`, `bgElevated`, `bgBase` and its own 12% soft
+     * wash. On Midnight the bases already clear all of those, so the inks *are* the
+     * bases and nothing changes.
+     *
+     * **Ink is for text and for glyphs read at text size.** Fills, borders, status
+     * dots and meter bars keep the base colour: those are large blocks, they answer
+     * to the 3:1 non-text threshold, and they already pass.
+     *
+     * `ContrastTest` measures all of this on every push. It is not decoration: the
+     * failure here was never writing an obviously wrong colour, it was adding a
+     * token and never once looking at it against the pale ground.
+     */
+    val accentInk: Color,
+    val dangerInk: Color,
+    val warnInk: Color,
+    val successInk: Color,
+
+    /**
+     * The logo ramp's two brightest steps, same treatment.
+     *
+     * These are worse than the four above, not better: on cream, `accentGreen`
+     * measures 1.14:1 and `accentCyan` 1.72:1 — under the 3:1 floor for a *graphical*
+     * object, never mind text. A diff's added lines and an agent run's "working" dot
+     * were effectively invisible in the light theme.
+     *
+     * `accentViolet` is left alone. It clears 3:1 as a shape, and the only places it
+     * appears are an avatar fill and the two flat planes behind an empty
+     * conversation, which are both large blocks by design.
+     */
+    val accentGreenInk: Color,
+    val accentCyanInk: Color,
+
     /** True for Midnight and any other dark rendition. Drives status-bar icon polarity. */
     val isDark: Boolean,
 ) {
@@ -87,6 +132,18 @@ data class AnodexColors(
      * sit much closer to the tint than the dark theme's do.
      */
     val pressTint: Color get() = text.copy(alpha = if (isDark) 0.09f else 0.06f)
+
+    /**
+     * The block drawn where a line of text has not arrived yet — see [ListSkeleton].
+     *
+     * A wash of the page's own text colour, for the reason a placeholder exists: it
+     * stands in for words. Derived rather than pointed at a surface token, because
+     * the surface that used to serve — `bgElevated` — climbs *towards* white on the
+     * light theme, and a white bar on a cream card reads as a highlight rather than
+     * as something missing. A tint of the text is darker than its ground in Light
+     * and lighter than its ground in Midnight, which is correct in both.
+     */
+    val placeholder: Color get() = text.copy(alpha = 0.09f)
 }
 
 /**
@@ -148,6 +205,16 @@ val MidnightColors = AnodexColors(
 
     codeInlineText = Color(0xFFA5D6FF),
 
+    // Nothing to re-step. Measured against every dark ground these read between
+    // 5.3:1 and 9.7:1, so an ink of their own would be a second name for the same
+    // colour and a second thing to keep in step.
+    accentInk = Color(0xFF4F8CFF),
+    dangerInk = Color(0xFFF05A5A),
+    warnInk = Color(0xFFF5A623),
+    successInk = Color(0xFF3CCF7A),
+    accentGreenInk = Color(0xFF74F0A8),
+    accentCyanInk = Color(0xFF38BDF8),
+
     isDark = true,
 )
 
@@ -164,18 +231,34 @@ val MidnightColors = AnodexColors(
  * re-stepping, not a dimming.
  */
 val LightColors = MidnightColors.copy(
-    bgBase = Color(0xFFF2F0EB),
-    bgApp = Color(0xFFF9F8F5),
-    bgSurface = Color(0xFFF9F8F5),
-    bgSurface2 = Color(0xFFF0EEE8),
-    bgElevated = Color(0xFFE9E6DF),
-    bgInput = Color(0xFFF9F8F5),
+    // A ladder, and it did not used to be one.
+    //
+    // `bgApp` and `bgSurface` were the same value, byte for byte, and so was
+    // `bgInput`. In a theme that separates surfaces by colour rather than by shadow
+    // — which this one does, deliberately; see [Elevation] — that means a filled
+    // card had no boundary at all on the light theme, and neither did a search
+    // field or the resting shape of a loading list. Only the things that happened
+    // to draw a border survived.
+    //
+    // Midnight climbs from near-black towards grey as a surface rises. Light climbs
+    // from a warm ground towards white, which is the same relationship rather than
+    // the same direction. Every step here is at least as separated as the matching
+    // step in Midnight — `ContrastTest` measures exactly that, holding the light
+    // theme to the dark theme's own weakest step so neither can quietly flatten.
+    bgBase = Color(0xFFE8E4DB),
+    bgApp = Color(0xFFF1EEE7),
+    bgSurface = Color(0xFFF8F6F2),
+    bgSurface2 = Color(0xFFFDFCFA),
+    bgElevated = Color(0xFFFFFFFF),
+    bgInput = Color(0xFFFFFFFF),
 
     border = Color(0xFFE3E0D8),
     borderStrong = Color(0xFFD1CDC2),
 
     text = Color(0xFF23211D),
-    textMuted = Color(0xFF6F6A60),
+    // Half a step deeper than it was. Against the new deepest ground — the drawer's
+    // — the old value measured 4.24:1, just under the floor. Same warm hue.
+    textMuted = Color(0xFF645E54),
     textFaint = Color(0xFFA29C8F),
 
     series1 = Color(0xFF5B4EC6),
@@ -185,6 +268,16 @@ val LightColors = MidnightColors.copy(
 
     // The dark-mode pastel blue reads as near-invisible on a light surface.
     codeInlineText = Color(0xFF1A56DB),
+
+    // Worst-case ratios against bgApp, bgSurface2, bgElevated, bgBase and the 12%
+    // wash of the matching base colour: 5.14, 5.24, 4.76, 5.27. Same hues.
+    accentInk = Color(0xFF1F58C7),
+    dangerInk = Color(0xFFB3261E),
+    warnInk = Color(0xFF8A5A00),
+    successInk = Color(0xFF146B3C),
+    // Worst case 4.66 apiece, on the same four grounds.
+    accentGreenInk = Color(0xFF0D7538),
+    accentCyanInk = Color(0xFF056C9A),
 
     isDark = false,
 )

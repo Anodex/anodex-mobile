@@ -61,7 +61,7 @@ fun TaskScreen(
         title = task.name,
         modifier = modifier,
         subtitle = timingSentence(task),
-        trailing = { StatusDot(colour = colors.accent, running = running) },
+        trailing = { StatusDot(colour = colors.accentInk, running = running) },
     ) { topInset ->
         LazyColumn(
             modifier = Modifier
@@ -119,12 +119,12 @@ fun TaskScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
                         ) {
-                            AnodexIcon(AnodexIcon.CLOCK, size = 18.dp, tint = colors.accent)
+                            AnodexIcon(AnodexIcon.CLOCK, size = 18.dp, tint = colors.accentInk)
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     text = if (running) "Running…" else "Run it now",
                                     style = type.bodyEmphasis,
-                                    color = if (running) colors.textMuted else colors.accent,
+                                    color = if (running) colors.textMuted else colors.accentInk,
                                 )
                                 Text(
                                     text = "Starts on your computer immediately, whatever the " +
@@ -187,7 +187,7 @@ private fun RunRow(run: TaskRun) {
                 text = "Started ${formatDuration(run.delayedMs)} after its slot — your " +
                     "computer was probably asleep.",
                 style = type.meta,
-                color = colors.warn,
+                color = colors.warnInk,
             )
         }
     }
@@ -205,9 +205,9 @@ private fun outcomeWord(status: String?): String = when (status) {
 }
 
 private fun runColour(status: String?, colors: AnodexColors): Color = when (status) {
-    "success" -> colors.success
-    "failed" -> colors.danger
-    "skipped" -> colors.warn
+    "success" -> colors.successInk
+    "failed" -> colors.dangerInk
+    "skipped" -> colors.warnInk
     else -> colors.textMuted
 }
 

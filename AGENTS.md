@@ -140,6 +140,44 @@ is asking the user to trust it.
 Both themes are first-class. The warm light palette is a deliberate
 differentiator, not an afterthought — validate it as carefully as dark.
 
+**Colour that carries meaning has two steps, and the second one is not optional.**
+`accent`, `danger`, `warn`, `success`, `accentGreen` and `accentCyan` were picked
+against a near-black field. As *text* on the light palette's cream they measured
+between 1.14:1 and 3.13:1 — the same values measure 5.3 to 12 on Midnight, which
+is why nobody working in dark ever saw it. Use the `*Ink` variant for anything
+read at text size, including glyphs; keep the base for fills, borders and
+anything else large enough to answer to the 3:1 threshold. `ContrastTest`
+enforces this on every push, and a new token that skips it will fail there.
+
+**Surfaces are separated by colour, not by shadow** — that is `Tokens.kt`'s
+deliberate choice — so two surface tokens holding the same value is not a
+cosmetic tie, it is a boundary that does not exist. `bgApp`, `bgSurface` and
+`bgInput` were once identical in the light theme, and a filled card, a search
+field and a loading list had no edge at all there. `ContrastTest` now holds
+every surface step to **Midnight's own weakest step**, measured rather than
+picked: the dark theme is the one that gets looked at daily, so whatever
+separation it settles for is by definition enough.
+`ui/components/Gallery.kt` is where you *look* at both — every shared component
+and both colour columns on one page, previewed in each theme. Anything added to
+the shared components belongs there too: a component nobody can see in both
+themes has only been designed for one.
+
+**`textFaint` is deliberately below AA, and this is the decision, not an
+oversight.** It measures 2.71:1 at worst on Midnight and 2.15:1 on Light, against
+the 4.5 that `type.meta` and `type.badge` would need to pass — so every timestamp,
+section label and second line on an empty screen is under the bar. It was weighed
+and kept: lifting it collides with `textMuted` (5.06:1 on Light), so the whole
+three-step ramp has to move — about 15/7/4.7 on Midnight and 12.7/7/4.7 on Light
+is what works — and that visibly changes 112 sites, trading the quietest step in
+the hierarchy for legibility. That is a design call, not a bug fix, and it is the
+user's to make rather than a passing contributor's.
+
+Two things follow. It is **not** symmetric — Light is about twenty percent worse
+than Midnight, and it is the theme where pale-on-cream is harder to begin with —
+so do not repeat the claim that it is even. And `ContrastTest` pins it: a floor it
+may not sink below, and a check that Light does not drift further from Midnight
+than it already has. Changing the ramp means changing that test on purpose.
+
 Keep 48dp touch targets. Never communicate a waiting state with motion alone;
 pair it with text and a static shape or colour.
 
@@ -169,6 +207,11 @@ Two rules that are not obvious from the signatures:
   it two things: `fadingEdges(topInset, 0.dp)` so it dissolves under the bar
   rather than being sliced by it, and `listPadding(topInset)` so its first row
   can be read.
+- **Settings is the one screen that does not use it, on purpose.** It is a modal
+  stack rather than a destination, and a centred title over a back chevron is the
+  idiom for that everywhere on the phone. It is an exception that was considered,
+  not a screen that was missed — leave it unless you are changing what Settings
+  *is*.
 
 ### Absence, failure and delay are three states, not one
 

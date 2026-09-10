@@ -259,37 +259,39 @@ private fun ThreadReader(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(Spacing.x3),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
-        ) {
-            SecondaryButton(label = "Back", onClick = onClose)
-            Text(
-                text = notes.firstOrNull()?.subject.orEmpty(),
-                style = type.bodyEmphasis,
-                color = colors.text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-        }
-
+    ScreenScaffold(
+        // The subject is the title. It was already the only thing in the old header
+        // besides the way out, and a reader whose title is the thing being read is
+        // the same shape the file reader now uses.
+        title = notes.firstOrNull()?.subject.orEmpty().ifBlank { "No subject" },
+        modifier = modifier,
+        // How many, not who from. Every message below already names its own
+        // sender, and on a one-message thread a subtitle naming the sender would
+        // be the same name twice, an inch apart.
+        subtitle = if (notes.size > 1) "${notes.size} messages" else null,
+        leading = { SecondaryButton(label = "Back", onClick = onClose) },
+    ) { topInset ->
         if (loading && notes.isEmpty()) {
             EmptyState(
                 headline = "Opening…",
                 tone = EmptyTone.WAITING,
                 icon = AnodexIcon.MAIL,
+                modifier = Modifier.padding(top = topInset),
             )
-            return@Column
+            return@ScreenScaffold
         }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .fadingEdges(topInset, 0.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+                .padding(
+                    start = Spacing.x4,
+                    end = Spacing.x4,
+                    top = topInset + Spacing.x2,
+                    bottom = Spacing.x6,
+                ),
             verticalArrangement = Arrangement.spacedBy(Spacing.x5),
         ) {
             for (note in notes) {

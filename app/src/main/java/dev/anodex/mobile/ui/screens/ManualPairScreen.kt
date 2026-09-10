@@ -115,7 +115,7 @@ fun ManualPairScreen(
                     text = "If it does not match, something other than your computer answered. " +
                         "Stop, and pair by scanning the code instead.",
                     style = type.body,
-                    color = colors.warn,
+                    color = colors.warnInk,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(Radii.md)
@@ -194,7 +194,7 @@ fun ManualPairScreen(
             Text(
                 text = error,
                 style = type.body,
-                color = colors.danger,
+                color = colors.dangerInk,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(Radii.md)
@@ -234,7 +234,7 @@ private fun Field(
                 onValueChange = onChange,
                 singleLine = true,
                 textStyle = type.body.copy(color = colors.text),
-                cursorBrush = SolidColor(colors.accent),
+                cursorBrush = SolidColor(colors.accentInk),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = keyboard,
                     capitalization = if (capitalize) {

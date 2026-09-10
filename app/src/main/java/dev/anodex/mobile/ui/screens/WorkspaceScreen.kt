@@ -120,7 +120,7 @@ fun WorkspaceScreen(
                 Text(
                     text = "New chat here",
                     style = type.label,
-                    color = colors.accent,
+                    color = colors.accentInk,
                     modifier = Modifier
                         .heightIn(min = Touch.minTarget)
                         .clip(Radii.md)
@@ -294,7 +294,7 @@ private fun ProjectPicker(
                 }
 
                 if (project.id == activeProjectId) {
-                    Text("\u2713", style = type.body, color = colors.accent)
+                    Text("\u2713", style = type.body, color = colors.accentInk)
                 }
             }
         }
@@ -391,7 +391,7 @@ private fun FileRow(file: WorkspaceFile, onClick: () -> Unit) {
             Text(
                 text = "Anodex",
                 style = type.badge,
-                color = colors.accent,
+                color = colors.accentInk,
                 modifier = Modifier
                     .clip(Radii.sm)
                     .background(colors.accentSoft)

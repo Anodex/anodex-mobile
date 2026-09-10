@@ -30,6 +30,9 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -198,19 +201,21 @@ fun ScreenScaffold(
                             // No horizontal padding of its own, so the title still
                             // starts on the same line as the subtitle beneath it. The
                             // 48dp height is what makes the target big enough.
-                            .clickable(onClick = onTitleClick),
+                            .clickable(role = Role.Button, onClick = onTitleClick),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
                     ) {
                         Text(
                             text = title,
                             style = titleStyle ?: type.heading,
-                            color = colors.accent,
+                            color = colors.accentInk,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .semantics { heading() },
                         )
-                        AnodexIcon(AnodexIcon.CHEVRON_RIGHT, size = 16.dp, tint = colors.accent)
+                        AnodexIcon(AnodexIcon.CHEVRON_RIGHT, size = 16.dp, tint = colors.accentInk)
                     }
                 } else {
                     Text(
@@ -219,7 +224,11 @@ fun ScreenScaffold(
                         color = colors.text,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        // Marked as a heading so a screen reader can jump between
+                        // them. Nine screens have a title and none of them said so.
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { heading() },
                     )
                 }
                 trailing?.invoke(this)

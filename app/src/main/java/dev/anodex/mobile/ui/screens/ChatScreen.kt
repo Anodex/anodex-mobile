@@ -49,6 +49,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -422,7 +424,7 @@ fun ChatScreen(
                 Text(
                     text = error,
                     style = type.meta,
-                    color = colors.danger,
+                    color = colors.dangerInk,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = Spacing.x4)
@@ -676,7 +678,7 @@ private fun MessageActions(
     ) {
         ActionButton(
             label = if (copied) "Copied" else "Copy",
-            tint = if (copied) colors.success else colors.textFaint,
+            tint = if (copied) colors.successInk else colors.textFaint,
             enabled = enabled,
         ) {
             clipboard.setText(AnnotatedString(text))
@@ -734,7 +736,7 @@ private fun QueuedNotice(onClear: () -> Unit) {
         Text(
             text = "Sends when this turn ends",
             style = type.meta,
-            color = colors.accent,
+            color = colors.accentInk,
             modifier = Modifier.weight(1f),
         )
 
@@ -742,10 +744,20 @@ private fun QueuedNotice(onClear: () -> Unit) {
             modifier = Modifier
                 .size(Touch.minTarget)
                 .clip(CircleShape)
-                .clickable(onClick = onClear),
+                .clickable(role = Role.Button, onClick = onClear),
             contentAlignment = Alignment.Center,
         ) {
-            Text("\u2715", style = type.meta, color = colors.accent)
+            // The glyph is the picture of the control, not its name. Left as it was,
+            // a screen reader reads out the character itself, which is worse than
+            // silence on a button that stops a message being sent.
+            Text(
+                text = "\u2715",
+                style = type.meta,
+                color = colors.accentInk,
+                modifier = Modifier.clearAndSetSemantics {
+                    contentDescription = "Do not send this message"
+                },
+            )
         }
     }
 }
@@ -802,7 +814,7 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
                         is UploadState.Failed -> state.message
                     },
                     style = type.meta,
-                    color = if (state is UploadState.Failed) colors.danger else colors.textFaint,
+                    color = if (state is UploadState.Failed) colors.dangerInk else colors.textFaint,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -812,10 +824,17 @@ private fun AttachmentChip(state: UploadState, onRemove: () -> Unit) {
                 modifier = Modifier
                     .size(Touch.minTarget)
                     .clip(CircleShape)
-                    .clickable(onClick = onRemove),
+                    .clickable(role = Role.Button, onClick = onRemove),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("\u2715", style = type.body, color = colors.textFaint)
+                Text(
+                    text = "\u2715",
+                    style = type.body,
+                    color = colors.textFaint,
+                    modifier = Modifier.clearAndSetSemantics {
+                        contentDescription = "Remove this attachment"
+                    },
+                )
             }
         }
 
@@ -1008,7 +1027,7 @@ private fun RunningLine(title: String) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         modifier = Modifier.padding(vertical = Spacing.x1),
     ) {
-        AnodexSpinner(size = 13.dp, thickness = 1.5.dp, tint = colors.accent)
+        AnodexSpinner(size = 13.dp, thickness = 1.5.dp, tint = colors.accentInk)
         Text(
             text = title,
             style = type.meta,
@@ -1079,7 +1098,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
-            AnodexIcon(AnodexIcon.FOLDER, size = 14.dp, tint = colors.accentGreen)
+            AnodexIcon(AnodexIcon.FOLDER, size = 14.dp, tint = colors.accentGreenInk)
             Text(
                 text = if (files.size == 1) "Changed 1 file" else "Changed ${files.size} files",
                 style = type.label,
@@ -1089,7 +1108,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
             Text(
                 text = if (expanded) "Hide" else "Show",
                 style = type.meta,
-                color = colors.accent,
+                color = colors.accentInk,
             )
         }
 
@@ -1137,7 +1156,7 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
                 Text(
                     text = "Edited again since this turn.",
                     style = type.meta,
-                    color = colors.warn,
+                    color = colors.warnInk,
                 )
             }
         }
@@ -1154,8 +1173,8 @@ private fun kindMark(kind: String?): String = when (kind) {
 @Composable
 private fun kindColour(kind: String?, colors: dev.anodex.mobile.ui.theme.AnodexColors) =
     when (kind) {
-        "added" -> colors.accentGreen
-        "deleted" -> colors.danger
+        "added" -> colors.accentGreenInk
+        "deleted" -> colors.dangerInk
         else -> colors.textFaint
     }
 
@@ -1295,10 +1314,15 @@ private fun Composer(
                     modifier = Modifier
                         .size(Touch.minTarget)
                         .clip(CircleShape)
-                        .clickable(onClick = onAttach),
+                        .clickable(role = Role.Button, onClick = onAttach),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AnodexIcon(AnodexIcon.PAPERCLIP, size = 20.dp, tint = colors.textMuted)
+                    AnodexIcon(
+                        AnodexIcon.PAPERCLIP,
+                        size = 20.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Attach a file",
+                    )
                 }
             }
 
@@ -1331,7 +1355,7 @@ private fun Composer(
                     value = draft,
                     onValueChange = onDraftChange,
                     textStyle = type.chatBody.copy(color = colors.text),
-                    cursorBrush = SolidColor(colors.accent),
+                    cursorBrush = SolidColor(colors.accentInk),
                     // Past this the field scrolls instead of growing. Without it a
                     // long message pushed the conversation off the top of the screen
                     // and kept going — a prompt of a few paragraphs left nothing on
@@ -1405,7 +1429,7 @@ private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) 
         else -> colors.bgSurface2
     }
     val foreground = when {
-        sending -> colors.danger
+        sending -> colors.dangerInk
         enabled -> colors.textOnAccent
         else -> colors.textFaint
     }

@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -216,7 +217,7 @@ private fun StartRun(
             value = goal,
             onValueChange = onGoalChanged,
             textStyle = type.body.copy(color = colors.text),
-            cursorBrush = SolidColor(colors.accent),
+            cursorBrush = SolidColor(colors.accentInk),
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { inner ->
                 if (goal.isEmpty()) {
@@ -253,7 +254,7 @@ private fun StartRun(
                     else -> "Plans first, then waits for you to approve"
                 },
                 style = type.meta,
-                color = if (projectName == null) colors.warn else colors.textFaint,
+                color = if (projectName == null) colors.warnInk else colors.textFaint,
                 modifier = Modifier.weight(1f),
             )
 
@@ -262,13 +263,14 @@ private fun StartRun(
                     .size(Touch.minTarget)
                     .clip(Radii.pill)
                     .background(if (ready) colors.accent else colors.bgElevated)
-                    .clickable(enabled = ready, onClick = onStart),
+                    .clickable(enabled = ready, role = Role.Button, onClick = onStart),
                 contentAlignment = Alignment.Center,
             ) {
                 AnodexIcon(
                     AnodexIcon.SEND,
                     size = 16.dp,
                     tint = if (ready) colors.textOnAccent else colors.textFaint,
+                    contentDescription = "Start the run",
                 )
             }
         }
@@ -324,7 +326,7 @@ private fun RunCard(
             Text(
                 text = statusLabel(run),
                 style = type.label,
-                color = if (waiting) colors.accent else colors.textMuted,
+                color = if (waiting) colors.accentInk else colors.textMuted,
                 modifier = Modifier.weight(1f),
             )
 
@@ -348,7 +350,7 @@ private fun RunCard(
             Text(
                 text = it,
                 style = type.meta,
-                color = colors.danger,
+                color = colors.dangerInk,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -427,7 +429,7 @@ private fun TurnBudget(used: Int, of: Int) {
                 .fillMaxWidth(fraction)
                 .height(3.dp)
                 .clip(Radii.pill)
-                .background(if (fraction > 0.85f) colors.warn else colors.accentCyan),
+                .background(if (fraction > 0.85f) colors.warnInk else colors.accentCyanInk),
         )
     }
 }
@@ -469,10 +471,10 @@ private fun oneLine(text: String): String = text.replace(Regex("\\s+"), " ").tri
 private fun statusColour(status: AgentRun.Status): Color {
     val colors = AnodexTheme.colors
     return when (status) {
-        AgentRun.Status.NEEDS_REVIEW -> colors.accent
-        AgentRun.Status.RUNNING -> colors.accentCyan
-        AgentRun.Status.DONE -> colors.success
-        AgentRun.Status.ERROR -> colors.danger
+        AgentRun.Status.NEEDS_REVIEW -> colors.accentInk
+        AgentRun.Status.RUNNING -> colors.accentCyanInk
+        AgentRun.Status.DONE -> colors.successInk
+        AgentRun.Status.ERROR -> colors.dangerInk
         AgentRun.Status.STOPPED -> colors.textFaint
     }
 }
