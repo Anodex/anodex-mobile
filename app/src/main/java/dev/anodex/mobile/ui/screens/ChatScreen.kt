@@ -45,12 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -72,6 +68,10 @@ import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexSpinner
+import dev.anodex.mobile.ui.components.SCRIM_ALPHA
+import dev.anodex.mobile.ui.components.SCRIM_FADE
+import dev.anodex.mobile.ui.components.SCRIM_HOLD
+import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.AttachmentThumb
 import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.ImageViewer
@@ -450,43 +450,6 @@ fun ChatScreen(
         }
     }
 }
-
-/**
- * Dissolve the top and bottom of whatever this draws, over the given distances.
- *
- * The conversation runs under the floating bars rather than stopping at them, and a
- * line of text sliced in half by an edge looks like a rendering fault. Fading it out
- * instead says the same thing — there is more up there — without drawing anything to
- * say it.
- *
- * `DstIn` multiplies what is already drawn by the alpha of this rectangle, so black
- * keeps a pixel and transparent removes it. It needs its own layer to blend against,
- * which is what `CompositingStrategy.Offscreen` buys; without it the blend would
- * reach the whole canvas and take the page with it.
- */
-private fun Modifier.fadingEdges(top: Dp, bottom: Dp): Modifier =
-    this
-        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-
-            val height = size.height
-            if (height <= 0f) return@drawWithContent
-
-            val topStop = (top.toPx() / height).coerceIn(0f, 1f)
-            val bottomStop = (1f - bottom.toPx() / height).coerceIn(topStop, 1f)
-            if (topStop == 0f && bottomStop == 1f) return@drawWithContent
-
-            drawRect(
-                brush = Brush.verticalGradient(
-                    0f to Color.Transparent,
-                    topStop to Color.Black,
-                    bottomStop to Color.Black,
-                    1f to Color.Transparent,
-                ),
-                blendMode = BlendMode.DstIn,
-            )
-        }
 
 @Composable
 private fun MessageRow(
@@ -1411,25 +1374,8 @@ private fun Composer(
  */
 private val COMPOSER_SHAPE = RoundedCornerShape((Touch.minTarget + Spacing.x1 * 2) / 2)
 
-/**
- * How far past a floating bar its scrim keeps fading.
- *
- * Short. The scrim exists to give the controls something to sit against, not to put
- * the bar back — past this the conversation is at full strength again.
- */
-internal val SCRIM_FADE = 28.dp
 
-/** How far into the scrim the page's colour has arrived, as a fraction of its height. */
-internal const val SCRIM_HOLD = 0.55f
 
-/**
- * How much of the page's colour the scrim carries behind the bar itself.
- *
- * Not all of it. Solid would be a bar again, and watching the conversation continue
- * behind the chrome is the thing worth keeping — it just cannot cost you the send
- * button.
- */
-internal const val SCRIM_ALPHA = 0.82f
 
 /**
  * Six lines.
