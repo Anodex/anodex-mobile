@@ -353,7 +353,7 @@ private fun AboutSection(installedVersion: String, newerVersion: String?) {
                     Text(
                         text = "$newerVersion is available",
                         style = type.bodyEmphasis,
-                        color = colors.accent,
+                        color = colors.accentInk,
                     )
                     Text(
                         text = "The banner at the top of the app installs it, and your " +
@@ -405,7 +405,7 @@ private fun ChoiceRow(label: String, detail: String, selected: Boolean, onClick:
             Text(detail, style = type.meta, color = colors.textMuted)
         }
 
-        if (selected) Text("\u2713", style = type.body, color = colors.accent)
+        if (selected) Text("\u2713", style = type.body, color = colors.accentInk)
     }
 }
 
@@ -574,7 +574,7 @@ private fun PersonalityRow(
             }
         }
 
-        if (selected) Text("✓", style = type.body, color = colors.accent)
+        if (selected) Text("✓", style = type.body, color = colors.accentInk)
     }
 }
 
@@ -633,12 +633,12 @@ private fun ModelRow(
                     size = 16.dp,
                     thickness = 1.5.dp,
                     variant = SpinnerVariant.HEX,
-                    tint = colors.accent,
+                    tint = colors.accentInk,
                 )
-                Text("Loading…", style = type.meta, color = colors.accent)
+                Text("Loading…", style = type.meta, color = colors.accentInk)
             }
 
-            active -> Text("✓", style = type.body, color = colors.accent)
+            active -> Text("✓", style = type.body, color = colors.accentInk)
         }
     }
 }

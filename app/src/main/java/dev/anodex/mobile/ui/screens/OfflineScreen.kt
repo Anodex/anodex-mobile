@@ -107,7 +107,7 @@ fun OfflineScreen(
             Text(
                 text = hint,
                 style = type.body,
-                color = colors.warn,
+                color = colors.warnInk,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .padding(top = Spacing.x5)
@@ -128,7 +128,7 @@ fun OfflineScreen(
                     "This phone can still reach it over a VPN or a remote address " +
                     "you've added.",
                 style = type.body,
-                color = colors.warn,
+                color = colors.warnInk,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .padding(top = Spacing.x5)

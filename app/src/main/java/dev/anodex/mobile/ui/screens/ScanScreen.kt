@@ -166,7 +166,7 @@ fun ScanScreen(
             Text(
                 text = message,
                 style = type.body,
-                color = colors.danger,
+                color = colors.dangerInk,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()

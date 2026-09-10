@@ -90,7 +90,7 @@ fun AnodexTextField(
             onValueChange = onValueChange,
             singleLine = singleLine,
             textStyle = textStyle.copy(color = colors.text),
-            cursorBrush = SolidColor(colors.accent),
+            cursorBrush = SolidColor(colors.accentInk),
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             modifier = Modifier

@@ -78,7 +78,7 @@ fun UndoBar(
             Text(
                 text = actionLabel,
                 style = type.label,
-                color = colors.accent,
+                color = colors.accentInk,
                 modifier = Modifier
                     .heightIn(min = Touch.minTarget)
                     .clip(Radii.md)

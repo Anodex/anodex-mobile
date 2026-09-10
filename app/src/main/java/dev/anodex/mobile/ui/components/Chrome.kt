@@ -205,12 +205,12 @@ fun ScreenScaffold(
                         Text(
                             text = title,
                             style = titleStyle ?: type.heading,
-                            color = colors.accent,
+                            color = colors.accentInk,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
                         )
-                        AnodexIcon(AnodexIcon.CHEVRON_RIGHT, size = 16.dp, tint = colors.accent)
+                        AnodexIcon(AnodexIcon.CHEVRON_RIGHT, size = 16.dp, tint = colors.accentInk)
                     }
                 } else {
                     Text(

@@ -86,7 +86,7 @@ fun UpdateBanner(
                 Text(
                     text = statusLine(state, canInstall),
                     style = type.meta,
-                    color = if (state is UpdateState.Failed) colors.danger else colors.textMuted,
+                    color = if (state is UpdateState.Failed) colors.dangerInk else colors.textMuted,
                 )
             }
 
