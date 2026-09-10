@@ -78,6 +78,32 @@ private fun Gallery() {
         AnodexTextField(value = "not an address", onValueChange = {}, isError = true)
         SearchField(value = "", onValueChange = {}, placeholder = "Search files")
 
+        // The case that exposed the collapsed surface ladder: a field *inside* a
+        // card, where `bgInput` and `bgSurface` used to be the same value.
+        Label("A field inside a card")
+        AnodexCard {
+            Text("How this phone finds it", style = type.bodyEmphasis, color = colors.text)
+            AnodexTextField(value = "", onValueChange = {}, placeholder = "76.120.41.76")
+        }
+
+        Label("Rows")
+        Text(
+            text = "A conversation, active",
+            style = type.body,
+            color = colors.text,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(Radii.md)
+                .background(colors.bgSurface2)
+                .padding(Spacing.x3),
+        )
+        Text(
+            text = "Another one",
+            style = type.body,
+            color = colors.text,
+            modifier = Modifier.fillMaxWidth().padding(Spacing.x3),
+        )
+
         Label("Waiting")
         ListSkeleton(rows = 2, caption = "Asking your computer…")
 

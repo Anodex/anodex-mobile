@@ -141,6 +141,82 @@ class ContrastTest {
         }
     }
 
+    /**
+     * Every place the app tells two flat fills apart without drawing a line between
+     * them, as a pair of token names.
+     */
+    private val surfacePairs = listOf(
+        "a card on the page" to Pair("bgSurface", "bgApp"),
+        "the drawer behind the page" to Pair("bgBase", "bgApp"),
+        "the active conversation row" to Pair("bgSurface2", "bgApp"),
+        "a secondary button on a card" to Pair("bgSurface2", "bgSurface"),
+        "a floating pill on the page" to Pair("bgElevated", "bgApp"),
+        "an attachment tile on a card" to Pair("bgElevated", "bgSurface"),
+        "a search field on the page" to Pair("bgInput", "bgApp"),
+        "a text field on a card" to Pair("bgInput", "bgSurface"),
+    )
+
+    private fun surface(colors: AnodexColors, name: String): Color = when (name) {
+        "bgBase" -> colors.bgBase
+        "bgApp" -> colors.bgApp
+        "bgSurface" -> colors.bgSurface
+        "bgSurface2" -> colors.bgSurface2
+        "bgElevated" -> colors.bgElevated
+        "bgInput" -> colors.bgInput
+        else -> error("unknown surface $name")
+    }
+
+    /**
+     * A surface is only a surface if you can see where it starts.
+     *
+     * `bgApp`, `bgSurface` and `bgInput` were once the same value on the light
+     * theme, byte for byte. This app separates surfaces by colour rather than by
+     * shadow — that is written down in `Tokens.kt` as a deliberate choice — so three
+     * tokens holding one value meant a filled card, a search field and the resting
+     * shape of a loading list had no boundary at all in Light. Only the things that
+     * happened to draw a border survived, which is why it went unnoticed: enough of
+     * the app draws borders that it looked like a style rather than a fault.
+     *
+     * The floor is **Midnight's own weakest step**, measured rather than picked. The
+     * dark theme is the one that has been looked at every day since the app existed,
+     * so whatever separation it settles for is by definition enough — and holding
+     * Light to it is `AGENTS.md`'s "validate it as carefully as dark" written as
+     * something a machine can check.
+     */
+    @Test
+    fun `every surface is distinguishable from the ones it sits on`() {
+        val floor = surfacePairs.minOf { (_, pair) ->
+            contrast(surface(MidnightColors, pair.first), surface(MidnightColors, pair.second))
+        }
+
+        for ((theme, colors) in themes()) {
+            for ((what, pair) in surfacePairs) {
+                val ratio = contrast(surface(colors, pair.first), surface(colors, pair.second))
+                assertTrue(
+                    "$theme: $what (${pair.first} on ${pair.second}) is " +
+                        "${"%.3f".format(ratio)}:1, under Midnight's own weakest step of " +
+                        "${"%.3f".format(floor)}:1",
+                    ratio >= floor,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the placeholder is a tint of the text, so it reads on either ground`() {
+        for ((theme, colors) in themes()) {
+            for (name in listOf("bgSurface", "bgApp")) {
+                val ground = surface(colors, name)
+                val filled = over(colors.placeholder, colors.placeholder.alpha, ground)
+                val ratio = contrast(filled, ground)
+                assertTrue(
+                    "$theme: a resting bar on $name is ${"%.3f".format(ratio)}:1, invisible",
+                    ratio >= 1.05f,
+                )
+            }
+        }
+    }
+
     private fun themes() = listOf("Midnight" to MidnightColors, "Light" to LightColors)
 
     // --- WCAG 2.1 relative luminance and contrast ------------------------------
