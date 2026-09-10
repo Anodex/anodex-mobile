@@ -117,9 +117,27 @@ and genuine human co-author trailers, are left alone.
 
 ## Compose gotchas that have actually bitten
 
-- **`List` is not stable.** A composable taking a `List` parameter recomposes
-  every frame unless the type is marked `@Immutable`. This was why the chat
-  transcript stuttered.
+- **`List` is not stable — but since Kotlin 2.0 that no longer means what it used
+  to.** A `List` parameter is still an unstable one, and this was indeed why the
+  chat transcript stuttered. The fix used to be `@Immutable` or an immutable
+  collection type. It is not needed any more: the Compose compiler's *strong
+  skipping* is on by default from Kotlin 2.0, and it makes a composable with
+  unstable parameters skippable anyway, comparing those parameters by instance.
+
+  Measured rather than assumed, on 2026-09-10 against `main`: **every restartable
+  composable in this app's own code is skippable — 171 of 171**, including the
+  whole chat hot path (`MessageRow`, `ChatScreen`, `ToolRow`, `MarkdownText`,
+  `ConversationRow`). Fifty-one classes are still inferred unstable, `ChatMessage`
+  and `AgentRun` among them, and it costs nothing.
+
+  So do not annotate the payload types or add an immutable-collections dependency
+  on the strength of the old rule — that is churn buying a fix for a problem the
+  compiler already solved. Re-check before believing either version of this:
+
+      gh workflow run stability.yml
+
+  It writes the report as an artifact. `StrongSkipping` in the module JSON is the
+  flag that decides which of these two paragraphs is true.
 - **`LazyColumn` composes out of order.** A running variable accumulated inside
   `items { }` is wrong — items are composed as they scroll into view, not front
   to back. Date headers computed that way appeared and vanished while
