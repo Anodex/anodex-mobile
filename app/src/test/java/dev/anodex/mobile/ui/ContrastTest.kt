@@ -217,6 +217,57 @@ class ContrastTest {
         }
     }
 
+    /**
+     * `textFaint` is below AA on purpose, and this is where that stops being an
+     * accident waiting to be discovered.
+     *
+     * It measures 2.71:1 at worst on Midnight and 2.15:1 on Light, against the 4.5
+     * `type.meta` and `type.badge` would need. That was weighed and kept: lifting it
+     * collides with `textMuted`, so the whole three-step ramp has to move, and that
+     * visibly changes a hundred-odd sites — a design call about hierarchy rather than
+     * a defect. See `AGENTS.md`.
+     *
+     * A decision written only in prose is a decision that erodes. Twice while this
+     * palette was being reworked, `textFaint` drifted a little further down without
+     * anyone intending it — the deepest ground got deeper and the faintest text came
+     * along for the ride. So the decision is pinned three ways: it stays the quiet
+     * step, it may not sink past a floor, and Light may not drift further from
+     * Midnight than it already has. Changing the ramp means changing this test on
+     * purpose, which is exactly the moment somebody should have to think about it.
+     */
+    @Test
+    fun `the faintest text is quiet on purpose, and stays where it was put`() {
+        for ((theme, colors) in themes()) {
+            val faint = worstOnAnyGround(colors, colors.textFaint)
+            val muted = worstOnAnyGround(colors, colors.textMuted)
+
+            assertTrue(
+                "$theme: textFaint (${"%.2f".format(faint)}:1) is not quieter than " +
+                    "textMuted (${"%.2f".format(muted)}:1) — the ramp has inverted",
+                faint < muted,
+            )
+            assertTrue(
+                "$theme: textFaint has sunk to ${"%.2f".format(faint)}:1. Below AA is a " +
+                    "decision; below 2.0 is not one anybody made",
+                faint >= 2.0f,
+            )
+        }
+
+        // Light is already the worse of the two — about four fifths of Midnight's
+        // ratio — and it is the theme where pale-on-cream is hardest to begin with.
+        // It may not quietly get worse than that while a surface is being tuned.
+        val darkFaint = worstOnAnyGround(MidnightColors, MidnightColors.textFaint)
+        val lightFaint = worstOnAnyGround(LightColors, LightColors.textFaint)
+        assertTrue(
+            "Light's faint text has drifted to ${"%.2f".format(lightFaint)}:1 against " +
+                "Midnight's ${"%.2f".format(darkFaint)}:1 — the gap between the themes is widening",
+            lightFaint >= darkFaint * 0.75f,
+        )
+    }
+
+    private fun worstOnAnyGround(colors: AnodexColors, ink: Color): Float =
+        grounds(colors).values.minOf { contrast(ink, it) }
+
     private fun themes() = listOf("Midnight" to MidnightColors, "Light" to LightColors)
 
     // --- WCAG 2.1 relative luminance and contrast ------------------------------
