@@ -277,7 +277,11 @@ private fun ThreadReader(
         }
 
         if (loading && notes.isEmpty()) {
-            Notice("Opening…")
+            EmptyState(
+                headline = "Opening…",
+                tone = EmptyTone.WAITING,
+                icon = AnodexIcon.MAIL,
+            )
             return@Column
         }
 
