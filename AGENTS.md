@@ -143,6 +143,42 @@ differentiator, not an afterthought — validate it as carefully as dark.
 Keep 48dp touch targets. Never communicate a waiting state with motion alone;
 pair it with text and a static shape or colour.
 
+### Reach for the shared piece before writing a new one
+
+Every one of these exists because the same thing had been written out by hand
+between three and nine times, and the copies had drifted. A new screen that
+builds its own is how the drift starts again.
+
+| Want | Use | Not |
+| --- | --- | --- |
+| A panel | `AnodexCard` | a `Column` with `clip`/`background`/`border` |
+| A screen title | `ScreenScaffold` | a `Text(type.heading)` above the content |
+| "Nothing here" | `EmptyState` | a centred `Text` in a `Box` |
+| "Still loading" | `ListSkeleton` | a sentence on a blank page |
+| A failure beside content | `InlineProblem` | dropping it, which is the usual outcome |
+| Somewhere to type | `AnodexTextField` | anything from Material |
+| A rule | `Hairline` | a 1dp `Box` with a background |
+
+Two rules that are not obvious from the signatures:
+
+- **Clip before `clickable`.** Every tap draws a press wash (`AnodexPress`, which
+  replaced Material's ripple in `LocalIndication`) and it takes the shape of
+  whatever layer it lands in. A rounded surface made tappable without a `clip`
+  first flashes a square.
+- **`ScreenScaffold` hands its content the height it measured.** The content owes
+  it two things: `fadingEdges(topInset, 0.dp)` so it dissolves under the bar
+  rather than being sliced by it, and `listPadding(topInset)` so its first row
+  can be read.
+
+### Absence, failure and delay are three states, not one
+
+The `EmptyTone` argument is required for this reason. A screen that can fail
+*and* still have something to draw — the scheduler reads tasks and offers
+starters from two different places — must say the read failed rather than
+quietly rendering what it happens to have. That is the same defect described
+under **Absence is not failure** below, arriving through the UI instead of the
+data layer.
+
 ## Absence is not failure
 
 The most common defect shape in this codebase: a `getOrNull()` or
