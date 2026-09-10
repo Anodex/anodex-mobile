@@ -3,9 +3,7 @@ package dev.anodex.mobile.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,14 +21,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.EmptyTone
+import dev.anodex.mobile.ui.components.ListSkeleton
+import dev.anodex.mobile.ui.components.ScreenScaffold
 import dev.anodex.mobile.ui.components.SearchField
+import dev.anodex.mobile.ui.components.fadingEdges
+import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.components.matchesQuery
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -92,157 +96,135 @@ fun WorkspaceScreen(
         }
     }
 
-    Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        // Two ways in, one screen. Opened from the drawer it is the index of
-        // projects; opened with one already active it is that project's files. And
-        // with no project at all it is the index again — because "No project open"
-        // on its own was a dead end, a screen naming the problem while withholding
-        // the one thing that would fix it.
-        if (browsing || (projectName == null && error == null && !loading)) {
-            ProjectPicker(projects, activeProjectId, onOpenProject)
-            return@Column
-        }
+    // Two ways in, one screen. Opened from the drawer it is the index of
+    // projects; opened with one already active it is that project's files. And
+    // with no project at all it is the index again — because "No project open"
+    // on its own was a dead end, a screen naming the problem while withholding
+    // the one thing that would fix it.
+    val picking = browsing || (projectName == null && error == null && !loading)
 
+    ScreenScaffold(
+        title = if (picking) "Projects" else (projectName ?: "Workspace"),
+        modifier = modifier,
+        subtitle = if (picking) "Where the work happens, on your computer." else null,
         // The project's name is the way back to the list, since the files you are
-        // looking at are the reason you might want a different project. Beside it,
-        // the thing there was previously no way to do at all: start work here.
-        if (projectName != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        // looking at are the reason you might want a different project. It wears the
+        // accent and a chevron now rather than being a title that silently happened
+        // to be tappable.
+        onTitleClick = if (!picking && projectName != null) onBrowseProjects else null,
+        trailing = if (!picking && onNewChatHere != null) {
+            {
+                // Named rather than a bare plus. A chat in a project can read and
+                // write real files, so which project it belongs to is the most
+                // important thing about it and belongs in the label.
                 Text(
-                    text = projectName,
+                    text = "New chat here",
                     style = type.label,
-                    color = colors.accent,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    color = colors.accentInk,
                     modifier = Modifier
-                        .weight(1f)
                         .heightIn(min = Touch.minTarget)
-                        .clickable(onClick = onBrowseProjects)
-                        .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                        .clip(Radii.md)
+                        .clickable(onClick = onNewChatHere)
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
                 )
-
-                if (onNewChatHere != null) {
-                    // Named rather than a bare plus. A chat in a project can read and
-                    // write real files, so which project it belongs to is the most
-                    // important thing about it and belongs in the label.
-                    Text(
-                        text = "New chat here",
-                        style = type.label,
-                        color = colors.accent,
-                        modifier = Modifier
-                            .heightIn(min = Touch.minTarget)
-                            .clickable(onClick = onNewChatHere)
-                            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-                    )
-                }
             }
-        }
+        } else {
+            null
+        },
+        beneath = if (!picking && files.size >= SEARCH_WORTH_IT) {
+            {
+                SearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = "Search files",
+                    modifier = Modifier.padding(top = Spacing.x2),
+                )
+            }
+        } else {
+            null
+        },
+    ) { topInset ->
+        when {
+            picking -> ProjectPicker(projects, activeProjectId, onOpenProject, topInset)
 
-        if (files.size >= SEARCH_WORTH_IT) {
-            SearchField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = "Search files",
-                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+            loading && files.isEmpty() -> ListSkeleton(
+                rows = 4,
+                lines = 1,
+                caption = "Reading the project…",
+                modifier = Modifier.padding(listPadding(topInset)),
             )
-        }
 
-        if (files.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-                    modifier = Modifier.padding(Spacing.x6),
-                ) {
-                    Text(
-                        text = when {
-                            loading -> "Reading the project…"
-                            error != null -> "Could not read the project"
-                            projectName == null -> "No project open"
-                            else -> "Nothing in this project yet"
-                        },
-                        style = type.bodyEmphasis,
-                        color = if (error != null) colors.danger else colors.textMuted,
-                        textAlign = TextAlign.Center,
-                    )
+            files.isEmpty() -> EmptyState(
+                headline = when {
+                    error != null -> "Could not read the project"
+                    projectName == null -> "No project open"
+                    else -> "Nothing in this project yet"
+                },
+                detail = when {
+                    // An empty project and a failed read looked identical before.
+                    error != null -> error
+                    // The distinction matters: an empty project and no project at
+                    // all look identical in a list of nothing, and the remedy for
+                    // one of them is at the computer.
+                    projectName == null -> "Choose one on your computer, or from the host screen."
+                    else -> null
+                },
+                tone = if (error != null) EmptyTone.PROBLEM else EmptyTone.QUIET,
+                icon = AnodexIcon.FOLDER,
+                modifier = Modifier.padding(top = topInset),
+            )
 
-                    if (!loading && error != null) {
-                        // An empty project and a failed read looked identical before.
+            else -> LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .fadingEdges(topInset, 0.dp),
+                contentPadding = listPadding(topInset, horizontal = 0.dp),
+            ) {
+                if (query.isNotBlank() && shown.isEmpty()) {
+                    item(key = "no-match") {
                         Text(
-                            text = error,
+                            text = "No file matches “$query”.",
                             style = type.meta,
                             color = colors.textFaint,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-
-                    if (!loading && error == null && projectName == null) {
-                        // The distinction matters: an empty project and no project at
-                        // all look identical in a list of nothing, and the remedy for
-                        // one of them is at the computer.
-                        Text(
-                            text = "Choose one on your computer, or from the host screen.",
-                            style = type.meta,
-                            color = colors.textFaint,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-            }
-            return@Column
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = Spacing.x2),
-        ) {
-            if (query.isNotBlank() && shown.isEmpty()) {
-                item(key = "no-match") {
-                    Text(
-                        text = "No file matches “$query”.",
-                        style = type.meta,
-                        color = colors.textFaint,
-                        modifier = Modifier.padding(Spacing.x4),
-                    )
-                }
-            }
-
-            // Grouped by when, not while searching. A search result is an answer to
-            // a question, and slicing four matches across three date headings buries
-            // them in structure they did not ask for.
-            //
-            // Unsearched, the headings are the point: this list is newest-first
-            // precisely because it doubles as a record of what the computer has been
-            // doing unwatched, and "Today" against "Earlier" is that record. A flat
-            // column of relative times makes the reader assemble it themselves.
-            //
-            // Grouped up front rather than by tracking the previous row inside
-            // `items`. A LazyColumn composes only what is visible and in whatever
-            // order it likes, so a running variable is read when it happens to hold
-            // whatever the last *composed* row set — and headings appear, vanish and
-            // duplicate as you scroll.
-            for (group in groups) {
-                if (group.band != null) {
-                    item(key = "band-${group.band}") {
-                        Text(
-                            text = group.band.uppercase(),
-                            style = type.badge,
-                            color = colors.textFaint,
-                            modifier = Modifier.padding(
-                                start = Spacing.x4,
-                                end = Spacing.x4,
-                                top = Spacing.x4,
-                                bottom = Spacing.x1,
-                            ),
+                            modifier = Modifier.padding(Spacing.x4),
                         )
                     }
                 }
 
-                items(group.files, key = { it.path }) { file ->
-                    FileRow(file, onClick = { onOpenFile(file.path) })
+                // Grouped by when, not while searching. A search result is an answer to
+                // a question, and slicing four matches across three date headings buries
+                // them in structure they did not ask for.
+                //
+                // Unsearched, the headings are the point: this list is newest-first
+                // precisely because it doubles as a record of what the computer has been
+                // doing unwatched, and "Today" against "Earlier" is that record. A flat
+                // column of relative times makes the reader assemble it themselves.
+                //
+                // Grouped up front rather than by tracking the previous row inside
+                // `items`. A LazyColumn composes only what is visible and in whatever
+                // order it likes, so a running variable is read when it happens to hold
+                // whatever the last *composed* row set — and headings appear, vanish and
+                // duplicate as you scroll.
+                for (group in groups) {
+                    if (group.band != null) {
+                        item(key = "band-${group.band}") {
+                            Text(
+                                text = group.band.uppercase(),
+                                style = type.badge,
+                                color = colors.textFaint,
+                                modifier = Modifier.padding(
+                                    start = Spacing.x4,
+                                    end = Spacing.x4,
+                                    top = Spacing.x4,
+                                    bottom = Spacing.x1,
+                                ),
+                            )
+                        }
+                    }
+
+                    items(group.files, key = { it.path }) { file ->
+                        FileRow(file, onClick = { onOpenFile(file.path) })
+                    }
                 }
             }
         }
@@ -261,47 +243,27 @@ private fun ProjectPicker(
     projects: List<Project>,
     activeProjectId: String?,
     onOpenProject: (String) -> Unit,
+    topInset: Dp,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     if (projects.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-                modifier = Modifier.padding(Spacing.x6),
-            ) {
-                Text(
-                    text = "No projects yet",
-                    style = type.bodyEmphasis,
-                    color = colors.textMuted,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = "Create one on your computer and it will appear here.",
-                    style = type.meta,
-                    color = colors.textFaint,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
+        EmptyState(
+            headline = "No projects yet",
+            detail = "Create one on your computer and it will appear here.",
+            icon = AnodexIcon.FOLDER,
+            modifier = Modifier.padding(top = topInset),
+        )
         return
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = Spacing.x2),
+        modifier = Modifier
+            .fillMaxSize()
+            .fadingEdges(topInset, 0.dp),
+        contentPadding = listPadding(topInset, horizontal = 0.dp),
     ) {
-        item(key = "prompt") {
-            Text(
-                text = "Choose a project to work in",
-                style = type.meta,
-                color = colors.textFaint,
-                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-            )
-        }
-
         items(projects, key = { it.id }) { project ->
             Row(
                 modifier = Modifier
@@ -332,7 +294,7 @@ private fun ProjectPicker(
                 }
 
                 if (project.id == activeProjectId) {
-                    Text("\u2713", style = type.body, color = colors.accent)
+                    Text("\u2713", style = type.body, color = colors.accentInk)
                 }
             }
         }
@@ -429,7 +391,7 @@ private fun FileRow(file: WorkspaceFile, onClick: () -> Unit) {
             Text(
                 text = "Anodex",
                 style = type.badge,
-                color = colors.accent,
+                color = colors.accentInk,
                 modifier = Modifier
                     .clip(Radii.sm)
                     .background(colors.accentSoft)

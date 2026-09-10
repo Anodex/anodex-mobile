@@ -138,9 +138,9 @@ private fun ContextMeter(
     val colors = AnodexTheme.colors
 
     val fill = when {
-        fraction >= 0.9f -> colors.danger
-        fraction >= 0.7f -> colors.warn
-        else -> colors.accent
+        fraction >= 0.9f -> colors.dangerInk
+        fraction >= 0.7f -> colors.warnInk
+        else -> colors.accentInk
     }
     val animatedFill by animateColorAsState(fill, Motion.normal(), label = "contextFill")
     val animatedFraction by animateFloatAsState(fraction, Motion.normal(), label = "contextWidth")
@@ -252,9 +252,9 @@ private fun ConnectionState.statusLine(): String = when (this) {
 private fun ConnectionState.statusColor(): Color {
     val colors = AnodexTheme.colors
     return when (this) {
-        is ConnectionState.Connected -> colors.success
-        is ConnectionState.Reconnecting -> colors.warn
-        is ConnectionState.Offline -> colors.danger
+        is ConnectionState.Connected -> colors.successInk
+        is ConnectionState.Reconnecting -> colors.warnInk
+        is ConnectionState.Offline -> colors.dangerInk
         ConnectionState.Unpaired -> colors.textFaint
     }
 }

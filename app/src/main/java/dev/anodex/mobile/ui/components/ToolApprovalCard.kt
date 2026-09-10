@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -70,9 +69,12 @@ fun ToolApprovalCard(
     val type = AnodexTheme.type
 
     val accent = when (approval.risk) {
-        ToolApproval.Risk.DESTRUCTIVE -> colors.danger
-        ToolApproval.Risk.SENSITIVE -> colors.warn
-        ToolApproval.Risk.SAFE -> colors.accent
+        // The most safety-critical colour in the app, so it is held to the
+        // readable step in both themes. Sensitive amber against a cream card
+        // measured 1.91:1, which is below the floor for a *shape*.
+        ToolApproval.Risk.DESTRUCTIVE -> colors.dangerInk
+        ToolApproval.Risk.SENSITIVE -> colors.warnInk
+        ToolApproval.Risk.SAFE -> colors.accentInk
     }
 
     Row(
@@ -118,7 +120,7 @@ fun ToolApprovalCard(
                     text = "There's more to this than fits here — the full change is on your " +
                         "computer. Approve only if you already know what it does.",
                     style = type.meta,
-                    color = colors.warn,
+                    color = colors.warnInk,
                 )
             }
 
@@ -228,8 +230,8 @@ private fun DiffView(diff: FileDiff) {
                 },
                 style = type.mono,
                 color = when (line.kind) {
-                    DiffLine.Kind.ADDED -> colors.accentGreen
-                    DiffLine.Kind.REMOVED -> colors.danger
+                    DiffLine.Kind.ADDED -> colors.accentGreenInk
+                    DiffLine.Kind.REMOVED -> colors.dangerInk
                     DiffLine.Kind.KEPT -> colors.textFaint
                 },
                 maxLines = 1,
@@ -241,7 +243,7 @@ private fun DiffView(diff: FileDiff) {
             Text(
                 text = "${lines.size - shown.size} more lines — read it at the computer.",
                 style = type.meta,
-                color = colors.warn,
+                color = colors.warnInk,
                 modifier = Modifier.padding(top = Spacing.x1),
             )
         }

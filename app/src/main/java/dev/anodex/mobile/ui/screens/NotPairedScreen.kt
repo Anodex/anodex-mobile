@@ -2,7 +2,6 @@ package dev.anodex.mobile.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,7 +83,7 @@ fun NotPairedScreen(
             Text(
                 text = error,
                 style = type.body,
-                color = colors.danger,
+                color = colors.dangerInk,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .padding(top = Spacing.x5)
@@ -105,7 +104,7 @@ fun NotPairedScreen(
             Text(
                 text = "This device has no camera, so the code cannot be scanned here.",
                 style = type.meta,
-                color = colors.warn,
+                color = colors.warnInk,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .padding(top = Spacing.x8)
