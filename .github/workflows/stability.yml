@@ -1,0 +1,45 @@
+# What the Compose compiler could not make skippable.
+#
+# Not part of the normal build: a diagnostic that runs on every push is a cost
+# paid every time for an answer wanted occasionally. Run it from the Actions tab,
+# or with `gh workflow run stability.yml`, and read the artifact.
+#
+# The report names every composable the compiler had to mark unskippable and every
+# class it could not call stable. An unskippable composable recomposes whenever its
+# parent does, whether or not its arguments changed — which is the mechanism behind
+# the transcript stutter recorded in AGENTS.md.
+name: Stability report
+
+on:
+  workflow_dispatch:
+
+jobs:
+  report:
+    name: Compose stability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Compiling is enough; nothing here needs an APK, and assembling one would
+      # add minutes for output this discards.
+      - name: Compile with reports on
+        run: ./gradlew :app:compileReleaseKotlin -PcomposeReports=true
+
+      - name: Keep the report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-stability
+          path: |
+            app/build/compose-reports
+            app/build/compose-metrics
