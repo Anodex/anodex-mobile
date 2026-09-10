@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -9,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -37,9 +39,12 @@ object AnodexTheme {
  *
  * Two colour systems are provided, and the split is deliberate. [LocalAnodexColors] is the source
  * of truth and what app code should read. A Material 3 [androidx.compose.material3.ColorScheme] is
- * derived from it so that Material components — ripples, text-field decorations, anything pulled
- * in later — pick up the right colours instead of defaulting to purple. Material's scheme is a
- * projection of Anodex's palette, never the other way round.
+ * derived from it so that anything Material still draws — text selection handles, the odd
+ * component pulled in later — picks up the right colours instead of defaulting to purple.
+ * Material's scheme is a projection of Anodex's palette, never the other way round.
+ *
+ * Material's *ripple* is not kept, only recoloured-around: [AnodexPress] replaces it wholesale
+ * below, for the reasons written there.
  *
  * Dynamic colour (Material You) is **not** supported and should not be added. Anodex's identity is
  * its palette; a phone recolouring the app from the user's wallpaper would make the companion stop
@@ -107,11 +112,19 @@ fun AnodexTheme(
         }
     }
 
+    // Nested inside Material rather than beside it, and that nesting is the point.
+    // `MaterialTheme` puts its own ripple into `LocalIndication`, so anything provided
+    // above it is overwritten before app code ever reads it. Provided here, Anodex's
+    // press wash is what every `clickable` in the app picks up — see [AnodexPress].
+    val press = remember(colors.pressTint) { AnodexPress(colors.pressTint) }
+
     CompositionLocalProvider(
         LocalAnodexColors provides colors,
         LocalAnodexTypography provides AnodexTypography(),
         LocalReducedMotion provides reducedMotion,
     ) {
-        MaterialTheme(colorScheme = materialScheme, content = content)
+        MaterialTheme(colorScheme = materialScheme) {
+            CompositionLocalProvider(LocalIndication provides press, content = content)
+        }
     }
 }

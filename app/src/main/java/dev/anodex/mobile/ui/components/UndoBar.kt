@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
@@ -80,6 +81,7 @@ fun UndoBar(
                 color = colors.accent,
                 modifier = Modifier
                     .heightIn(min = Touch.minTarget)
+                    .clip(Radii.md)
                     .clickable(onClick = onAction)
                     .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
             )
