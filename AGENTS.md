@@ -57,18 +57,27 @@ what happened.
 `MAJOR.MINOR.PATCH`, in `app/build.gradle.kts`:
 
 ```kotlin
-versionCode = ... ?: 54       // must increase, or Android refuses the install
-versionName = ... ?: "0.54.0" // what a person reads
+versionCode = ... ?: 5801       // must increase, or Android refuses the install
+versionName = ... ?: "0.58.1"   // what a person reads
 ```
 
 - **PATCH** — bug fixes only.
 - **MINOR** — a new capability. Resets patch to 0.
 - **MAJOR** — still `0`; the shape of the app is not yet promised.
 
-`versionCode` tracks the minor version (0.54.0 → 54). Both must rise together:
-Android compares `versionCode` to decide whether an install is an upgrade, and
-the in-app check compares `versionName` to decide whether to offer one. Raise
-only one and the update either never appears or appears and never applies.
+`versionCode` is **`major * 10000 + minor * 100 + patch`** — 0.58.1 is 5801,
+0.59.0 is 5900. Both must rise together: Android compares `versionCode` to decide
+whether an install is an upgrade, and the in-app check compares `versionName` to
+decide whether to offer one. Raise only one and the update either never appears
+or appears and never applies.
+
+It used to be the minor on its own, 0.54.0 → 54, and that rule had no room for a
+patch in it: 0.58.1 would have kept code 58, so the release would have shown up in
+the in-app check and then refused to install. That is the same loop the release
+script exists to prevent, arriving through the version scheme rather than the
+wrong bytes. Every release up to 0.58.0 was a minor, so the gap was never hit —
+which is the only reason it survived to be found by the first patch. Codes only
+ever have to increase, so the jump from 58 to 5801 costs nothing.
 
 Release tags carry a third number: `v0.54.0-preview.62`. The `preview.N` is a
 running count of releases, unrelated to the version — take the previous one and
