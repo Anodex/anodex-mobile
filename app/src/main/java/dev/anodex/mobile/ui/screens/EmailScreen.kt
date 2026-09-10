@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -36,6 +34,14 @@ import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.ui.components.SecondaryButton
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.EmptyState
+import dev.anodex.mobile.ui.components.EmptyTone
+import dev.anodex.mobile.ui.components.InlineProblem
+import dev.anodex.mobile.ui.components.ListSkeleton
+import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.fadingEdges
+import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -104,45 +110,71 @@ private fun InboxList(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    Column(modifier.fillMaxSize().background(colors.bgApp)) {
-        Text(
-            text = "Inbox",
-            style = type.heading,
-            color = colors.text,
-            modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-        )
+    ScreenScaffold(title = "Inbox", modifier = modifier) { topInset ->
+        val emptyModifier = Modifier.padding(top = topInset)
 
         when {
             // First, because every state under this one is a statement about the
             // mailbox, and none of them can be made when the mailbox was not reached.
             // This used to fall through to "No email account is connected on your
             // computer" — the most confident wrong sentence in the app.
-            error != null && threads.isEmpty() -> Notice(error)
+            error != null && threads.isEmpty() -> EmptyState(
+                headline = "Could not read your mail",
+                detail = error,
+                tone = EmptyTone.PROBLEM,
+                icon = AnodexIcon.MAIL,
+                modifier = emptyModifier,
+            )
 
-            loading && threads.isEmpty() -> Notice("Reading your mail…")
+            loading && threads.isEmpty() -> ListSkeleton(
+                rows = 5,
+                lines = 2,
+                caption = "Reading your mail…",
+                modifier = Modifier.padding(listPadding(topInset)),
+            )
 
             // Not yet asked — the socket was down when this tab opened. Saying
             // "nothing in the inbox" here would be a claim the app has no basis for,
             // and the user would believe it.
-            configured == null -> Notice("Waiting for your computer…")
+            configured == null -> EmptyState(
+                headline = "Waiting for your computer…",
+                detail = "The mailbox has not been reached yet, so there is nothing to say about it.",
+                tone = EmptyTone.WAITING,
+                icon = AnodexIcon.MAIL,
+                modifier = emptyModifier,
+            )
 
             // Told apart on purpose: an inbox with nothing in it and an inbox that
             // does not exist look identical in a list and need opposite words.
-            configured == false -> Notice(
-                "No email account is connected on your computer. Connect one there and " +
-                    "it will show up here."
+            configured == false -> EmptyState(
+                headline = "No mail account connected",
+                detail = "Connect one on your computer and it will show up here.",
+                icon = AnodexIcon.MAIL,
+                modifier = emptyModifier,
             )
 
-            threads.isEmpty() -> Notice("Nothing in the inbox.")
+            threads.isEmpty() -> EmptyState(
+                headline = "Nothing in the inbox",
+                detail = "Read at the computer, never stored on the phone.",
+                icon = AnodexIcon.MAIL,
+                modifier = emptyModifier,
+            )
 
             else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    horizontal = Spacing.x4,
-                    vertical = Spacing.x2,
-                ),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .fadingEdges(topInset, 0.dp),
+                contentPadding = listPadding(topInset, horizontal = Spacing.x4),
                 verticalArrangement = Arrangement.spacedBy(Spacing.x2),
             ) {
+                // A mailbox that failed to refresh while it still had threads to show
+                // could say nothing at all before: the error state required an empty
+                // list. Stale mail presented as current is the version of this bug
+                // that actually costs somebody something.
+                if (error != null) {
+                    item(key = "read-failed") { InlineProblem(error) }
+                }
+
                 items(threads, key = { it.id }) { thread ->
                     ThreadRow(thread, nowEpochMs) { onOpen(thread) }
                 }
@@ -283,20 +315,6 @@ private fun ThreadReader(
     }
 }
 
-@Composable
-private fun Notice(text: String) {
-    val colors = AnodexTheme.colors
-    val type = AnodexTheme.type
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = text,
-            style = type.body,
-            color = colors.textFaint,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(Spacing.x6),
-        )
-    }
-}
 
 /**
  * "Ada Lovelace" out of `Ada Lovelace <ada@example.com>`.

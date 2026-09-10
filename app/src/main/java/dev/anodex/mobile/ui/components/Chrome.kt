@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -136,6 +137,10 @@ fun TopScrim(height: Dp, modifier: Modifier = Modifier) {
  *   workspace's project name is the route to the list of projects. It takes the
  *   accent and a chevron when set, because a title that silently happens to be
  *   tappable is a control nobody finds.
+ * @param leading a control before the title — a way back out of a detail screen.
+ * @param titleStyle overridden only where the title is a literal rather than a name:
+ *   the file reader's title is a filename, and a path set in the body face stops
+ *   looking like a path.
  * @param trailing controls on the title's own line, right-aligned.
  * @param beneath anything that belongs to the chrome but not the title line — a
  *   search field, a filter row. It scrolls with the bar, not with the list.
@@ -146,6 +151,8 @@ fun ScreenScaffold(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onTitleClick: (() -> Unit)? = null,
+    titleStyle: TextStyle? = null,
+    leading: (@Composable RowScope.() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     beneath: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable (topInset: Dp) -> Unit,
@@ -180,6 +187,8 @@ fun ScreenScaffold(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
             ) {
+                leading?.invoke(this)
+
                 if (onTitleClick != null) {
                     Row(
                         modifier = Modifier
@@ -195,7 +204,7 @@ fun ScreenScaffold(
                     ) {
                         Text(
                             text = title,
-                            style = type.heading,
+                            style = titleStyle ?: type.heading,
                             color = colors.accent,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -206,7 +215,7 @@ fun ScreenScaffold(
                 } else {
                     Text(
                         text = title,
-                        style = type.heading,
+                        style = titleStyle ?: type.heading,
                         color = colors.text,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
