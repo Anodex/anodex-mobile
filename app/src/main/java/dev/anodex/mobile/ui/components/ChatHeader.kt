@@ -1,5 +1,8 @@
 package dev.anodex.mobile.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,7 +27,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -34,6 +42,8 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Elevation
+import dev.anodex.mobile.ui.theme.LocalReducedMotion
+import dev.anodex.mobile.ui.theme.Motion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -59,7 +69,19 @@ data class HostStatus(
     val contextUsedTokens: Int = 0,
     val contextTotalTokens: Int = 0,
     val conversationId: String?,
-)
+) {
+    /**
+     * How full the context is, or null when there is no figure to draw.
+     *
+     * Null rather than zero, and the distinction is the whole point: a context the
+     * computer has not reported is not an empty one. Only a locally-run model
+     * reports this at all — a cloud provider has no `contextTokensUsed` to send —
+     * so "no number" is a normal, common state rather than a fault.
+     */
+    val contextFraction: Float?
+        get() = if (contextTotalTokens <= 0) null
+        else (contextUsedTokens.toFloat() / contextTotalTokens).coerceIn(0f, 1f)
+}
 
 /**
  * The conversation's own bar: a way out, what this is, and what it is running in.
@@ -203,7 +225,15 @@ fun ChatHeader(
         }
 
         Box {
-            RoundButton(onClick = { statusOpen = true }, contentDescription = "Computer status") {
+            RoundButton(
+                onClick = { statusOpen = true },
+                contentDescription = "Computer status",
+                // Null when the computer has not said how big the context is, which
+                // is not the same as it being empty. An empty ring on a figure
+                // nobody has is the confident-wrong-answer this app keeps finding;
+                // no ring is the honest drawing of "not known".
+                fill = status.contextFraction,
+            ) {
                 AnodexIcon(AnodexIcon.MONITOR, size = 18.dp, tint = colors.textMuted)
             }
 
@@ -257,6 +287,11 @@ fun ChatHeader(
 private fun RoundButton(
     onClick: () -> Unit,
     contentDescription: String,
+    /**
+     * How full the model's context is, drawn as an arc around the rim. Null when
+     * there is no figure to draw — see [ContextRing].
+     */
+    fill: Float? = null,
     content: @Composable () -> Unit,
 ) {
     Box(
@@ -269,12 +304,74 @@ private fun RoundButton(
             .clip(CircleShape)
             .background(AnodexTheme.colors.bgElevated)
             .border(1.dp, AnodexTheme.colors.borderStrong, CircleShape)
-            .clickable(onClick = onClick, onClickLabel = contentDescription),
+            .clickable(onClick = onClick, onClickLabel = contentDescription)
+            .then(if (fill != null) Modifier.contextRing(fill) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         content()
     }
 }
+
+/**
+ * How full the context is, drawn around the rim of the button that opens it.
+ *
+ * The meter existed only on the connection header, which a conversation does not
+ * show, and as a line of text inside a panel two taps in. So the one number that
+ * changes *while you watch a turn* was the one with nowhere to appear.
+ *
+ * A ring rather than a bar because there was no room for a bar: the chat header is
+ * a title pill and three round buttons, and the rim of the button that already
+ * means "your computer" was sitting there unused. It reads at a glance without
+ * asking for any space at all.
+ *
+ * Drawn on the same border the button already has, one dp wider, starting at the
+ * top and going clockwise — the direction every progress ring on the phone goes,
+ * so it needs no explaining.
+ */
+@Composable
+private fun Modifier.contextRing(fill: Float): Modifier {
+    val colors = AnodexTheme.colors
+    val reducedMotion = LocalReducedMotion.current
+    val target = fill.coerceIn(0f, 1f)
+
+    // The same three steps the connection header's bar uses, so a context that is
+    // nearly full says the same thing in both places.
+    val ink = when {
+        target >= 0.9f -> colors.dangerInk
+        target >= 0.7f -> colors.warnInk
+        else -> colors.accentInk
+    }
+
+    // State, not character: this moves because the number moved. It still honours
+    // reduced motion by snapping, because an arc that jumps is perfectly readable
+    // and the rule costs nothing here.
+    val spec = if (reducedMotion) snap<Float>() else Motion.normal<Float>()
+    val swept by animateFloatAsState(target, spec, label = "contextRing")
+    val colour by animateColorAsState(ink, Motion.normal(), label = "contextRingInk")
+
+    return this.drawWithContent {
+        drawContent()
+
+        val stroke = RING_STROKE.toPx()
+        // Inset by half the stroke so the arc sits *on* the rim rather than half
+        // outside it, where the button's own clip would shave it off.
+        val inset = stroke / 2f
+        drawArc(
+            color = colour,
+            // Twelve o'clock, clockwise — the direction every progress ring on this
+            // phone already goes, so it needs no explaining.
+            startAngle = -90f,
+            sweepAngle = 360f * swept,
+            useCenter = false,
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - stroke, size.height - stroke),
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+    }
+}
+
+/** Thick enough to read at a glance, thin enough not to become the button. */
+private val RING_STROKE = 2.5.dp
 
 /**
  * The ground both header panels stand on.
