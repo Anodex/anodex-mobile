@@ -252,7 +252,6 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     // thing it would have told you about, and reads as arbitrary before that.
     val needsNotificationPermission by
         viewModel.needsNotificationPermission.collectAsStateWithLifecycle()
-    val notificationAccess by viewModel.notificationAccess.collectAsStateWithLifecycle()
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { viewModel.notificationPermissionHandled() }
@@ -413,6 +412,7 @@ private fun ConnectedScaffold(
     val projects by viewModel.projects.collectAsStateWithLifecycle()
     val projectBusy by viewModel.projectBusy.collectAsStateWithLifecycle()
     val projectError by viewModel.projectError.collectAsStateWithLifecycle()
+    val notificationAccess by viewModel.notificationAccess.collectAsStateWithLifecycle()
 
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val archiveNotice by viewModel.archiveNotice.collectAsStateWithLifecycle()
