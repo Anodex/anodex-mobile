@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -327,20 +328,34 @@ fun AppDrawer(
             // corner. Here the sensible shape is a row that belongs to the panel —
             // same thumb position, nothing hidden, and it reads as part of the menu
             // rather than as something dropped on top of it.
+            // Outlined, not filled.
+            //
+            // Moving this off the list and into the panel was right; making it solid
+            // white was not. Full-width and filled, it became the loudest thing in a
+            // menu whose complaint was that it felt bulky — the fix traded a button
+            // that covered text for a button that shouted over everything.
+            //
+            // The desktop's own equivalent is described in `SidebarSearch.module.css`
+            // as "a ghost row at rest — no fill, no border", settling into a proper
+            // button on hover. There is no hover on a phone, so rest is all there is;
+            // an outline is the quietest thing that still reads as a control rather
+            // than as another row of the list.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = Spacing.x4, vertical = Spacing.x3)
                     .clip(Radii.pill)
-                    .background(colors.text)
+                    .border(1.dp, colors.borderStrong, Radii.pill)
                     .clickable(onClick = onNewChat)
                     .heightIn(min = Touch.minTarget)
                     .padding(horizontal = Spacing.x5),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.x2, Alignment.CenterHorizontally),
             ) {
-                Text("+", style = type.bodyEmphasis, color = colors.bgBase)
-                Text("New chat", style = type.bodyEmphasis, color = colors.bgBase)
+                // The accent is on the mark rather than the whole control, which is
+                // how this app points at things — see the wordmark's last letter.
+                Text("+", style = type.bodyEmphasis, color = colors.accentInk)
+                Text("New chat", style = type.bodyEmphasis, color = colors.text)
             }
 
             HostFooter(hostName, hostDetail, connected, onOpenHost, onOpenSettings)
