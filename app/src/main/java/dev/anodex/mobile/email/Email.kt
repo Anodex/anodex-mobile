@@ -1,6 +1,7 @@
 package dev.anodex.mobile.email
 
 import dev.anodex.mobile.transport.AnodexSocket
+import dev.anodex.mobile.transport.unwrap
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -138,11 +139,6 @@ class Email(private val socket: AnodexSocket) {
  * rather than an error worth interrupting anyone about — so it degrades to an empty
  * list and the screen says so in words.
  */
-internal fun JsonElement?.unwrap(): JsonElement? {
-    val result = this as? JsonObject ?: return null
-    if (result["ok"]?.jsonPrimitive?.contentOrNull() != "true") return null
-    return result["value"]
-}
 
 private fun JsonElement?.asEpochMs(): Long =
     (this as? JsonPrimitive)?.contentOrNull()?.toDoubleOrNull()?.toLong() ?: 0L
