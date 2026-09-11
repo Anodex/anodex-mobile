@@ -42,6 +42,11 @@ enum class SettingsSection(
         icon = AnodexIcon.CPU,
         summary = "How Anodex answers, and which model runs",
     ),
+    NOTIFICATIONS(
+        label = "Notifications",
+        icon = AnodexIcon.INFO,
+        summary = "What the computer may interrupt you for",
+    ),
     REMOTE(
         label = "Remote",
         icon = AnodexIcon.SMARTPHONE,

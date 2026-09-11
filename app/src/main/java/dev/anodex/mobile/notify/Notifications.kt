@@ -4,12 +4,28 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.anodex.mobile.R
+
+/**
+ * What the system will currently let through, per channel.
+ *
+ * @param allowed notifications can be posted at all — the permission is held *and*
+ *   the app is not switched off in system settings.
+ * @param approvals the time-critical channel: a run stopped until somebody answers.
+ * @param activity the quiet one: runs, scheduled tasks and long replies finishing.
+ */
+data class NotificationAccess(
+    val allowed: Boolean,
+    val approvals: Boolean,
+    val activity: Boolean,
+)
 
 /** Why the phone is being told something. Mirrors the desktop's RemoteNotificationKind. */
 enum class NotificationKind {
@@ -106,11 +122,61 @@ class Notifications(private val context: Context) {
         manager.cancel(id)
     }
 
+    /**
+     * Whether a notification posted right now would actually be seen.
+     *
+     * Both halves matter, and only one was being checked. Holding
+     * `POST_NOTIFICATIONS` is not the same as notifications being *on*: the
+     * permission can be granted and the app then switched off in system settings,
+     * at which point `notify` returns quietly and shows nobody anything. Checking
+     * only the permission meant [show] reported success for a notification that was
+     * never delivered — this codebase's own recurring defect, in the one place whose
+     * entire job is telling the user something.
+     */
     fun canNotify(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return manager.areNotificationsEnabled()
+        if (!manager.areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
         return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
     }
+
+    /**
+     * The true state, per channel, for a screen that wants to show it.
+     *
+     * Per channel because the split is the point. Somebody who silenced "Finished
+     * work" and kept "Waiting for you" has configured this app exactly as intended,
+     * and a screen that said "notifications: off" at them would be wrong. Somebody
+     * who silenced the approval channel has, without necessarily meaning to, turned
+     * off the only one that is time-critical — and has no way to discover that from
+     * inside the app today.
+     */
+    fun access(): NotificationAccess {
+        val allowed = canNotify()
+        return NotificationAccess(
+            allowed = allowed,
+            approvals = allowed && channelIsOn(CHANNEL_APPROVAL),
+            activity = allowed && channelIsOn(CHANNEL_ACTIVITY),
+        )
+    }
+
+    private fun channelIsOn(id: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+        val channel = manager.getNotificationChannel(id) ?: return true
+        return channel.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
+    /**
+     * The system screen for this app's notifications.
+     *
+     * Offered rather than another in-app prompt because after two refusals Android
+     * stops delivering the request at all — `launch` becomes a silent no-op, and an
+     * app that keeps calling it is an app that has quietly gone deaf and is still
+     * pretending to ask. This screen always works.
+     */
+    fun settingsIntent(): Intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     private fun channelFor(kind: NotificationKind) = when (kind) {
         NotificationKind.NEEDS_APPROVAL -> CHANNEL_APPROVAL

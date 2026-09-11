@@ -1,6 +1,7 @@
 package dev.anodex.mobile
 
 import android.app.Application
+import android.content.Intent
 import android.os.Build
 import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
@@ -40,6 +41,7 @@ import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
 import dev.anodex.mobile.memory.MemoryEntry
+import dev.anodex.mobile.notify.NotificationAccess
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
 import dev.anodex.mobile.pairing.CertificateProbe
@@ -115,6 +117,24 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      */
     val needsNotificationPermission: StateFlow<Boolean> =
         _needsNotificationPermission.asStateFlow()
+
+    private val _notificationAccess = MutableStateFlow(notifications.access())
+
+    /**
+     * What the system will actually let through, for the settings screen to show.
+     *
+     * Re-read rather than remembered, because it changes outside the app: the user
+     * can switch a channel off from the shade, or the whole app off in system
+     * settings, and the first this process hears of it is the next time it looks.
+     */
+    val notificationAccess: StateFlow<NotificationAccess> = _notificationAccess.asStateFlow()
+
+    /** Look again — called when a screen that shows this comes back to the front. */
+    fun refreshNotificationAccess() {
+        _notificationAccess.value = notifications.access()
+    }
+
+    fun notificationSettingsIntent(): Intent = notifications.settingsIntent()
 
     fun notificationPermissionHandled() {
         _needsNotificationPermission.value = false
@@ -1719,6 +1739,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         viewModelScope.launch(farEnd) { holdProcessWhileConnected() }
+
+        viewModelScope.launch(farEnd) {
+            // Ask once, the first time this phone is actually driving a computer.
+            //
+            // The old trigger was a notification that had already failed to show,
+            // which is the wrong moment twice over: the app has to be in front to
+            // raise a prompt, and a notification only matters when it is not. So the
+            // first one was always lost, and the prompt arrived later with no
+            // connection to the thing it was about.
+            //
+            // Connecting is the moment notifications start being worth anything, and
+            // it is a moment the user is almost always looking at the app.
+            state.first { it is ConnectionState.Connected }
+            refreshNotificationAccess()
+            if (!notifications.canNotify()) _needsNotificationPermission.value = true
+        }
     }
 
     /**
