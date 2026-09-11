@@ -23,13 +23,16 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.chat.Align
 import dev.anodex.mobile.chat.Inline
 import dev.anodex.mobile.chat.MarkdownBlock
 import dev.anodex.mobile.chat.parseMarkdown
@@ -58,6 +61,7 @@ fun MarkdownText(source: String, modifier: Modifier = Modifier) {
                 is MarkdownBlock.Heading -> HeadingBlock(block)
                 is MarkdownBlock.ListBlock -> ListBlockView(block)
                 is MarkdownBlock.CodeBlock -> CodeBlockView(block)
+                is MarkdownBlock.TableBlock -> TableView(block)
             }
         }
     }
@@ -114,6 +118,101 @@ private fun ListBlockView(block: MarkdownBlock.ListBlock) {
         }
     }
 }
+
+/**
+ * A pipe table.
+ *
+ * **It fits the width, and cells wrap.** The code block beside it scrolls sideways
+ * and that is right for code, where indentation is structure and a wrapped line
+ * invents some. A table's cells are prose, so wrapping costs nothing — and a
+ * sideways-scrolling thing inside a vertically scrolling conversation is a gesture
+ * fight the reader loses every time they try to scroll past it.
+ *
+ * Columns are weighted by their longest cell rather than shared out evenly, because
+ * a table of "Option / What it costs / Why" is mostly the third column, and three
+ * equal thirds would wrap the explanation to six lines beside two words of white
+ * space. The weight is clamped at both ends so a single long column cannot crush
+ * the others into a letter apiece.
+ *
+ * Wide tables do get cramped. Five columns on a narrow phone is several lines per
+ * cell, which is legible but not pretty — and still better than the alternative,
+ * which is that the reader never sees the last two columns at all.
+ */
+@Composable
+private fun TableView(block: MarkdownBlock.TableBlock) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val weights = remember(block) { columnWeights(block) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radii.md)
+            .background(colors.bgSurface2),
+    ) {
+        TableRow(block.header, block.alignments, weights, type.chatBodyEmphasis)
+
+        // The header's rule is the strong one and the rest are faint. A grid of
+        // equally weighted lines reads as a spreadsheet; what is wanted here is one
+        // line that says "labels above, values below" and just enough after it to
+        // keep the eye on a row.
+        Hairline(color = colors.borderStrong)
+
+        block.rows.forEachIndexed { index, row ->
+            if (index > 0) Hairline(color = colors.border)
+            TableRow(row, block.alignments, weights, type.chatBody)
+        }
+    }
+}
+
+@Composable
+private fun TableRow(
+    cells: List<List<Inline>>,
+    alignments: List<Align>,
+    weights: List<Float>,
+    style: TextStyle,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        cells.forEachIndexed { column, spans ->
+            Text(
+                text = annotate(spans),
+                style = style,
+                color = AnodexTheme.colors.text,
+                textAlign = when (alignments.getOrElse(column) { Align.START }) {
+                    Align.START -> TextAlign.Start
+                    Align.CENTER -> TextAlign.Center
+                    Align.END -> TextAlign.End
+                },
+                modifier = Modifier.weight(weights.getOrElse(column) { 1f }),
+            )
+        }
+    }
+}
+
+/**
+ * How much of the width each column gets.
+ *
+ * Character counts, which is crude — proportional text makes "IIII" and "MMMM" very
+ * different widths — but it is measuring the right thing for the decision being
+ * made, which is only ever "this column holds sentences and that one holds ticks".
+ *
+ * Clamped at both ends. The floor stops a column of `✓` from being squeezed to
+ * nothing; the ceiling stops one paragraph-shaped cell from taking the whole row.
+ */
+private fun columnWeights(block: MarkdownBlock.TableBlock): List<Float> =
+    block.header.indices.map { column ->
+        val header = block.header[column].sumOf { it.text.length }
+        val widest = block.rows.maxOfOrNull { row -> row[column].sumOf { it.text.length } } ?: 0
+        maxOf(header, widest).coerceIn(COLUMN_FLOOR, COLUMN_CEILING).toFloat()
+    }
+
+private const val COLUMN_FLOOR = 4
+private const val COLUMN_CEILING = 28
 
 /**
  * A fenced block.
