@@ -125,6 +125,11 @@ private fun Gallery() {
             ```bash
             git switch fix/the-work-log-fold-never-landed
             ```
+
+            | Option | Cost | Why |
+            |--------|-----:|-----|
+            | Keep it | None | It already works |
+            | Rewrite | A week | Nothing yet |
             """.trimIndent()
         )
 
@@ -218,13 +223,13 @@ private fun EmptyStates() {
     }
 }
 
-@Preview(name = "Gallery — Midnight", heightDp = 1700)
+@Preview(name = "Gallery — Midnight", heightDp = 1900)
 @Composable
 private fun PreviewGalleryDark() {
     AnodexTheme(darkTheme = true) { Gallery() }
 }
 
-@Preview(name = "Gallery — Light", heightDp = 1700)
+@Preview(name = "Gallery — Light", heightDp = 1900)
 @Composable
 private fun PreviewGalleryLight() {
     AnodexTheme(darkTheme = false) { Gallery() }
