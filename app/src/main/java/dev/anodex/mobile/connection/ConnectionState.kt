@@ -79,8 +79,31 @@ data class HostIdentity(
 /** What the desktop currently has loaded. Feeds the connection header; read-only on the phone. */
 data class ModelStatus(
     val name: String,
-    val contextUsedTokens: Int,
+    /**
+     * How much of the context is in use, or **null when the desktop did not say**.
+     *
+     * Nullable, and that is the whole of the fix. The desktop sends
+     * `contextTokensUsed: this.contextSequence?.nextTokenIndex` — which is absent
+     * whenever there is no live sequence, meaning most of the time a phone is
+     * looking at it. The phone read that absence as the number zero, so the meter
+     * sat resolutely empty and looked broken, when what it actually had was no
+     * figure at all.
+     *
+     * Zero and unknown are different claims: one says the context is empty, the
+     * other says nobody counted. Drawing an empty bar for the second is this
+     * codebase's oldest defect in a new place.
+     */
+    val contextUsedTokens: Int?,
     val contextTotalTokens: Int,
+    /**
+     * The conversation the count was measured against.
+     *
+     * The desktop measures usage for whichever conversation its engine is currently
+     * holding, and says which one. A phone open on a different conversation showing
+     * that number would be reporting someone else's context as its own — so when
+     * this does not match what is on screen, there is again no figure to draw.
+     */
+    val contextConversationId: String? = null,
     /**
      * The file behind it, when the desktop said.
      *
@@ -90,10 +113,20 @@ data class ModelStatus(
      */
     val path: String = "",
 ) {
-    /** 0f..1f, or null when the desktop has no model loaded. */
+    /**
+     * 0f..1f, or null when there is no honest figure to draw.
+     *
+     * Null when no model is loaded, and null when the desktop has not counted. The
+     * meter and the header's ring both draw nothing at all for null, which is the
+     * correct rendering of "not known" and distinguishable from a genuinely empty
+     * context, which draws an empty track.
+     */
     val contextFraction: Float?
-        get() = if (contextTotalTokens <= 0) null
-        else (contextUsedTokens.toFloat() / contextTotalTokens).coerceIn(0f, 1f)
+        get() {
+            if (contextTotalTokens <= 0) return null
+            val used = contextUsedTokens ?: return null
+            return (used.toFloat() / contextTotalTokens).coerceIn(0f, 1f)
+        }
 }
 
 /**

@@ -1041,7 +1041,14 @@ private fun ConnectedScaffold(
                         workspaceName = chatProject?.name,
                         folderPath = chatProject?.folderPath,
                         modelName = model?.name,
-                        contextUsedTokens = model?.contextUsedTokens ?: 0,
+                        // Only a count that belongs to *this* conversation. The
+                        // desktop measures usage for whichever one its engine is
+                        // holding and says which; showing that against a different
+                        // chat would be reporting somebody else's context as yours.
+                        contextUsedTokens = model?.contextUsedTokens?.takeIf {
+                            model.contextConversationId == null ||
+                                model.contextConversationId == chat?.conversationId
+                        },
                         contextTotalTokens = model?.contextTotalTokens ?: 0,
                         conversationId = chat?.conversationId,
                     ),

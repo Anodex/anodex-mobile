@@ -388,8 +388,15 @@ private fun connectionLine(state: ConnectionState): String = when (state) {
  */
 private fun contextLine(model: ModelStatus): String {
     if (model.contextTotalTokens <= 0) return "Unknown"
+
+    // Said, not guessed at. The computer reports usage only while its engine is
+    // holding a conversation; the rest of the time there is a context size and no
+    // reading of it, and "0 / 32K · 0%" would be a measurement nobody took.
+    val used = model.contextUsedTokens
+        ?: return "${compact(model.contextTotalTokens)} · usage not reported"
+
     val percent = ((model.contextFraction ?: 0f) * 100).toInt()
-    return "${compact(model.contextUsedTokens)} / ${compact(model.contextTotalTokens)} · $percent%"
+    return "${compact(used)} / ${compact(model.contextTotalTokens)} · $percent%"
 }
 
 private fun compact(tokens: Int): String =
