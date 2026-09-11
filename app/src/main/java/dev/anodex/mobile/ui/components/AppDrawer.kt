@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -328,33 +329,48 @@ fun AppDrawer(
             // corner. Here the sensible shape is a row that belongs to the panel —
             // same thumb position, nothing hidden, and it reads as part of the menu
             // rather than as something dropped on top of it.
-            // Outlined, not filled.
+            // Lit in the mark's own violet → blue, rather than outlined in grey.
             //
-            // Moving this off the list and into the panel was right; making it solid
-            // white was not. Full-width and filled, it became the loudest thing in a
-            // menu whose complaint was that it felt bulky — the fix traded a button
-            // that covered text for a button that shouted over everything.
+            // This control has now been wrong in both directions. Solid white made it
+            // the loudest thing in a panel whose complaint was bulk; a grey outline
+            // made it so quiet it read as disabled. The answer is not a third weight
+            // of grey — it is colour, and this app already has exactly one gradient
+            // that means Anodex: the violet → blue ramp the mark is drawn in.
             //
-            // The desktop's own equivalent is described in `SidebarSearch.module.css`
-            // as "a ghost row at rest — no fill, no border", settling into a proper
-            // button on hover. There is no hover on a phone, so rest is all there is;
-            // an outline is the quietest thing that still reads as a control rather
-            // than as another row of the list.
+            // `FacetField` establishes the idiom — the same two colours at around 5%
+            // over a dark ground, present without being loud. This is the same move
+            // with the ramp carried on the edge, where it reads as a lit rim rather
+            // than a filled shape.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = Spacing.x4, vertical = Spacing.x3)
                     .clip(Radii.pill)
-                    .border(1.dp, colors.borderStrong, Radii.pill)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                colors.accentViolet.copy(alpha = 0.14f),
+                                colors.accent.copy(alpha = 0.10f),
+                            )
+                        )
+                    )
+                    .border(
+                        BorderStroke(
+                            1.dp,
+                            Brush.horizontalGradient(
+                                listOf(colors.accentViolet, colors.accent)
+                            ),
+                        ),
+                        Radii.pill,
+                    )
                     .clickable(onClick = onNewChat)
                     .heightIn(min = Touch.minTarget)
                     .padding(horizontal = Spacing.x5),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.x2, Alignment.CenterHorizontally),
             ) {
-                // The accent is on the mark rather than the whole control, which is
-                // how this app points at things — see the wordmark's last letter.
-                Text("+", style = type.bodyEmphasis, color = colors.accentInk)
+                // Violet on the mark, to start the same ramp the rim runs.
+                Text("+", style = type.bodyEmphasis, color = colors.accentViolet)
                 Text("New chat", style = type.bodyEmphasis, color = colors.text)
             }
 
