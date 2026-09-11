@@ -60,6 +60,19 @@ fun EmptyState(
     val type = AnodexTheme.type
 
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        // The same two planes the empty conversation stands on.
+        //
+        // Every one of these screens was a black void with a sentence in the middle,
+        // which reads less like restraint than like a screen that failed to load —
+        // the exact criticism `FacetField` was written to answer, applied to one
+        // screen and then not to the eight others that needed it just as much.
+        //
+        // Reused rather than reinvented: it is already the app's one piece of visual
+        // identity, already static for the reasons the motion rules give, and
+        // already four or five percent opacity, so it grounds the screen without
+        // competing with the sentence that is the point of it.
+        FacetField(Modifier.matchParentSize())
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.x3),
