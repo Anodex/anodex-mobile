@@ -39,6 +39,7 @@ import dev.anodex.mobile.chat.parseMarkdown
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
+import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 
 /**
@@ -129,10 +130,10 @@ private fun ListBlockView(block: MarkdownBlock.ListBlock) {
  * fight the reader loses every time they try to scroll past it.
  *
  * Columns are weighted by their longest cell rather than shared out evenly, because
- * a table of "Option / What it costs / Why" is mostly the third column, and three
- * equal thirds would wrap the explanation to six lines beside two words of white
- * space. The weight is clamped at both ends so a single long column cannot crush
- * the others into a letter apiece.
+ * a table of "Option / Cost / Why" is mostly the third column, and three equal
+ * thirds would wrap the explanation to six lines beside two words of white space.
+ * The weight is dampened rather than proportional — see [columnWeights], where the
+ * first attempt at this got it wrong on a real phone.
  *
  * Wide tables do get cramped. Five columns on a narrow phone is several lines per
  * cell, which is legible but not pretty — and still better than the alternative,
@@ -201,14 +202,29 @@ private fun TableRow(
  * different widths — but it is measuring the right thing for the decision being
  * made, which is only ever "this column holds sentences and that one holds ticks".
  *
- * Clamped at both ends. The floor stops a column of `✓` from being squeezed to
- * nothing; the ceiling stops one paragraph-shaped cell from taking the whole row.
+ * **Dampened by a square root**, which is the part that was wrong on the first
+ * attempt. An Option/Cost/Why table on a real phone put `Option` against a column of
+ * `A` and `B`, and `Why` against thirty characters of explanation. Straight lengths
+ * made that 6 : 4 : 28, the heading got a sixth of the width, and the table came out
+ * reading "Optio / n" and "Cos / t".
+ *
+ * A cell with thirty characters does not need seven times the room of one with four.
+ * Wrapping a long cell to a second line costs a line; wrapping a six-letter heading
+ * costs the reader the name of the column, and headings are the shortest text in the
+ * table and the least able to survive being squeezed. The square root keeps the
+ * ordering — wide columns are still wider — while pulling the ratio back to
+ * something a heading fits inside.
+ *
+ * Clamped before the root, at both ends. The floor stops a column of `✓` from being
+ * squeezed to nothing; the ceiling stops one paragraph-shaped cell from running away
+ * with the row.
  */
-private fun columnWeights(block: MarkdownBlock.TableBlock): List<Float> =
+internal fun columnWeights(block: MarkdownBlock.TableBlock): List<Float> =
     block.header.indices.map { column ->
         val header = block.header[column].sumOf { it.text.length }
         val widest = block.rows.maxOfOrNull { row -> row[column].sumOf { it.text.length } } ?: 0
-        maxOf(header, widest).coerceIn(COLUMN_FLOOR, COLUMN_CEILING).toFloat()
+        val demand = maxOf(header, widest).coerceIn(COLUMN_FLOOR, COLUMN_CEILING)
+        sqrt(demand.toFloat())
     }
 
 private const val COLUMN_FLOOR = 4
