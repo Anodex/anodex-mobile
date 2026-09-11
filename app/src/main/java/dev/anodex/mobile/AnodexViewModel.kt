@@ -12,7 +12,9 @@ import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Agents
 import dev.anodex.mobile.agents.parseAgentRuns
 import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.ContextUsage
 import dev.anodex.mobile.chat.ConversationSummary
+import dev.anodex.mobile.chat.contextUsageFrom
 import dev.anodex.mobile.chat.Conversations
 import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.MessagePersona
@@ -71,7 +73,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
@@ -889,6 +898,79 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissUpdate() {
         _updateDismissed.value = true
+    }
+
+    private val _contextUsage = MutableStateFlow<ContextUsage?>(null)
+
+    /**
+     * How full the open conversation's context is, or null when nobody has said.
+     *
+     * Null is the ordinary state and not a fault: there is no reading before a
+     * conversation has any messages, none when no model is loaded, and none while
+     * the computer is unreachable. The ring draws nothing at all for null, which is
+     * the honest rendering of "not known" and distinguishable from a context that
+     * really is empty.
+     *
+     * Read from the computer rather than worked out here — see [ContextUsage] for
+     * why a phone cannot compute this one for itself.
+     */
+    val contextUsage: StateFlow<ContextUsage?> = _contextUsage.asStateFlow()
+
+    /**
+     * Ask the computer how full a conversation's context is.
+     *
+     * Cheap enough to call on every turn boundary: it is a projection over a
+     * conversation the computer already has in memory, not a generation.
+     */
+    /**
+     * The open conversation, each time it stops changing.
+     *
+     * Null while a turn is in flight, and null when there is no session at all.
+     *
+     * `flatMapLatest` because the session is replaced on reconnect and whenever a
+     * different conversation is opened; without it the collector would go on watching
+     * a session nobody is looking at and report its context as the one on screen.
+     *
+     * Emitting only on a settled turn is what makes this affordable. Mid-stream the
+     * reply is half-written, so a reading taken then describes a conversation that no
+     * longer exists by the time the answer arrives — and asking per token would be a
+     * round trip to the computer thirty times a second.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun settledTurns(): Flow<String?> =
+        _chat
+            .flatMapLatest { session ->
+                if (session == null) {
+                    flowOf(null)
+                } else {
+                    combine(session.messages, session.sending) { messages, sending ->
+                        // The count is in the key so a finished turn re-measures, but
+                        // the id is what the caller needs.
+                        if (sending) null else session.conversationId to messages.size
+                    }
+                }
+            }
+            .distinctUntilChanged()
+            .map { it?.first }
+
+    fun refreshContextUsage(conversationId: String?) {
+        val open = socket
+        if (open == null || conversationId == null) {
+            _contextUsage.value = null
+            return
+        }
+
+        viewModelScope.launch {
+            val reading = runCatching {
+                open.invoke("chat:context-usage", listOf(JsonPrimitive(conversationId)))
+            }.getOrNull()
+
+            // Kept only while it is still about what the screen is showing. A reply
+            // that lands after the user has opened a different conversation is a
+            // measurement of the one they left.
+            if (_chat.value?.conversationId != conversationId) return@launch
+            _contextUsage.value = contextUsageFrom(reading, conversationId)
+        }
     }
 
     private val _unreadEmail = MutableStateFlow<Int?>(null)
@@ -1797,6 +1879,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        // Re-measure the open conversation's context every time a turn settles.
+        viewModelScope.launch(farEnd) {
+            settledTurns().collect { conversationId ->
+                if (conversationId != null) refreshContextUsage(conversationId)
+            }
+        }
+
         viewModelScope.launch(farEnd) {
             val stored = store.paired.first()
             _paired.value = stored

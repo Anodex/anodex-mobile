@@ -508,6 +508,11 @@ private fun ConnectedScaffold(
     val installedModels by viewModel.installedModels.collectAsStateWithLifecycle()
     val loadingModelPath by viewModel.loadingModelPath.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+
+    // How full the open conversation's context is, as the computer measures it.
+    // Read here rather than in the header alone, because the Host page reports the
+    // same figure and reading it twice is how the two come to disagree.
+    val contextUsage by viewModel.contextUsage.collectAsStateWithLifecycle()
     val workspaceFiles by viewModel.workspaceFiles.collectAsStateWithLifecycle()
     val workspaceLoading by viewModel.workspaceLoading.collectAsStateWithLifecycle()
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
@@ -680,6 +685,7 @@ private fun ConnectedScaffold(
 
         HostScreen(
             state = state,
+            contextUsage = contextUsage?.takeIf { it.conversationId == chat?.conversationId },
             newerVersion = newerVersion,
             installedVersion = BuildConfig.VERSION_NAME,
             activeProjectName = projects.active?.name,
@@ -908,6 +914,7 @@ private fun ConnectedScaffold(
     val chatProject = chat?.projectId
         ?.let { id -> projects.projects.firstOrNull { it.id == id } }
 
+
     /** Whether the bars hang over the page instead of sitting above it. */
     val floatingChrome = destination == AppDestination.CHAT
 
@@ -1093,15 +1100,22 @@ private fun ConnectedScaffold(
                         workspaceName = chatProject?.name,
                         folderPath = chatProject?.folderPath,
                         modelName = model?.name,
-                        // Only a count that belongs to *this* conversation. The
-                        // desktop measures usage for whichever one its engine is
-                        // holding and says which; showing that against a different
-                        // chat would be reporting somebody else's context as yours.
-                        contextUsedTokens = model?.contextUsedTokens?.takeIf {
-                            model.contextConversationId == null ||
-                                model.contextConversationId == chat?.conversationId
-                        },
-                        contextTotalTokens = model?.contextTotalTokens ?: 0,
+                        // Read from the computer, not derived from the engine
+                        // state. `contextTokensUsed` is the live KV-cache index and
+                        // is absent between generations, which is why the ring never
+                        // appeared; the figure the desktop's own meter shows is a
+                        // projection only it can compute. See `ContextUsage`.
+                        //
+                        // Still checked against the open conversation: the reply
+                        // names what it measured, and the phone is often looking at
+                        // a different chat than the desk is.
+                        contextUsedTokens = contextUsage
+                            ?.takeIf { it.conversationId == chat?.conversationId }
+                            ?.usedTokens,
+                        contextTotalTokens = contextUsage
+                            ?.takeIf { it.conversationId == chat?.conversationId }
+                            ?.contextSize
+                            ?: 0,
                         conversationId = chat?.conversationId,
                     ),
                     onOpenDrawer = { drawerOpen = true },
