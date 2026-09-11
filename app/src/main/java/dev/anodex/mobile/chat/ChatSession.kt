@@ -239,6 +239,35 @@ class ChatSession(
                 persona = persona,
             )
 
+        // On the wire before this function returns, and deliberately not inside the
+        // coroutine below.
+        //
+        // Sending a message and then leaving the app used to lose it. Android can
+        // destroy the Activity while the process lives on — under memory pressure,
+        // or simply after a while away — and that clears the ViewModel, which
+        // cancels `viewModelScope`, which cancelled this turn before it had sent
+        // anything. "Thinking…" was already on screen, because the placeholder above
+        // is appended synchronously, so the app looked like it was working on a
+        // message the desktop had never heard of.
+        //
+        // `enqueue` does not suspend: it hands the frame to OkHttp's writer and
+        // returns, and OkHttp transmits queued frames before any close. So once this
+        // line has run the prompt is the desktop's problem, and it will finish the
+        // turn whether or not this phone is still watching — the conversation lives
+        // there, and re-opening it reads the answer back.
+        val callId = try {
+            socket.enqueue(CHANNEL_SEND, listOf(payload))
+        } catch (e: Exception) {
+            // Nothing was sent, so the optimistic turn above is a lie. Take it back
+            // rather than leaving a question on screen that nobody was asked.
+            _messages.value = _messages.value.filterNot {
+                it.id == messageId || it.id == assistantIdFor(messageId)
+            }
+            _error.value = e.message ?: "That didn't reach your computer."
+            _sending.value = false
+            return
+        }
+
         scope.launch {
             // A turn is answered when it is finished, and a real one reads files,
             // searches, and thinks between them. The default sixty seconds is a
@@ -253,7 +282,7 @@ class ChatSession(
             lastActivityAt = System.currentTimeMillis()
             var wentQuiet = false
 
-            val call = async { socket.invoke(CHANNEL_SEND, listOf(payload), TURN_CAP) }
+            val call = async { socket.awaitResult(callId, TURN_CAP) }
 
             val watchdog = launch {
                 while (isActive) {

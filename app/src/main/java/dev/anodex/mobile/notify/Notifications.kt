@@ -1,12 +1,15 @@
 package dev.anodex.mobile.notify
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -25,6 +28,17 @@ data class NotificationAccess(
     val allowed: Boolean,
     val approvals: Boolean,
     val activity: Boolean,
+    /**
+     * Whether the system will let this app keep running in the background.
+     *
+     * Part of "what can reach you" rather than a separate concern, because from the
+     * user's side it is the same question. Every one of these notifications arrives
+     * over the live link to the computer, held up by a foreground service — and on
+     * manufacturers with aggressive battery management that service is killed
+     * regardless of the permission above. Granting notifications and then being
+     * silenced by the battery manager looks identical to the app being broken.
+     */
+    val background: Boolean,
 )
 
 /** Why the phone is being told something. Mirrors the desktop's RemoteNotificationKind. */
@@ -156,8 +170,30 @@ class Notifications(private val context: Context) {
             allowed = allowed,
             approvals = allowed && channelIsOn(CHANNEL_APPROVAL),
             activity = allowed && channelIsOn(CHANNEL_ACTIVITY),
+            background = isExemptFromBatteryOptimisation(),
         )
     }
+
+    /** Whether the system will let this app hold its connection while backgrounded. */
+    fun isExemptFromBatteryOptimisation(): Boolean {
+        val power = context.getSystemService(PowerManager::class.java) ?: return true
+        return power.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    /**
+     * The system's own "let this app run in the background?" dialog.
+     *
+     * `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` rather than the settings list,
+     * because this app has the one use case the permission exists for: holding a
+     * connection open so a run blocked on an approval can reach somebody who is not
+     * looking at their phone. Anything less direct means finding this app in a list
+     * of every app on the device.
+     */
+    @SuppressLint("BatteryLife")
+    fun batteryExemptionIntent(): Intent =
+        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            .setData(Uri.parse("package:" + context.packageName))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     private fun channelIsOn(id: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true

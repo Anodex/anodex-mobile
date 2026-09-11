@@ -136,6 +136,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun notificationSettingsIntent(): Intent = notifications.settingsIntent()
 
+    fun batteryExemptionIntent(): Intent = notifications.batteryExemptionIntent()
+
     fun notificationPermissionHandled() {
         _needsNotificationPermission.value = false
     }
