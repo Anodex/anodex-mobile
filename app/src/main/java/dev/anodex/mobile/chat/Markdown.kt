@@ -108,9 +108,12 @@ private val NUMBERED = Regex("^\\s{0,3}\\d{1,9}[.)]\\s+(.*)$")
 /**
  * The `|---|:--:|` line under a table's header.
  *
- * A table is only a table because of this line, which is why detection looks ahead
+ * A table is a table mostly because of this line, which is why detection looks ahead
  * rather than at the row in front of it: `a | b` on its own is a sentence containing
  * a pipe, and plenty of shell output is exactly that.
+ *
+ * Only mostly, though — models leave it out often enough that `tableStart` has a
+ * second, stricter way in for when they do.
  */
 private val TABLE_RULE = Regex("^\\s{0,3}\\|?(\\s*:?-+:?\\s*\\|)+\\s*:?-*:?\\s*\\|?\\s*$")
 
@@ -176,14 +179,14 @@ fun parseMarkdown(source: String): List<MarkdownBlock> {
 
         // Tables are recognised by the line *after* the one in hand, because the
         // header row of a table and a sentence containing a pipe are the same thing
-        // until the `|---|` arrives. While a reply is still streaming that line has
-        // not arrived yet, so a table spends a frame or two as a paragraph and then
+        // until the line under it arrives. While a reply is still streaming that line
+        // has not come yet, so a table spends a frame or two as a paragraph and then
         // becomes a table — the alternative is guessing, and guessing wrong turns
         // ordinary prose into a one-row grid.
-        if (startsTable(lines, index)) {
+        val start = tableStart(lines, index)
+        if (start != null) {
             val header = splitRow(line)
-            val alignments = splitRow(lines[index + 1]).map(::alignOf)
-            index += 2
+            index = start.bodyAt
 
             val rows = mutableListOf<List<List<Inline>>>()
             while (index < lines.size && lines[index].contains('|') && lines[index].isNotBlank()) {
@@ -199,7 +202,7 @@ fun parseMarkdown(source: String): List<MarkdownBlock> {
             blocks += MarkdownBlock.TableBlock(
                 header = header.map(::parseInline),
                 rows = rows,
-                alignments = alignments,
+                alignments = start.alignments,
             )
             continue
         }
@@ -233,7 +236,7 @@ fun parseMarkdown(source: String): List<MarkdownBlock> {
                 // "Here is the comparison:" directly above a table, with no blank
                 // line between. Without this the paragraph swallows the whole grid
                 // and renders it as one long line of pipes.
-                startsTable(lines, index)
+                tableStart(lines, index) != null
             ) {
                 break
             }
@@ -326,24 +329,73 @@ fun parseInline(source: String): List<Inline> {
     return spans
 }
 
+/** A table recognised at some line, and where its body begins. */
+private class TableStart(val alignments: List<Align>, val bodyAt: Int)
+
 /**
- * Whether the line at [index] is the header of a table.
+ * Whether the line at [index] is the header of a table, and on what terms.
  *
  * Asked in two places — where a block begins, and where a paragraph must stop —
  * because "Here is the comparison:" sitting directly above a table with no blank
  * line is common, and a paragraph that does not stop there swallows the whole grid
  * and prints it as one long line of pipes.
+ *
+ * There are two ways to be a table, and the second one is a concession to reality.
  */
-private fun startsTable(lines: List<String>, index: Int): Boolean {
-    if (index + 1 >= lines.size) return false
-    if (!lines[index].contains('|')) return false
-    if (!TABLE_RULE.matches(lines[index + 1])) return false
+private fun tableStart(lines: List<String>, index: Int): TableStart? {
+    if (index + 1 >= lines.size) return null
 
-    // A single column, or a header that does not match its own rule, is a
-    // coincidence rather than a table: prose with a pipe in it, above something that
-    // happens to look like a rule.
-    val header = splitRow(lines[index])
-    return header.size >= 2 && header.size == splitRow(lines[index + 1]).size
+    val header = lines[index]
+    if (!header.contains('|')) return null
+
+    // A single column is a coincidence rather than a table.
+    val columns = splitRow(header).size
+    if (columns < 2) return null
+
+    val under = lines[index + 1]
+
+    // The proper form: a `|---|:--:|` rule, which also carries the alignments.
+    if (TABLE_RULE.matches(under)) {
+        val rule = splitRow(under)
+        if (rule.size != columns) return null
+        return TableStart(rule.map(::alignOf), index + 2)
+    }
+
+    // And the form models actually produce about half the time: the header, and then
+    // straight into the rows, with no rule at all. Observed on the first table a real
+    // phone asked a real model for.
+    //
+    // Rendering that as a paragraph is the worst available outcome — every cell of
+    // the table joined end to end with the pipes still in, all of the content and
+    // none of it legible. So it is accepted, but on much tighter terms, because
+    // without the rule line there is nothing left to anchor on but shape.
+    //
+    // Both lines must be **fully piped** — a leading pipe as well as a trailing one —
+    // and must agree on how many cells they have. That is the discriminator that
+    // matters: `ls | wc -l` and `the type is A | B | C` have pipes in the middle and
+    // never at both ends, so neither can be mistaken for a header. A line that opens
+    // and closes with a pipe is essentially never prose.
+    if (!fullyPiped(header) || !fullyPiped(under)) return null
+    if (splitRow(under).size != columns) return null
+
+    // No rule means nothing said anything about alignment, and inventing one would
+    // be reading intent into an omission.
+    return TableStart(List(columns) { Align.START }, index + 1)
+}
+
+/**
+ * Whether a line opens and closes with a pipe.
+ *
+ * The whole weight of the ruleless path rests on this, so it is deliberately strict:
+ * a trailing `\|` is an escaped pipe inside the last cell rather than the edge of the
+ * row, and a line of one or two characters has no room to be a row of anything.
+ */
+private fun fullyPiped(line: String): Boolean {
+    val trimmed = line.trim()
+    return trimmed.length >= 3 &&
+        trimmed.startsWith("|") &&
+        trimmed.endsWith("|") &&
+        !trimmed.endsWith("\\|")
 }
 
 /**

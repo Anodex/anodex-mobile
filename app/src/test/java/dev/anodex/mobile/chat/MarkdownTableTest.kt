@@ -151,6 +151,86 @@ class MarkdownTableTest {
         assertTrue(block.rows.isEmpty())
     }
 
+    // --- the rule row models keep forgetting --------------------------------------
+
+    @Test
+    fun `a table with no rule row is still a table`() {
+        // Observed on the first table a real phone asked a real model for, verbatim
+        // from what the desktop stored. The `| --- |` line simply was not there.
+        //
+        // Rendering this as a paragraph is the worst available outcome: every cell
+        // joined end to end with the pipes still in, all of the content and none of
+        // it legible. The reader is not the one who got the format wrong.
+        val block = table(
+            """
+            | Option | Cost | Why |
+            | A | ${'$'}10 | A is the cheaper route because it only takes an afternoon. |
+            | B | ${'$'}50 | B costs more up front but pays for itself within a quarter. |
+            """.trimIndent()
+        )
+
+        assertEquals(listOf("Option", "Cost", "Why"), block.header.map(::text))
+        assertEquals(2, block.rows.size)
+        assertEquals("A", text(block.rows[0][0]))
+        assertEquals("${'$'}50", text(block.rows[1][1]))
+    }
+
+    @Test
+    fun `a ruleless table is left-aligned, because nothing said otherwise`() {
+        // Inventing an alignment out of an omission would be reading intent into a
+        // mistake.
+        val block = table("| A | B |\n| 1 | 2 |")
+
+        assertEquals(listOf(Align.START, Align.START), block.alignments)
+    }
+
+    @Test
+    fun `a ruleless table still needs both lines to agree on their columns`() {
+        val blocks = parseMarkdown("| A | B | C |\n| 1 | 2 |")
+
+        assertTrue(blocks.none { it is MarkdownBlock.TableBlock })
+    }
+
+    @Test
+    fun `without a rule, both lines must be piped at both ends`() {
+        // The whole discriminator. Shell output and union types have pipes in the
+        // middle; a row of a table has them at the edges too.
+        for (prose in listOf(
+            "ls | wc -l\ngrep foo | sort",
+            "The type is A | B\nThe other is C | D",
+            "| A | B |\nplain prose underneath",
+            "leading only | a | b\n| 1 | 2 |",
+        )) {
+            val blocks = parseMarkdown(prose)
+            assertTrue(
+                "made a table out of <${prose.replace("\n", "\\n")}>",
+                blocks.none { it is MarkdownBlock.TableBlock },
+            )
+        }
+    }
+
+    @Test
+    fun `a lone piped line is not a table`() {
+        // One row is a coincidence. Two agreeing rows is a shape.
+        assertTrue(parseMarkdown("| A | B |").none { it is MarkdownBlock.TableBlock })
+        assertTrue(parseMarkdown("| A | B |\n").none { it is MarkdownBlock.TableBlock })
+        assertTrue(parseMarkdown("| A | B |\n\n| C | D |").none { it is MarkdownBlock.TableBlock })
+    }
+
+    @Test
+    fun `a ruleless single column is still not a table`() {
+        assertTrue(parseMarkdown("| A |\n| 1 |").none { it is MarkdownBlock.TableBlock })
+    }
+
+    @Test
+    fun `a rule that is present still wins over the ruleless path`() {
+        // The rule line must never be read as a row of dashes.
+        val block = table("| A | B |\n|---|---|\n| 1 | 2 |")
+
+        assertEquals(1, block.rows.size)
+        assertEquals(listOf("1", "2"), row(block, 0))
+    }
+
     // --- what is not a table ------------------------------------------------------
 
     @Test
