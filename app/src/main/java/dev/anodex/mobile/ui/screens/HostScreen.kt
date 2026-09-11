@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.chat.ContextUsage
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
@@ -68,6 +69,14 @@ fun HostScreen(
     port: Int? = null,
     /** Teach it another one. Null hides the control entirely. */
     onAddAddress: ((String) -> Unit)? = null,
+    /**
+     * How full the open conversation's context is, as the computer measures it.
+     *
+     * Preferred over anything derivable from the engine state. `contextTokensUsed`
+     * there is the live KV-cache index and is absent between generations, so a page
+     * built on it reported "usage not reported" almost always — see [ContextUsage].
+     */
+    contextUsage: ContextUsage? = null,
     /** Why the last typed address was rejected. */
     addressError: String? = null,
     onDismissAddressError: () -> Unit = {},
@@ -129,9 +138,9 @@ fun HostScreen(
                     )
                 } else {
                     Field("Model", model.name)
-                    Field("Context", contextLine(model))
+                    Field("Context", contextLine(model, contextUsage))
 
-                    val fraction = model.contextFraction
+                    val fraction = contextUsage?.fraction ?: model.contextFraction
                     if (fraction != null) {
                         Meter(fraction)
                         if (fraction > 0.85f) {
@@ -386,12 +395,20 @@ private fun connectionLine(state: ConnectionState): String = when (state) {
  * Thousands are abbreviated because the exact figure changes several times a second
  * during a turn, and a number that never settles cannot be read at all.
  */
-private fun contextLine(model: ModelStatus): String {
+private fun contextLine(model: ModelStatus, usage: ContextUsage?): String {
+    // The computer's own projection for the open conversation, which is the figure
+    // its meter shows. Preferred over anything off the engine state, where
+    // `contextTokensUsed` is the live KV-cache index and is absent between turns.
+    if (usage != null) {
+        val percent = ((usage.fraction ?: 0f) * 100).toInt()
+        return "${compact(usage.usedTokens)} / ${compact(usage.contextSize)} · $percent%"
+    }
+
     if (model.contextTotalTokens <= 0) return "Unknown"
 
-    // Said, not guessed at. The computer reports usage only while its engine is
-    // holding a conversation; the rest of the time there is a context size and no
-    // reading of it, and "0 / 32K · 0%" would be a measurement nobody took.
+    // Said, not guessed at. With no projection and no live sequence there is a
+    // context size and no reading of it, and "0 / 32K · 0%" would be a measurement
+    // nobody took.
     val used = model.contextUsedTokens
         ?: return "${compact(model.contextTotalTokens)} · usage not reported"
 
