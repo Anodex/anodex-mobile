@@ -89,8 +89,9 @@ fun SettingsScreen(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     onSelectTheme: (ThemeMode) -> Unit = {},
     /** What the system will actually let through. */
-    notificationAccess: NotificationAccess = NotificationAccess(true, true, true),
+    notificationAccess: NotificationAccess = NotificationAccess(true, true, true, true),
     onOpenNotificationSettings: () -> Unit = {},
+    onAllowBackground: () -> Unit = {},
     /** What the computer remembers. Read and forget only; nothing here writes one. */
     memories: List<MemoryEntry> = emptyList(),
     memoryLoading: Boolean = false,
@@ -168,6 +169,7 @@ fun SettingsScreen(
             SettingsSection.NOTIFICATIONS -> NotificationsSection(
                 access = notificationAccess,
                 onOpenSystemSettings = onOpenNotificationSettings,
+                onAllowBackground = onAllowBackground,
             )
 
             SettingsSection.REMOTE -> RemoteSection(hostName, hostStatus, onOpenHost)
@@ -329,6 +331,7 @@ private fun AiAndModelsSection(
 private fun NotificationsSection(
     access: NotificationAccess,
     onOpenSystemSettings: () -> Unit,
+    onAllowBackground: () -> Unit,
 ) {
     SectionBody {
         SectionLabel("What may reach you")
@@ -385,11 +388,39 @@ private fun NotificationsSection(
             )
         }
 
-        Footnote(
-            "These arrive over the link to your computer, so they reach you while " +
-                "Anodex is in the background — and not at all while the phone " +
-                "cannot see the computer.",
-        )
+        SectionLabel("Running in the background")
+
+        Group {
+            SettingsRow(
+                icon = AnodexIcon.SMARTPHONE,
+                label = "Keep the link alive",
+                value = if (access.background) "Allowed" else "Restricted",
+                onClick = onAllowBackground,
+            )
+        }
+
+        if (!access.background) {
+            // The half that is invisible until it bites. Notifications can be fully
+            // granted and still never arrive, because every one of them comes over
+            // the live link and the battery manager kills the service holding it.
+            // On some manufacturers that is the default.
+            Footnote(
+                "Your phone is allowed to stop Anodex in the background, which stops " +
+                    "the connection carrying these. An approval waiting on you would " +
+                    "not arrive until you opened the app.",
+            )
+            SecondaryButton(
+                label = "Allow it to keep running",
+                onClick = onAllowBackground,
+                modifier = Modifier.padding(top = Spacing.x3),
+            )
+        } else {
+            Footnote(
+                "These arrive over the link to your computer, so they reach you while " +
+                    "Anodex is in the background — and not at all while the phone " +
+                    "cannot see the computer.",
+            )
+        }
     }
 }
 

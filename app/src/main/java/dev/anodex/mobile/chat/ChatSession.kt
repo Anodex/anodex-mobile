@@ -15,8 +15,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -239,6 +241,35 @@ class ChatSession(
                 persona = persona,
             )
 
+        // On the wire before this function returns, and deliberately not inside the
+        // coroutine below.
+        //
+        // Sending a message and then leaving the app used to lose it. Android can
+        // destroy the Activity while the process lives on — under memory pressure,
+        // or simply after a while away — and that clears the ViewModel, which
+        // cancels `viewModelScope`, which cancelled this turn before it had sent
+        // anything. "Thinking…" was already on screen, because the placeholder above
+        // is appended synchronously, so the app looked like it was working on a
+        // message the desktop had never heard of.
+        //
+        // `enqueue` does not suspend: it hands the frame to OkHttp's writer and
+        // returns, and OkHttp transmits queued frames before any close. So once this
+        // line has run the prompt is the desktop's problem, and it will finish the
+        // turn whether or not this phone is still watching — the conversation lives
+        // there, and re-opening it reads the answer back.
+        val callId = try {
+            socket.enqueue(CHANNEL_SEND, listOf(payload))
+        } catch (e: Exception) {
+            // Nothing was sent, so the optimistic turn above is a lie. Take it back
+            // rather than leaving a question on screen that nobody was asked.
+            _messages.value = _messages.value.filterNot {
+                it.id == messageId || it.id == assistantIdFor(messageId)
+            }
+            _error.value = e.message ?: "That didn't reach your computer."
+            _sending.value = false
+            return
+        }
+
         scope.launch {
             // A turn is answered when it is finished, and a real one reads files,
             // searches, and thinks between them. The default sixty seconds is a
@@ -253,7 +284,7 @@ class ChatSession(
             lastActivityAt = System.currentTimeMillis()
             var wentQuiet = false
 
-            val call = async { socket.invoke(CHANNEL_SEND, listOf(payload), TURN_CAP) }
+            val call = async { socket.awaitResult(callId, TURN_CAP) }
 
             val watchdog = launch {
                 while (isActive) {
@@ -283,9 +314,25 @@ class ChatSession(
             } finally {
                 watchdog.cancel()
                 _sending.value = false
-                finishStreaming()
-                recordChangedFiles(messageId)
-                persist()
+
+                // `NonCancellable`, and the conversation depends on it.
+                //
+                // A `finally` block runs when a coroutine is cancelled, but every
+                // *suspension point* inside it throws immediately — so `persist`,
+                // which is a call over the socket, never got past its first suspend
+                // when the scope died. The turn was on the phone's screen and had
+                // never been written to the computer, which is where conversations
+                // actually live. Nothing was corrupt; the save simply never happened,
+                // and the phone had no way to know.
+                //
+                // The desktop merges a remote save rather than overwriting, and
+                // announces it so an open window picks it up, so finishing this is
+                // both safe and the whole point.
+                withContext(NonCancellable) {
+                    finishStreaming()
+                    recordChangedFiles(messageId)
+                    persist()
+                }
             }
         }
     }
