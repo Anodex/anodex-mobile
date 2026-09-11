@@ -14,10 +14,10 @@ import androidx.compose.runtime.Immutable
  *
  * No dependency, on purpose. A full CommonMark implementation handles reference
  * links, HTML blocks, setext headings and nested blockquotes; none of that appears
- * in these replies, and all of it is surface area. This handles the six things that
- * do appear and treats everything else as ordinary text, which is the failure mode
- * you want — an unsupported construct reads as what the model typed rather than
- * disappearing.
+ * in these replies, and all of it is surface area. This handles the handful of things
+ * that do appear — fences, inline code, headings, lists, emphasis and links — and
+ * treats everything else as ordinary text, which is the failure mode you want: an
+ * unsupported construct reads as what the model typed rather than disappearing.
  *
  * ## Streaming
  *
@@ -51,6 +51,14 @@ data class Inline(
     val code: Boolean = false,
     val bold: Boolean = false,
     val italic: Boolean = false,
+    /**
+     * Where this run points, or null for ordinary text.
+     *
+     * Emphasis and destination are separate axes rather than alternatives: a link
+     * can be bold, and a `[`link`](url)` with a code label is a shape agents
+     * produce constantly when they point at a file.
+     */
+    val link: String? = null,
 )
 
 @Immutable
@@ -182,7 +190,9 @@ fun parseMarkdown(source: String): List<MarkdownBlock> {
  *
  * Backticks are handled first and their contents are never scanned again, because
  * `**` inside code is an operator rather than emphasis — and an agent's reply is
- * full of code containing exactly those characters.
+ * full of code containing exactly those characters. A URL inside backticks therefore
+ * stays a piece of code and does not become a link, which is right: somebody who
+ * fenced it wanted it read, not followed.
  */
 fun parseInline(source: String): List<Inline> {
     if (source.isEmpty()) return emptyList()
@@ -211,6 +221,24 @@ fun parseInline(source: String): List<Inline> {
             }
         }
 
+        // Links before emphasis, so a label like `[**the PR**](url)` is one link
+        // rather than a stray bracket followed by bold text followed by an address.
+        val link = linked(source, i)
+        if (link != null) {
+            flush()
+            spans += link.spans
+            i = link.next
+            continue
+        }
+
+        val bare = bareUrl(source, i)
+        if (bare != null) {
+            flush()
+            spans += Inline(bare.first, link = bare.first)
+            i = bare.second
+            continue
+        }
+
         // Bold before italic: `**` would otherwise match the italic rule twice and
         // produce an empty emphasised span between them.
         val bold = delimited(source, i, "**") ?: delimited(source, i, "__")
@@ -235,6 +263,93 @@ fun parseInline(source: String): List<Inline> {
 
     flush()
     return spans
+}
+
+/** The spans a `[label](target)` produced, and where to resume reading. */
+private class Linked(val spans: List<Inline>, val next: Int)
+
+/**
+ * A `[label](target)` starting at [start], or null if this bracket is just a bracket.
+ *
+ * The label is parsed as inline markup in its own right and the destination stamped
+ * onto every run it produced, because `[the **failing** test](url)` is one link with
+ * emphasis inside it rather than three separate things. Recursion terminates because
+ * the label is strictly shorter than what contained it.
+ */
+private fun linked(source: String, start: Int): Linked? {
+    if (!source.startsWith("[", start)) return null
+
+    val close = source.indexOf(']', startIndex = start + 1)
+    if (close < 0 || !source.startsWith("](", close)) return null
+
+    // Balanced, because real URLs contain parentheses — a Wikipedia article, a
+    // generic in a doc anchor — and stopping at the first `)` would truncate them.
+    val open = close + 2
+    var depth = 1
+    var end = open
+    while (end < source.length) {
+        when (source[end]) {
+            '(' -> depth++
+            ')' -> if (--depth == 0) break
+        }
+        end++
+    }
+    if (depth != 0) return null
+
+    val target = source.substring(open, end).trim()
+
+    // An unrecognised scheme is not a link at all, and the construct stays as the
+    // characters the model typed — the same failure mode as every other thing this
+    // parser does not handle, and the one that loses nothing.
+    //
+    // The check belongs here rather than in the renderer because a tap hands this
+    // string to the system to open, which makes it the one place in the app where
+    // generated text becomes an action. Pages and addresses are worth opening;
+    // `intent:` and `content:` are a way to have the phone do something else.
+    if (!openable(target)) return null
+
+    val label = source.substring(start + 1, close)
+    val spans = if (label.isEmpty()) listOf(Inline(target)) else parseInline(label)
+
+    return Linked(spans.map { it.copy(link = target) }, end + 1)
+}
+
+/**
+ * A bare `https://…` starting at [start], and where it ends.
+ *
+ * Agents write far more bare URLs than bracketed ones, so leaving these as dead text
+ * would be linking the rarer half. The delicate part is the end of the run: a URL at
+ * the end of a sentence is followed by a full stop that belongs to the sentence, and
+ * one quoted in prose often sits inside parentheses that are not its own.
+ */
+private fun bareUrl(source: String, start: Int): Pair<String, Int>? {
+    val scheme = when {
+        source.startsWith("https://", start, ignoreCase = true) -> 8
+        source.startsWith("http://", start, ignoreCase = true) -> 7
+        else -> return null
+    }
+
+    val body = start + scheme
+    var end = body
+    while (end < source.length && !source[end].isWhitespace() && source[end] !in "<>\"'`") end++
+
+    // Trailing sentence punctuation, and a closing bracket that never opened in here.
+    while (end > body) {
+        val last = source[end - 1]
+        val closer = last == ')' &&
+            source.substring(start, end).count { it == ')' } >
+            source.substring(start, end).count { it == '(' }
+        if (last in ".,;:!?" || closer) end-- else break
+    }
+
+    if (end <= body) return null // a scheme and nothing after it
+    return source.substring(start, end) to end
+}
+
+/** Whether a destination is one worth handing to the system to open. */
+private fun openable(target: String): Boolean {
+    val lower = target.lowercase()
+    return lower.startsWith("https://") || lower.startsWith("http://") || lower.startsWith("mailto:")
 }
 
 /**
