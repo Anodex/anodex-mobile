@@ -247,20 +247,44 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val connectionHint by viewModel.connectionHint.collectAsStateWithLifecycle()
 
-    // Asked for the first time something arrived that could not be shown, rather
-    // than at launch. A permission prompt makes sense when there is a concrete
-    // thing it would have told you about, and reads as arbitrary before that.
-    val needsNotificationPermission by
-        viewModel.needsNotificationPermission.collectAsStateWithLifecycle()
+    // Everything standing between "paired" and "tells you when your computer needs
+    // you", asked for in order, as ordinary system dialogs.
+    //
+    // Both of these used to be reachable only by knowing they existed and going
+    // looking for them, which meant in practice that they were not granted — and a
+    // silent app looks identical to a computer with nothing to say. Two taps here
+    // and the user never opens a settings screen at all.
+    val setupPrompt by viewModel.setupPrompt.collectAsStateWithLifecycle()
+
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { viewModel.notificationPermissionHandled() }
+    ) { viewModel.setupPromptHandled() }
 
-    LaunchedEffect(needsNotificationPermission) {
-        if (needsNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else if (needsNotificationPermission) {
-            viewModel.notificationPermissionHandled()
+    // The battery dialog is an Activity rather than a permission request, so there
+    // is no result to wait on — the answer is read back off the system when this
+    // screen returns to the front.
+    val backgroundRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { viewModel.setupPromptHandled() }
+
+    LaunchedEffect(setupPrompt) {
+        when (setupPrompt) {
+            AnodexViewModel.SetupPrompt.NOTIFICATIONS ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    // Nothing to ask for below 13; notifications are on unless the
+                    // user has switched the app off, which the settings screen says.
+                    viewModel.setupPromptHandled()
+                }
+
+            AnodexViewModel.SetupPrompt.BACKGROUND ->
+                runCatching { backgroundRequest.launch(viewModel.batteryExemptionIntent()) }
+                    // Some builds refuse to show it at all. Not worth a message: the
+                    // settings screen says what is missing and offers the way in.
+                    .onFailure { viewModel.setupPromptHandled() }
+
+            null -> Unit
         }
     }
     val pairingError by viewModel.pairingError.collectAsStateWithLifecycle()
