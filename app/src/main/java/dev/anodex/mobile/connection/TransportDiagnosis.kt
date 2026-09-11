@@ -78,6 +78,69 @@ fun diagnoseConnectionFailure(error: Throwable?, address: String, port: Int): St
 }
 
 /**
+ * One address's failure, kept so the most telling of several can be chosen.
+ */
+data class AttemptFailure(val address: String, val error: Exception)
+
+/**
+ * The failure worth explaining, out of every address that was tried.
+ *
+ * **Not the last one.** That is what this replaces, and the difference is the whole
+ * point: the phone tries each known address in turn and used to keep whichever
+ * happened to fail last, so a definite answer from one address was overwritten by a
+ * vague timeout from another.
+ *
+ * Observed, on a real phone. `10.0.0.153` answered with the wrong certificate —
+ * conclusive, and the app has exactly the right sentence for it. Then
+ * `172.23.226.1`, a Hyper-V adapter the desktop itself labels "usually not
+ * reachable from a phone", timed out, and that timeout became the explanation. The
+ * user was told to check that their computer was awake and their firewall was not
+ * blocking, when the machine was awake, reachable, and simply no longer the one
+ * this phone had paired with.
+ *
+ * It matters most away from home. With a forwarded port the external address is the
+ * only viable route, and a timeout from a LAN address that was never going to work
+ * sends somebody to check Wi-Fi they are not on.
+ *
+ * So: rank by how much the failure actually settles, and keep the best. A timeout
+ * settles nothing and always loses.
+ */
+fun mostTellingFailure(failures: List<AttemptFailure>): AttemptFailure? =
+    failures.maxByOrNull { tellsUs(it.error) }
+
+/**
+ * How much a failure settles, higher being more definite.
+ *
+ * The order is the same judgement `diagnoseConnectionFailure` already makes about
+ * which causes are worth speaking up about — kept beside it deliberately, because
+ * two rankings of the same evidence would drift.
+ */
+private fun tellsUs(error: Throwable): Int {
+    for (cause in causeChain(error)) {
+        when (cause) {
+            // Something answered and proved it was not the paired computer. Nothing
+            // else is this conclusive, and it is true of the machine rather than of
+            // the route, so one address establishing it settles all of them.
+            is CertificateException, is SSLException -> return 5
+
+            // Reached the host; the port is the question.
+            is ConnectException -> return 4
+
+            // Opened and then cut, which is what something in the middle looks like.
+            is EOFException -> return 3
+
+            // About the address itself rather than the computer.
+            is UnknownHostException, is NoRouteToHostException -> return 2
+
+            // Settles nothing: asleep, filtered and wrong-network are identical here.
+            is SocketTimeoutException -> return 0
+        }
+    }
+
+    return 1
+}
+
+/**
  * The exception and everything underneath it.
  *
  * Capped, because a cause chain that loops would otherwise hang the thread that is
