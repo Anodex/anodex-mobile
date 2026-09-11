@@ -66,7 +66,8 @@ data class HostStatus(
     val workspaceName: String?,
     val folderPath: String?,
     val modelName: String?,
-    val contextUsedTokens: Int = 0,
+    /** Null when the computer has not counted — see [ModelStatus.contextUsedTokens]. */
+    val contextUsedTokens: Int? = null,
     val contextTotalTokens: Int = 0,
     val conversationId: String?,
 ) {
@@ -79,8 +80,11 @@ data class HostStatus(
      * so "no number" is a normal, common state rather than a fault.
      */
     val contextFraction: Float?
-        get() = if (contextTotalTokens <= 0) null
-        else (contextUsedTokens.toFloat() / contextTotalTokens).coerceIn(0f, 1f)
+        get() {
+            if (contextTotalTokens <= 0) return null
+            val used = contextUsedTokens ?: return null
+            return (used.toFloat() / contextTotalTokens).coerceIn(0f, 1f)
+        }
 }
 
 /**
@@ -465,8 +469,19 @@ private fun StatusPanel(status: HostStatus, onCopyId: () -> Unit) {
         status.modelName?.let { model ->
             StatusRow("Model", model)
             if (status.contextTotalTokens > 0) {
-                val percent = (status.contextUsedTokens * 100) / status.contextTotalTokens
-                StatusRow("Context", "$percent% of ${status.contextTotalTokens / 1000}k used")
+                val used = status.contextUsedTokens
+                StatusRow(
+                    "Context",
+                    if (used == null) {
+                        // Said rather than shown as 0%. A cloud model never reports
+                        // this, and a local one only while it is holding the
+                        // conversation — neither is "empty".
+                        "${status.contextTotalTokens / 1000}k, usage not reported"
+                    } else {
+                        "${(used * 100) / status.contextTotalTokens}% of " +
+                            "${status.contextTotalTokens / 1000}k used"
+                    },
+                )
             }
         }
 
