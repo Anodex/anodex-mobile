@@ -1459,7 +1459,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                         // explanation the first time it draws rather than a frame
                         // later.
                         if (farewell != null) {
-                            _connectionHint.value = farewell.explain(host.displayName)
+                            _connectionHint.value = farewell.explain(host.identity.displayName)
                         }
                         controller.onDisconnected(host)
                     }
