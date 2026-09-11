@@ -34,7 +34,9 @@ import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.connection.PairedHostRef
 import dev.anodex.mobile.connection.Reachability
+import dev.anodex.mobile.connection.AttemptFailure
 import dev.anodex.mobile.connection.diagnoseConnectionFailure
+import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.isUpdateAvailable
 import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.processHoldFor
@@ -1425,8 +1427,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         //
         // This is what makes working off the home network possible without Anodex
         // running a relay or anyone else's service sitting in between.
-        var lastFailure: Exception? = null
-        var lastFailureAddress: String? = null
+        // Every address's failure, not just the newest. Keeping only the last one
+        // meant a conclusive answer from one address — "that is not the computer you
+        // paired with" — was overwritten by a timeout from another, and the timeout
+        // is the one thing that settles nothing. See `mostTellingFailure`.
+        val failures = mutableListOf<AttemptFailure>()
 
         for (address in Reachability.orderByPlausibility(stored.addresses, localIPv4Addresses())) {
             val candidate = AnodexSocket(
@@ -1539,8 +1544,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 return runCatching { readModelState(candidate) }.getOrNull()
             } catch (e: Exception) {
                 candidate.close()
-                lastFailure = e
-                lastFailureAddress = address
+                failures += AttemptFailure(address, e)
             }
         }
 
@@ -1549,9 +1553,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         // What the exception actually says, where it says anything definite. A
         // certificate mismatch or a refused connection is evidence; the network
         // heuristic below is a guess, and a guess must not outrank evidence.
+        val telling = mostTellingFailure(failures)
         val diagnosis = diagnoseConnectionFailure(
-            lastFailure,
-            lastFailureAddress ?: stored.addresses.firstOrNull().orEmpty(),
+            telling?.error,
+            telling?.address ?: stored.addresses.firstOrNull().orEmpty(),
             stored.port,
         )
 
@@ -1565,7 +1570,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             attempted = attemptedLabel(stored.addresses, stored.port),
         )
         _connectionHint.value = explanation
-        throw lastFailure ?: IllegalStateException(explanation)
+        throw telling?.error ?: IllegalStateException(explanation)
     }
 
     /**
