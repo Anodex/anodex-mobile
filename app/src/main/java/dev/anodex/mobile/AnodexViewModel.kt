@@ -56,6 +56,7 @@ import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
 import dev.anodex.mobile.scheduler.parseTasks
 import dev.anodex.mobile.transport.AnodexSocket
+import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
@@ -961,8 +962,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         viewModelScope.launch {
+            // `.unwrap()` because this handler answers with `ok(value)`. Without it the
+            // parser is handed the envelope, finds no `usedTokens` on it, and reports
+            // nothing — which looks exactly like a channel that does not work. It did,
+            // for a whole round of believing this was fixed.
             val reading = runCatching {
-                open.invoke("chat:context-usage", listOf(JsonPrimitive(conversationId)))
+                open.invoke("chat:context-usage", listOf(JsonPrimitive(conversationId))).unwrap()
             }.getOrNull()
 
             // Kept only while it is still about what the screen is showing. A reply
