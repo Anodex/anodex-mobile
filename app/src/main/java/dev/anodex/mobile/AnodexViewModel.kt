@@ -105,18 +105,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val networkMonitor = NetworkMonitor(application)
     private val notifications = Notifications(application).apply { ensureChannels() }
 
-    private val _needsNotificationPermission = MutableStateFlow(false)
 
-    /**
-     * True when something arrived that the user should have been told about, and
-     * the phone could not.
-     *
-     * Asked for at that moment rather than at launch: a permission prompt makes
-     * sense when there is a concrete thing it would have shown, and reads as
-     * arbitrary before that.
-     */
-    val needsNotificationPermission: StateFlow<Boolean> =
-        _needsNotificationPermission.asStateFlow()
 
     private val _notificationAccess = MutableStateFlow(notifications.access())
 
@@ -138,9 +127,61 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun batteryExemptionIntent(): Intent = notifications.batteryExemptionIntent()
 
-    fun notificationPermissionHandled() {
-        _needsNotificationPermission.value = false
+    /**
+     * What the app still needs before it can do the thing it is for, if anything.
+     *
+     * Two system permissions stand between "paired" and "tells you when your
+     * computer needs you", and both are ordinary Android dialogs the app can raise
+     * itself. Before this they were reachable only by knowing they existed and
+     * going looking — which meant, in practice, that they were not granted, and the
+     * app was silent for reasons it never explained.
+     *
+     * Asked in order, one at a time, and only while something is actually missing:
+     * once both are granted this never fires again. Not persisted, so at worst it
+     * asks once per launch — and Android stops delivering the notification request
+     * after two refusals anyway, at which point [notificationAccess] and the
+     * settings screen are the way back.
+     */
+    enum class SetupPrompt {
+        /** Android 13+ needs this before a single notification can be shown. */
+        NOTIFICATIONS,
+
+        /**
+         * Battery optimisation. Not optional in practice: every notification arrives
+         * over the live link, and an unexempted app is stopped in the background —
+         * on some manufacturers within seconds of leaving it.
+         */
+        BACKGROUND,
     }
+
+    private val _setupPrompt = MutableStateFlow<SetupPrompt?>(null)
+    val setupPrompt: StateFlow<SetupPrompt?> = _setupPrompt.asStateFlow()
+
+    /** One prompt has been answered — offer the next, or stop. */
+    fun setupPromptHandled() {
+        _setupPrompt.value = null
+        advanceSetup()
+    }
+
+    private var askedForBackground = false
+
+    private fun advanceSetup() {
+        refreshNotificationAccess()
+        _setupPrompt.value = when {
+            !notifications.canNotify() -> SetupPrompt.NOTIFICATIONS
+
+            // Only after notifications are actually on. Somebody who declined those
+            // has said what they want, and following it with a second dialog about
+            // battery would be asking the same question again in different words.
+            !notifications.isExemptFromBatteryOptimisation() && !askedForBackground -> {
+                askedForBackground = true
+                SetupPrompt.BACKGROUND
+            }
+
+            else -> null
+        }
+    }
+
 
     private val _paired = MutableStateFlow<PairedHost?>(null)
 
@@ -1778,7 +1819,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // it is a moment the user is almost always looking at the app.
             state.first { it is ConnectionState.Connected }
             refreshNotificationAccess()
-            if (!notifications.canNotify()) _needsNotificationPermission.value = true
+            advanceSetup()
         }
     }
 
@@ -1962,9 +2003,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         if (!notifications.show(id, kind, title, body)) {
-            // Could not be shown - almost always an ungranted permission. Ask now,
-            // when there is a concrete thing it would have told them about.
-            _needsNotificationPermission.value = true
+            // Could not be shown — almost always an ungranted permission, or the app
+            // switched off in system settings. Feeds the same sequence the first
+            // connection uses rather than a second, separate flag: there is one
+            // question here ("can anything reach you?") and it should have one
+            // answer and one place that asks it.
+            //
+            // It will only surface when the app is next in front, which is the
+            // honest limit — a prompt cannot be raised over somebody else's screen,
+            // and that is precisely why this was never the right primary trigger.
+            advanceSetup()
         }
     }
 
