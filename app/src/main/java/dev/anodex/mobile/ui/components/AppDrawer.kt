@@ -23,10 +23,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -107,7 +106,14 @@ fun AppDrawer(
 
     // fillMaxHeight, not fillMaxSize: the caller decides the width now, because
     // this is a panel sliding over the app rather than a screen replacing it.
-    Box(modifier.fillMaxHeight().background(colors.bgBase)) {
+    // `bgSurface`, not `bgBase`.
+    //
+    // This panel slides *over* the conversation, and it was painted with the bottom
+    // rung of the ladder — darker than the `bgApp` page underneath it, the only
+    // surface in the app below the app's own ground. In the light theme that made it
+    // the muddiest colour in the palette. A panel above the page belongs above it on
+    // the ladder too, which is most of why this read as borrowed from another app.
+    Box(modifier.fillMaxHeight().background(colors.bgSurface)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
@@ -127,6 +133,10 @@ fun AppDrawer(
                     },
                     style = type.title,
                     color = colors.text,
+                    // Takes the slack, which nothing did before — so the close control
+                    // sat wherever the wordmark happened to end, floating mid-panel
+                    // rather than at the edge a thumb reaches for.
+                    modifier = Modifier.weight(1f),
                 )
                 Box(
                     Modifier
@@ -135,16 +145,15 @@ fun AppDrawer(
                         .clickable(role = Role.Button, onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // The glyph is the picture of the control, not its name. Left as
-                    // it was, a screen reader reads out the character — "multiplication
-                    // x" — which is worse than silence.
-                    Text(
-                        text = "✕",
-                        style = type.body,
-                        color = colors.textFaint,
-                        modifier = Modifier.clearAndSetSemantics {
-                            contentDescription = "Close the menu"
-                        },
+                    // Drawn, not typed. This was the character `✕` set in the body
+                    // font — the one glyph in an app whose every other symbol is cut
+                    // from the desktop's paths, and it showed: wrong weight, wrong
+                    // optical size, and a screen reader reading out "multiplication x".
+                    AnodexIcon(
+                        AnodexIcon.CLOSE,
+                        size = 18.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Close the menu",
                     )
                 }
             }
@@ -190,7 +199,12 @@ fun AppDrawer(
                 .map { it.id }
                 .toSet()
 
-            LazyColumn(Modifier.weight(1f)) {
+            // Dissolves at both ends rather than cutting off square. The list runs
+            // between the destinations above and the host footer below, and a hard
+            // clip at either boundary is the thing that made a long conversation
+            // list look like it had been cropped rather than scrolled. Every other
+            // scrolling surface in the app already does this.
+            LazyColumn(Modifier.weight(1f).fadingEdges(Spacing.x4, Spacing.x4)) {
                 if (sections.workspaces.isNotEmpty()) {
                     item(key = "kind-workspace") {
                         KindLabel("WORKSPACE", sections.workspaces.size)
@@ -477,7 +491,7 @@ private fun DestinationRow(
             .fillMaxWidth()
             .padding(horizontal = Spacing.x2)
             .clip(Radii.lg)
-            .background(if (selected) colors.accentSoft else colors.bgBase)
+            .background(if (selected) colors.accentSoft else Color.Transparent)
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.x3),

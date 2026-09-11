@@ -273,4 +273,23 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
 
     /** A tick. The desktop's `check`, used here for the beat after a copy lands. */
     CHECK(listOf("M20 6 9 17l-5-5")),
+
+    /**
+     * A cross. The desktop's `close`, two crossed lines on the same 24-unit grid.
+     *
+     * Drawn rather than typed. The drawer's close control was the character `✕` set
+     * in the body font — the one glyph in an app whose every other symbol is cut
+     * from the desktop's own paths, and it read as exactly that: a letter sitting
+     * where an icon should be, at the wrong weight and the wrong optical size.
+     */
+    CLOSE(listOf("M18 6 6 18", "M6 6l12 12")),
+
+    /** A lidded box with the Anodex corner cut. The desktop's `archive`. */
+    ARCHIVE(
+        listOf(
+            "M3 6.5A2.5 2.5 0 0 1 5.5 4h9L21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-11z",
+            "M3 9.5h18",
+            "M10 13.5h4",
+        )
+    ),
 }
