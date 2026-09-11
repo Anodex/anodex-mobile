@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -411,6 +412,7 @@ private fun ConnectedScaffold(
     val projects by viewModel.projects.collectAsStateWithLifecycle()
     val projectBusy by viewModel.projectBusy.collectAsStateWithLifecycle()
     val projectError by viewModel.projectError.collectAsStateWithLifecycle()
+    val notificationAccess by viewModel.notificationAccess.collectAsStateWithLifecycle()
 
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val archiveNotice by viewModel.archiveNotice.collectAsStateWithLifecycle()
@@ -652,8 +654,18 @@ private fun ConnectedScaffold(
         // out for one list costs more than the read it would save.
         LaunchedEffect(Unit) { viewModel.refreshMemories() }
 
+        // Looked at again every time Settings opens: a channel can be switched off
+        // from the shade while the app sits in the background, and this process
+        // would otherwise keep showing the answer it read at launch.
+        LaunchedEffect(Unit) { viewModel.refreshNotificationAccess() }
+        val settingsContext = LocalContext.current
+
         SettingsScreen(
             installedVersion = BuildConfig.VERSION_NAME,
+            notificationAccess = notificationAccess,
+            onOpenNotificationSettings = {
+                settingsContext.startActivity(viewModel.notificationSettingsIntent())
+            },
             memories = memories,
             memoryLoading = memoryLoading,
             memoryError = memoryError,
