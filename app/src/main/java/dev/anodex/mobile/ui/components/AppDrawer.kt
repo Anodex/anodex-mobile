@@ -23,10 +23,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -107,7 +106,14 @@ fun AppDrawer(
 
     // fillMaxHeight, not fillMaxSize: the caller decides the width now, because
     // this is a panel sliding over the app rather than a screen replacing it.
-    Box(modifier.fillMaxHeight().background(colors.bgBase)) {
+    // `bgSurface`, not `bgBase`.
+    //
+    // This panel slides *over* the conversation, and it was painted with the bottom
+    // rung of the ladder — darker than the `bgApp` page underneath it, the only
+    // surface in the app below the app's own ground. In the light theme that made it
+    // the muddiest colour in the palette. A panel above the page belongs above it on
+    // the ladder too, which is most of why this read as borrowed from another app.
+    Box(modifier.fillMaxHeight().background(colors.bgSurface)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
@@ -127,6 +133,10 @@ fun AppDrawer(
                     },
                     style = type.title,
                     color = colors.text,
+                    // Takes the slack, which nothing did before — so the close control
+                    // sat wherever the wordmark happened to end, floating mid-panel
+                    // rather than at the edge a thumb reaches for.
+                    modifier = Modifier.weight(1f),
                 )
                 Box(
                     Modifier
@@ -135,16 +145,15 @@ fun AppDrawer(
                         .clickable(role = Role.Button, onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // The glyph is the picture of the control, not its name. Left as
-                    // it was, a screen reader reads out the character — "multiplication
-                    // x" — which is worse than silence.
-                    Text(
-                        text = "✕",
-                        style = type.body,
-                        color = colors.textFaint,
-                        modifier = Modifier.clearAndSetSemantics {
-                            contentDescription = "Close the menu"
-                        },
+                    // Drawn, not typed. This was the character `✕` set in the body
+                    // font — the one glyph in an app whose every other symbol is cut
+                    // from the desktop's paths, and it showed: wrong weight, wrong
+                    // optical size, and a screen reader reading out "multiplication x".
+                    AnodexIcon(
+                        AnodexIcon.CLOSE,
+                        size = 18.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Close the menu",
                     )
                 }
             }
@@ -190,7 +199,20 @@ fun AppDrawer(
                 .map { it.id }
                 .toSet()
 
-            LazyColumn(Modifier.weight(1f)) {
+            // Dissolves at both ends rather than cutting off square, and the bottom
+            // fade is deep on purpose: it is sized to the floating button.
+            //
+            // That button is drawn *over* this list, and the only thing protecting
+            // the list from it was a spacer at the very end — which works when the
+            // list is short enough to scroll to the bottom and does nothing at all
+            // otherwise. With nine conversations it sat on top of one, and a title
+            // read "Which of my 14 unread ema" with a white pill where the rest of
+            // the sentence should have been.
+            //
+            // Fading is the right answer rather than reserving more room: the button
+            // is deliberately over the list, so content should dissolve as it passes
+            // behind it instead of colliding with it.
+            LazyColumn(Modifier.weight(1f).fadingEdges(Spacing.x4, FAB_FADE)) {
                 if (sections.workspaces.isNotEmpty()) {
                     item(key = "kind-workspace") {
                         KindLabel("WORKSPACE", sections.workspaces.size)
@@ -477,7 +499,7 @@ private fun DestinationRow(
             .fillMaxWidth()
             .padding(horizontal = Spacing.x2)
             .clip(Radii.lg)
-            .background(if (selected) colors.accentSoft else colors.bgBase)
+            .background(if (selected) colors.accentSoft else Color.Transparent)
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.x3),
@@ -695,6 +717,16 @@ internal fun drawerSections(
  * the same Box as the list, so nothing else keeps them apart.
  */
 private val FAB_CLEARANCE = 140.dp
+
+/**
+ * How far up the list dissolves, so nothing collides with the floating button.
+ *
+ * Matched to where the button actually sits — 88dp above the drawer's bottom, plus
+ * its own height and a little air. Shorter than `FAB_CLEARANCE`, which is the gap
+ * left at the *end* of the list; this is about the strip the button covers wherever
+ * the list happens to be scrolled to.
+ */
+private val FAB_FADE = 96.dp
 
 @Preview(name = "Drawer", showBackground = true, backgroundColor = 0xFF080808, heightDp = 700)
 @Composable
