@@ -263,12 +263,12 @@ fun ChatHeader(
             if (menuOpen) {
                 HeaderPopup(onDismiss = { menuOpen = false }) {
                     if (onOpenFiles != null) {
-                        MenuItem("Open workspace files") {
+                        MenuItem("Open workspace files", AnodexIcon.FOLDER) {
                             menuOpen = false
                             onOpenFiles()
                         }
                     }
-                    MenuItem("Copy conversation ID") {
+                    MenuItem("Copy conversation ID", AnodexIcon.COPY) {
                         menuOpen = false
                         onCopyId()
                     }
@@ -276,7 +276,7 @@ fun ChatHeader(
                     // straight after the tap, which is a better question than one
                     // asked in front of every tap including the nine hundred that
                     // were not mistakes.
-                    MenuItem("Archive", danger = true) {
+                    MenuItem("Archive", AnodexIcon.ARCHIVE, danger = true) {
                         menuOpen = false
                         onArchive()
                     }
@@ -415,21 +415,41 @@ private fun HeaderPopup(onDismiss: () -> Unit, content: @Composable () -> Unit) 
     }
 }
 
-/** One line of the ⋮ menu. */
+/**
+ * One line of the ⋮ menu.
+ *
+ * Icon and label, because everywhere else a list of things to go to or do in this
+ * app is drawn that way — the drawer's destinations, every row in Settings. Three
+ * bare strings in a box was the one list that was not, and it read as a menu from a
+ * different application sitting inside this one.
+ */
 @Composable
-private fun MenuItem(label: String, danger: Boolean = false, onClick: () -> Unit) {
-    Text(
-        text = label,
-        style = AnodexTheme.type.body,
-        color = if (danger) AnodexTheme.colors.dangerInk else AnodexTheme.colors.text,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+private fun MenuItem(
+    label: String,
+    icon: AnodexIcon,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val tint = if (danger) AnodexTheme.colors.dangerInk else AnodexTheme.colors.text
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        AnodexIcon(icon, size = 17.dp, tint = tint, contentDescription = null)
+        Text(
+            text = label,
+            style = AnodexTheme.type.body,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 /** What the computer is, where it is pointed, and what it is running. */
