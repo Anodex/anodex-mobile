@@ -223,6 +223,7 @@ builds its own is how the drift starts again.
 | A failure beside content | `InlineProblem` | dropping it, which is the usual outcome |
 | Somewhere to type | `AnodexTextField` | anything from Material |
 | A rule | `Hairline` | a 1dp `Box` with a background |
+| Anything the model wrote | `MarkdownText` | a `Text` holding the raw string |
 
 Two rules that are not obvious from the signatures:
 
@@ -248,6 +249,23 @@ starters from two different places — must say the read failed rather than
 quietly rendering what it happens to have. That is the same defect described
 under **Absence is not failure** below, arriving through the UI instead of the
 data layer.
+
+## What the model wrote is text until something makes it an action
+
+`MarkdownText` renders a reply, and a reply is generated text. Almost all of it is
+inert — words, emphasis, a fenced block somebody reads. The exception is a link,
+because a tap hands a string the model produced to the system to open.
+
+So `Markdown.kt` decides which destinations exist at all, and it allows exactly
+three schemes: `http`, `https`, `mailto`. Anything else is not a link and is left
+as the characters the model typed, which is also the parser's rule for everything
+else it does not handle — nothing is hidden, nothing is followed.
+
+Keep that decision in the parser rather than the renderer. A second renderer, or a
+`Text` that annotates spans itself, would otherwise re-open it by accident. If you
+add a construct that produces something tappable, launchable or downloadable, it
+belongs to the same rule: decide it where the string is parsed, and say no by
+default.
 
 ## An unguarded `launch` is a crash waiting for a bad moment
 
