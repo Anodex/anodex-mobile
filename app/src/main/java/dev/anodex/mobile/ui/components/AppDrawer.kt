@@ -199,12 +199,20 @@ fun AppDrawer(
                 .map { it.id }
                 .toSet()
 
-            // Dissolves at both ends rather than cutting off square. The list runs
-            // between the destinations above and the host footer below, and a hard
-            // clip at either boundary is the thing that made a long conversation
-            // list look like it had been cropped rather than scrolled. Every other
-            // scrolling surface in the app already does this.
-            LazyColumn(Modifier.weight(1f).fadingEdges(Spacing.x4, Spacing.x4)) {
+            // Dissolves at both ends rather than cutting off square, and the bottom
+            // fade is deep on purpose: it is sized to the floating button.
+            //
+            // That button is drawn *over* this list, and the only thing protecting
+            // the list from it was a spacer at the very end — which works when the
+            // list is short enough to scroll to the bottom and does nothing at all
+            // otherwise. With nine conversations it sat on top of one, and a title
+            // read "Which of my 14 unread ema" with a white pill where the rest of
+            // the sentence should have been.
+            //
+            // Fading is the right answer rather than reserving more room: the button
+            // is deliberately over the list, so content should dissolve as it passes
+            // behind it instead of colliding with it.
+            LazyColumn(Modifier.weight(1f).fadingEdges(Spacing.x4, FAB_FADE)) {
                 if (sections.workspaces.isNotEmpty()) {
                     item(key = "kind-workspace") {
                         KindLabel("WORKSPACE", sections.workspaces.size)
@@ -709,6 +717,16 @@ internal fun drawerSections(
  * the same Box as the list, so nothing else keeps them apart.
  */
 private val FAB_CLEARANCE = 140.dp
+
+/**
+ * How far up the list dissolves, so nothing collides with the floating button.
+ *
+ * Matched to where the button actually sits — 88dp above the drawer's bottom, plus
+ * its own height and a little air. Shorter than `FAB_CLEARANCE`, which is the gap
+ * left at the *end* of the list; this is about the strip the button covers wherever
+ * the list happens to be scrolled to.
+ */
+private val FAB_FADE = 96.dp
 
 @Preview(name = "Drawer", showBackground = true, backgroundColor = 0xFF080808, heightDp = 700)
 @Composable
