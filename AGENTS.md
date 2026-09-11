@@ -256,5 +256,22 @@ The most common defect shape in this codebase: a `getOrNull()` or
 reports "nothing here" when the truth is "the request failed". It has been found
 in six-plus places. When a call can fail, say it failed.
 
+**Use `Result.orKeep(previous, whenItFails)`** — `Refreshing.kt`. It keeps what the
+screen already had and hands back the reason, because stale is not the same as
+wrong: those conversations are still on the computer, and the failure belongs
+*above* them rather than instead of them.
+
+It exists in that shape for a reason worth knowing. Everyone who wrote one of
+those defects understood the rule; `getOrDefault(emptyList())` is not a lapse in
+understanding, it is the shortest thing to type. `orKeep` is shorter, so the
+shortest thing to type is now the correct one. That is the only mechanism that has
+ever reliably stopped a recurring mistake.
+
+Four of those defects lived in `AnodexViewModel`, and not by chance: it takes an
+`Application`, builds its own store, monitor and notifier, and so cannot be
+instantiated in a JVM unit test. **The one file the suite cannot reach is the one
+the defect keeps returning to.** Anything decision-shaped that ends up in there is
+worth lifting out to where a test can see it — that is what `Refreshing.kt` is.
+
 Related: `JsonNull` **is** a `JsonPrimitive`, so `.content` returns the literal
 string `"null"`. Use `contentOrNull`.
