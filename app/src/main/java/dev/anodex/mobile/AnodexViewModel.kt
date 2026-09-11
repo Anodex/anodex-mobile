@@ -61,6 +61,8 @@ import dev.anodex.mobile.update.Updater
 import dev.anodex.mobile.workspace.FileContent
 import dev.anodex.mobile.workspace.Workspace
 import dev.anodex.mobile.workspace.WorkspaceFile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -478,7 +480,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val client = uploads ?: return
 
         viewModelScope.launch {
-            val file = client.describe(uri) ?: return@launch
+            // Same reason as `openWorkspaceFile`: a suspend call over a socket that
+            // may already be dying. `send` below reports through `Result`; this one
+            // had nothing.
+            val file = runCatching { client.describe(uri) }.getOrNull() ?: return@launch
 
             fun update(state: UploadState) {
                 _attachments.value = _attachments.value.map {
@@ -667,7 +672,17 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         viewModelScope.launch {
-            _openFileContent.value = client.read(relativePath)
+            // Guarded, because the socket can die mid-read and `read` is a call
+            // awaiting a reply that will now never come. `failPending` resumes every
+            // in-flight call with the failure, so an unguarded `launch` here does not
+            // fail the read — it takes the process down.
+            //
+            // This is the crash reported on 2026-09-10: a ping timeout after fifteen
+            // good ones, on a desktop that stopped answering, while a file was open.
+            // The branch three lines above already knew how to say "not connected";
+            // the read path simply never reached it.
+            _openFileContent.value = runCatching { client.read(relativePath) }
+                .getOrElse { FileContent.Failed(it.message ?: "Lost the connection mid-read.") }
         }
     }
 
@@ -1651,14 +1666,41 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** The app's root state. Every screen reads this. */
     val state: StateFlow<ConnectionState> = controller.state
 
+    /**
+     * The last thing between a dropped socket and a dead app.
+     *
+     * `viewModelScope` carries a `SupervisorJob`, so a `launch` that throws does not
+     * cancel its siblings — but with no handler the exception still reaches the
+     * thread's default one, and Android's default one is to kill the process. Every
+     * in-flight call is resumed with the failure when a socket dies (`failPending`),
+     * so *any* unguarded `launch` awaiting the computer is a crash waiting for a
+     * connection to drop at the wrong moment. One of them did, on a real phone,
+     * after fifteen good ping/pongs.
+     *
+     * The individual sites are guarded where they have somewhere to report to — a
+     * file reader can say the read failed, an upload can say it did not send. This
+     * is for the ones nobody thought of, and it is deliberately not silent: swallowing
+     * is the defect this codebase is named for in `AGENTS.md`. It says something and
+     * lets the connection machinery do its job, which is the behaviour a dropped
+     * socket should have had all along.
+     */
+    private val farEnd = CoroutineExceptionHandler { _, thrown ->
+        // Cancellation is the ordinary way a scope ends — the screen closed, the
+        // ViewModel died. It is not news.
+        if (thrown is CancellationException) return@CoroutineExceptionHandler
+        // Not written to the crash log: that file is read back and shown as "the app
+        // crashed", and this is precisely the case where it did not.
+        _notice.value = thrown.message ?: "Lost the connection to your computer."
+    }
+
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(farEnd) {
             val stored = store.paired.first()
             _paired.value = stored
             if (stored != null) controller.pair(stored.toRef())
         }
 
-        viewModelScope.launch {
+        viewModelScope.launch(farEnd) {
             // Re-classify as the phone moves between networks so the offline screen's explanation
             // updates under the user, rather than waiting for the next failed attempt.
             networkMonitor.relationTo(_paired.value?.pairedNetworkId).collect { relation ->
@@ -1666,7 +1708,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        viewModelScope.launch { holdProcessWhileConnected() }
+        viewModelScope.launch(farEnd) { holdProcessWhileConnected() }
     }
 
     /**
