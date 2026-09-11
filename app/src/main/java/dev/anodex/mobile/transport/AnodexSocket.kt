@@ -10,6 +10,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import dev.anodex.mobile.connection.RemoteFarewell
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -51,11 +52,27 @@ class AnodexSocket(
      * computer has been unreachable for the last ten minutes. The controller owns
      * what to do about it - this only reports that it happened.
      */
-    var onDropped: (() -> Unit)? = null
+    /**
+     * Called once when this connection dies.
+     *
+     * Carries the computer's own reason when it gave one — see [RemoteFarewell].
+     * Null for the ordinary case of a socket that simply stopped answering, which is
+     * every drop the phone cannot be told about: Wi-Fi gone, router rebooted, laptop
+     * carried out of range.
+     */
+    var onDropped: ((RemoteFarewell?) -> Unit)? = null
 
     /** Set by [close] so a deliberate teardown is not reported as a drop. */
     @Volatile
     private var closing = false
+
+    /**
+     * The reason the computer gave, captured from the close frame.
+     *
+     * Read in `onClosing` rather than `onClosed` because that is the frame that
+     * carries it, and held so the drop that follows can pass it on.
+     */
+    private var farewell: RemoteFarewell? = null
 
     private val _events = MutableSharedFlow<ServerFrame.Event>(
         replay = 0,
@@ -237,12 +254,20 @@ class AnodexSocket(
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (!handshake.isCompleted) handshake.complete(Result.failure(t))
             failPending(t)
-            reportDropped()
+            // No reason to carry: a socket that failed was never told anything.
+            reportDropped(null)
+        }
+
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            // The close *frame*, which is where the reason lives. `onClosed` follows,
+            // but taking it here means the explanation is in hand before anything
+            // starts reacting to the drop.
+            farewell = RemoteFarewell.ofCode(code)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             failPending(IllegalStateException("The connection closed: $reason"))
-            reportDropped()
+            reportDropped(farewell ?: RemoteFarewell.ofCode(code))
         }
     }
 
@@ -252,10 +277,10 @@ class AnodexSocket(
      * OkHttp can deliver both onFailure and onClosed for one dying socket, and a
      * second report would restart a reconnect loop that is already running.
      */
-    private fun reportDropped() {
+    private fun reportDropped(farewell: RemoteFarewell?) {
         if (closing) return
         closing = true
-        onDropped?.invoke()
+        onDropped?.invoke(farewell)
     }
 
     private fun completeHandshake(serverVersion: String, build: () -> Handshake) {
