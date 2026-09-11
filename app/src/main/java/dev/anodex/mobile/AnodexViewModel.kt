@@ -611,7 +611,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // the first when it meant the second. Keeps what it had; a stale
             // personality list is honest in a way an empty one is not, because
             // those personalities do still exist on the computer.
-            runCatching { client.state() }.onSuccess { _personalities.value = it }
+            //
+            // The error is dropped rather than shown: this is the one read in the
+            // app with nowhere to put it, and a personality list that is one refresh
+            // out of date is not worth a line on the settings screen.
+            _personalities.value = runCatching { client.state() }
+                .orKeep(_personalities.value, "Could not read the personalities.")
+                .value
         }
     }
 
@@ -966,22 +972,14 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun refreshProjects() {
         val client = projectClient ?: return
         viewModelScope.launch {
-            runCatching { client.state() }
-                .onSuccess {
-                    _projects.value = it
-                    _projectError.value = null
-                }
-                // Keeps whatever it had and says what went wrong, instead of
-                // replacing the list with an empty one. An empty project list is
-                // the sentence "no projects on that computer yet" — a statement
-                // about the machine's disk, made on the strength of a request that
-                // did not arrive.
-                //
-                // `_projectError` already existed and was already wired to the
-                // picker for *changing* a project. It was simply never set when
-                // *reading* them failed, which is the case that produces the
-                // confident wrong sentence.
-                .onFailure { _projectError.value = it.message ?: "Could not read your projects." }
+            // Keeps whatever it had and says what went wrong, instead of replacing
+            // the list with an empty one — an empty project list is the sentence "no
+            // projects on that computer yet", which is a claim about the machine's
+            // disk made on the strength of a request that did not arrive.
+            val read = runCatching { client.state() }
+                .orKeep(_projects.value, "Could not read your projects.")
+            _projects.value = read.value
+            _projectError.value = read.error
         }
     }
 
@@ -1050,14 +1048,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val reader = conversationReader ?: return
         viewModelScope.launch {
             _loadingConversations.value = true
-            runCatching { reader.list() }
-                .onSuccess {
-                    _conversations.value = it
-                    _conversationsError.value = null
-                }
-                .onFailure {
-                    _conversationsError.value = it.message ?: "Could not read your conversations."
-                }
+            val read = runCatching { reader.list() }
+                .orKeep(_conversations.value, "Could not read your conversations.")
+            _conversations.value = read.value
+            _conversationsError.value = read.error
             _loadingConversations.value = false
         }
     }
