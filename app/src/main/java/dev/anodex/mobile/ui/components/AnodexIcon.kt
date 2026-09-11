@@ -256,4 +256,21 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
             "m16.2 16.2 4.3 4.3",
         )
     ),
+
+    /**
+     * Two sheets, the front one dog-eared.
+     *
+     * The desktop's `copy`, path for path. The corner cut is what separates it from
+     * a pair of plain rectangles, which at this size read as a window rather than a
+     * document.
+     */
+    COPY(
+        listOf(
+            "M9 11a2 2 0 0 1 2-2h6l5 5v6a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2z",
+            "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1",
+        )
+    ),
+
+    /** A tick. The desktop's `check`, used here for the beat after a copy lands. */
+    CHECK(listOf("M20 6 9 17l-5-5")),
 }
