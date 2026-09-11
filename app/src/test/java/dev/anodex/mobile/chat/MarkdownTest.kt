@@ -190,6 +190,11 @@ class MarkdownTest {
                 is MarkdownBlock.CodeBlock -> block.text
                 is MarkdownBlock.ListBlock ->
                     block.items.joinToString(" ") { item -> item.joinToString("") { it.text } }
+
+                is MarkdownBlock.TableBlock ->
+                    (listOf(block.header) + block.rows).joinToString(" ") { row ->
+                        row.joinToString(" ") { cell -> cell.joinToString("") { it.text } }
+                    }
             }
         }
 
