@@ -605,27 +605,53 @@ private fun MessageRow(
                     }
                 }
 
-                // Collapsed to one line once there is more than one, because a turn
-                // that ran twenty tools buries the reply that was the point. Tapping
-                // gives every row back — the summary is a door, not a redaction.
+                // Open while the turn is working, folded once it has finished.
+                //
+                // This mirrors the desktop's `TurnRecap` deliberately, because the two
+                // questions really are different. While a turn runs, the steps *are*
+                // the content — a long tool run with nothing on screen is
+                // indistinguishable from a stall. Once it has finished, the steps are
+                // scaffolding and the reply is the point, so a turn that ran twenty
+                // tools should not bury the answer it produced.
+                //
+                // The phone had it backwards: collapsed throughout, so the one time
+                // the log was worth watching was the one time it was hidden.
                 val summary = remember(message.tools) { toolSummary(message.tools) }
-                var toolsExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
+                var toolsExpanded by rememberSaveable(message.id) { mutableStateOf(message.streaming) }
 
-                // What it is doing *now*, while it is still doing it. The collapsed
-                // summary is written for reading a turn back afterwards — it counts
-                // what happened. Mid-turn that is the wrong question: the screen has
-                // to say the computer is working and what on, or a long tool run
-                // looks exactly like a stall.
+                // A hand on the control wins. Somebody who opened a finished turn to
+                // read it must not have it folded shut underneath them, and somebody
+                // who folded a running one away asked for quiet.
+                var toolsDecidedByHand by rememberSaveable(message.id) { mutableStateOf(false) }
+
+                LaunchedEffect(message.id, message.streaming, toolsDecidedByHand) {
+                    if (message.streaming || toolsDecidedByHand) return@LaunchedEffect
+                    // A beat first, so the last step is legible before it folds away.
+                    // Without it the log vanishes on the same frame it completes, and
+                    // the turn reads as though the final step never happened.
+                    delay(TURN_SETTLE_MS)
+                    toolsExpanded = false
+                }
+
+                // What it is doing *now* — but only when the log is folded. Expanded,
+                // the running step is already in the list below and this would be the
+                // same line twice.
                 val running = message.tools.lastOrNull { it.status == ToolActivity.Status.RUNNING }
-                if (message.streaming && running != null) {
+                if (message.streaming && running != null && !toolsExpanded) {
                     RunningLine(running.title)
                 }
 
                 if (summary != null && !toolsExpanded) {
-                    ActivityLine(summary, expanded = false) { toolsExpanded = true }
+                    ActivityLine(summary, expanded = false) {
+                        toolsDecidedByHand = true
+                        toolsExpanded = true
+                    }
                 } else {
                     if (summary != null) {
-                        ActivityLine(summary, expanded = true) { toolsExpanded = false }
+                        ActivityLine(summary, expanded = true) {
+                            toolsDecidedByHand = true
+                            toolsExpanded = false
+                        }
                     }
                     for (tool in message.tools) {
                         ToolRow(tool, onOpenFile = onOpenFile)
@@ -1519,3 +1545,12 @@ private fun PreviewChatLight() {
 
 /** What the thumbnail will try to decode. Mirrors what the computer accepts. */
 private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp")
+
+/**
+ * How long a finished turn's work stays on screen before folding away.
+ *
+ * Long enough to read the step that just completed, short enough that it does not
+ * feel like a decision the app is still making. The desktop settles on the same
+ * beat for the same reason.
+ */
+private const val TURN_SETTLE_MS = 900L
