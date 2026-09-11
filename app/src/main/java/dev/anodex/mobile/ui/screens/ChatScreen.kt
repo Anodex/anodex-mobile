@@ -72,6 +72,7 @@ import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.SCRIM_ALPHA
 import dev.anodex.mobile.ui.components.SCRIM_FADE
 import dev.anodex.mobile.ui.components.SCRIM_HOLD
+import dev.anodex.mobile.ui.components.arrival
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.AttachmentThumb
 import dev.anodex.mobile.ui.components.FacetField
@@ -561,6 +562,29 @@ private fun MessageRow(
             // Assistant turns are unbubbled and full width, as on the desktop: the
             // reply is the page, not a card sitting on it.
             Column(Modifier.fillMaxWidth()) {
+                /**
+                 * Whether this row watched its own answer fill in.
+                 *
+                 * Decided once, at the row's first composition, and never read live —
+                 * which is the whole trick. A `LazyColumn` composes rows as they
+                 * scroll into view, so "has text now" is true for every reply ever
+                 * written and would replay the arrival of the entire history on every
+                 * scroll upward. A row that was already written when it first composed
+                 * is history being drawn; only one that composed empty and streaming
+                 * is an answer that has yet to land.
+                 *
+                 * It also picks the right instant. The user's message and an empty
+                 * assistant placeholder are appended together the moment Send is
+                 * tapped, so "the newest message appeared" fires on the tap rather
+                 * than on the reply. During streaming the text then *grows* — there
+                 * is no frame where a finished reply appears. The one discrete event
+                 * left is "Thinking…" giving way to the first tokens, and that is
+                 * this.
+                 */
+                val watchedItFill = remember(message.id) {
+                    message.streaming && message.text.isBlank()
+                }
+
                 // Who wrote *this* reply, from the message itself. Absent on
                 // history loaded back from the computer, which records no author —
                 // and a blank line is the honest rendering of "not known", where a
@@ -613,7 +637,7 @@ private fun MessageRow(
                     // about code, so a reply is mostly fenced blocks and inline
                     // code — as plain text that is backticks and asterisks, with
                     // shell commands run together into a paragraph.
-                    MarkdownText(message.text)
+                    MarkdownText(message.text, modifier = Modifier.arrival(watchedItFill))
                 } else if (message.streaming && message.tools.isEmpty()) {
                     // Nothing has arrived yet and nothing is being reported. Without
                     // this the screen is simply blank, which reads as the app having

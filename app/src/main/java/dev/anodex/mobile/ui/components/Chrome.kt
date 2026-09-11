@@ -1,5 +1,6 @@
 package dev.anodex.mobile.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +41,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.LocalReducedMotion
+import dev.anodex.mobile.ui.theme.Motion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -264,3 +268,49 @@ fun listPadding(
     top = topInset + Spacing.x2,
     bottom = bottom,
 )
+
+/**
+ * A reply coming to rest.
+ *
+ * The app's one piece of motion that is not a state indicator. Everything else that
+ * moves here is saying "this is happening now" — a spinner, a pulsing dot, a
+ * blocked run's edge. This says "this just happened", once, and then never again
+ * for that message.
+ *
+ * Rises nine dp and fades, over [Motion.ARRIVAL_MS] on the decelerating curve. Nine
+ * dp because the point is to look like it settled rather than like it slid; a
+ * longer travel reads as a transition between screens.
+ *
+ * **Honours reduced motion, and must.** `Motion.kt`'s rule is that motion carrying
+ * state may animate regardless, because the alternative is failing to communicate —
+ * but character motion has to be able to be switched off. This is the character
+ * kind. With animation disabled the reply is simply there, which is exactly what the
+ * app did before this existed.
+ *
+ * @param play false for a reply that was already written when its row composed —
+ *   history being drawn rather than an answer landing. See `watchedItFill`.
+ */
+@Composable
+fun Modifier.arrival(play: Boolean): Modifier {
+    val reducedMotion = LocalReducedMotion.current
+    // Keyed on nothing: one instance per row, so a row that has finished arriving
+    // stays arrived for as long as it is composed.
+    val settle = remember { Animatable(if (play) 0f else 1f) }
+
+    LaunchedEffect(play, reducedMotion) {
+        if (!play) return@LaunchedEffect
+        if (reducedMotion) {
+            settle.snapTo(1f)
+            return@LaunchedEffect
+        }
+        settle.animateTo(targetValue = 1f, animationSpec = Motion.arrive())
+    }
+
+    return this.graphicsLayer {
+        alpha = settle.value
+        translationY = ARRIVAL_RISE.toPx() * (1f - settle.value)
+    }
+}
+
+/** How far a reply travels on its way in. See [arrival]. */
+private val ARRIVAL_RISE = 9.dp
