@@ -1683,6 +1683,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * is the defect this codebase is named for in `AGENTS.md`. It says something and
      * lets the connection machinery do its job, which is the behaviour a dropped
      * socket should have had all along.
+     *
+     * It also covers the launches that write the pairing. `DataStore.edit` throws on
+     * a disk it cannot write, and `SecretCipher` throws when the Android keystore
+     * refuses — which really happens, on a lock-screen change and on some OEM
+     * builds. Rarer than a dropped socket by a long way, and the same class of
+     * crash exactly.
+     *
+     * `updater.check` and `updater.download` were examined and left alone: the first
+     * wraps its whole body in `runCatching` and returns null, the second returns a
+     * `Result`. Neither can throw into its caller.
      */
     private val farEnd = CoroutineExceptionHandler { _, thrown ->
         // Cancellation is the ordinary way a scope ends — the screen closed, the
@@ -1778,7 +1788,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        viewModelScope.launch {
+        viewModelScope.launch(farEnd) {
             val current = _paired.value ?: return@launch
             _addressError.value = null
             // First, because the user typing it is better evidence about where this
@@ -1797,7 +1807,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Completed pairing: persist it and start connecting. */
     fun onPaired(host: PairedHost) {
-        viewModelScope.launch {
+        viewModelScope.launch(farEnd) {
             val withNetwork = host.copy(pairedNetworkId = networkMonitor.currentNetworkId())
             store.save(withNetwork)
             _paired.value = withNetwork
@@ -1807,7 +1817,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Forget the desktop entirely, dropping the stored secret and its Keystore key. */
     fun unpair() {
-        viewModelScope.launch {
+        viewModelScope.launch(farEnd) {
             controller.unpair()
             store.clear()
             _paired.value = null
