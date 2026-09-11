@@ -110,6 +110,24 @@ private fun Gallery() {
         Label("Trouble")
         InlineProblem("The computer answered, but not with a mailbox.")
 
+        Label("A reply")
+        // The one component whose colours are chosen against a *reply* rather than
+        // against the app chrome. A link has to be visibly a link without turning a
+        // paragraph into a ransom note, and the code block's ground has to sit on
+        // the message surface rather than on the app's — both of which are only
+        // decidable by looking at them in both themes, which is what this is for.
+        MarkdownText(
+            """
+            Pushed to [the PR](https://github.com/Anodex/anodex-mobile/pull/94), and
+            the run is at https://github.com/Anodex/anodex-mobile/actions. Pull it
+            with `git fetch` first.
+
+            ```bash
+            git switch fix/the-work-log-fold-never-landed
+            ```
+            """.trimIndent()
+        )
+
         Label("Ink against base")
         // The point of the whole `*Ink` set, side by side. In Midnight the two
         // columns are identical, which is exactly what should be seen.
@@ -200,13 +218,13 @@ private fun EmptyStates() {
     }
 }
 
-@Preview(name = "Gallery — Midnight", heightDp = 1400)
+@Preview(name = "Gallery — Midnight", heightDp = 1700)
 @Composable
 private fun PreviewGalleryDark() {
     AnodexTheme(darkTheme = true) { Gallery() }
 }
 
-@Preview(name = "Gallery — Light", heightDp = 1400)
+@Preview(name = "Gallery — Light", heightDp = 1700)
 @Composable
 private fun PreviewGalleryLight() {
     AnodexTheme(darkTheme = false) { Gallery() }
