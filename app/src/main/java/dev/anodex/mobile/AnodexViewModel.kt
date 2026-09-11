@@ -28,6 +28,7 @@ import dev.anodex.mobile.chat.Uploads
 import dev.anodex.mobile.chat.parseProjectsState
 import dev.anodex.mobile.connection.ConnectionController
 import dev.anodex.mobile.connection.ConnectionService
+import dev.anodex.mobile.connection.connectionDetail
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
@@ -1958,15 +1959,44 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun holdProcessWhileConnected() {
         val context = getApplication<Application>()
 
-        state.collect { current ->
+        // The notification carries what the computer is *doing*, so it is driven by
+        // more than the connection state now. It used to read "Anodex can reach your
+        // computer" for ever, which is the one thing its own existence already says.
+        combine(state, turnInFlight(), contextUsage) { current, working, usage ->
+            Triple(current, working, usage)
+        }.collect { (current, working, usage) ->
             val hold = processHoldFor(current)
             if (hold == null) {
                 ConnectionService.stop(context)
             } else {
-                ConnectionService.start(context, hold.hostName, hold.connected)
+                val model = (current as? ConnectionState.Connected)?.model
+                ConnectionService.start(
+                    context = context,
+                    hostName = hold.hostName,
+                    connected = hold.connected,
+                    working = working,
+                    detail = connectionDetail(
+                        connected = hold.connected,
+                        working = working,
+                        modelName = model?.name,
+                        usedTokens = usage?.usedTokens,
+                        contextSize = usage?.contextSize,
+                    ),
+                )
             }
         }
     }
+
+    /**
+     * Whether a turn is in flight, across whichever session is open.
+     *
+     * `flatMapLatest` for the same reason `settledTurns` uses it: the session is
+     * replaced on reconnect and whenever a different conversation is opened, and a
+     * collector left on the old one would report its state as the current one.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun turnInFlight(): Flow<Boolean> =
+        _chat.flatMapLatest { session -> session?.sending ?: flowOf(false) }
 
 
     /** Retry from the offline screen. */
