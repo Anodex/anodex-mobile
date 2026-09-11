@@ -15,9 +15,9 @@ import androidx.compose.runtime.Immutable
  * No dependency, on purpose. A full CommonMark implementation handles reference
  * links, HTML blocks, setext headings and nested blockquotes; none of that appears
  * in these replies, and all of it is surface area. This handles the handful of things
- * that do appear — fences, inline code, headings, lists, emphasis and links — and
- * treats everything else as ordinary text, which is the failure mode you want: an
- * unsupported construct reads as what the model typed rather than disappearing.
+ * that do appear — fences, inline code, headings, lists, tables, emphasis and links —
+ * and treats everything else as ordinary text, which is the failure mode you want:
+ * an unsupported construct reads as what the model typed rather than disappearing.
  *
  * ## Streaming
  *
@@ -80,12 +80,39 @@ sealed interface MarkdownBlock {
     /** A bullet or numbered list. [ordered] decides which marker is drawn. */
     @Immutable
     data class ListBlock(val items: List<List<Inline>>, val ordered: Boolean) : MarkdownBlock
+
+    /**
+     * A pipe table.
+     *
+     * Every row here is guaranteed the same number of cells as [header], padded or
+     * trimmed at parse time. A renderer that had to cope with ragged rows would end
+     * up guessing which cell belongs to which column, and it would guess wrong on
+     * exactly the table that mattered.
+     */
+    @Immutable
+    data class TableBlock(
+        val header: List<List<Inline>>,
+        val rows: List<List<List<Inline>>>,
+        val alignments: List<Align>,
+    ) : MarkdownBlock
 }
+
+/** How a table column was asked to be aligned, from the `:---:` in its delimiter. */
+enum class Align { START, CENTER, END }
 
 private val FENCE = Regex("^\\s{0,3}(`{3,}|~{3,})\\s*([A-Za-z0-9+#._-]*)\\s*$")
 private val HEADING = Regex("^(#{1,6})\\s+(.*)$")
 private val BULLET = Regex("^\\s{0,3}[-*+]\\s+(.*)$")
 private val NUMBERED = Regex("^\\s{0,3}\\d{1,9}[.)]\\s+(.*)$")
+
+/**
+ * The `|---|:--:|` line under a table's header.
+ *
+ * A table is only a table because of this line, which is why detection looks ahead
+ * rather than at the row in front of it: `a | b` on its own is a sentence containing
+ * a pipe, and plenty of shell output is exactly that.
+ */
+private val TABLE_RULE = Regex("^\\s{0,3}\\|?(\\s*:?-+:?\\s*\\|)+\\s*:?-*:?\\s*\\|?\\s*$")
 
 /** Split a reply into blocks. Never throws and never drops text. */
 fun parseMarkdown(source: String): List<MarkdownBlock> {
@@ -147,6 +174,36 @@ fun parseMarkdown(source: String): List<MarkdownBlock> {
             continue
         }
 
+        // Tables are recognised by the line *after* the one in hand, because the
+        // header row of a table and a sentence containing a pipe are the same thing
+        // until the `|---|` arrives. While a reply is still streaming that line has
+        // not arrived yet, so a table spends a frame or two as a paragraph and then
+        // becomes a table — the alternative is guessing, and guessing wrong turns
+        // ordinary prose into a one-row grid.
+        if (startsTable(lines, index)) {
+            val header = splitRow(line)
+            val alignments = splitRow(lines[index + 1]).map(::alignOf)
+            index += 2
+
+            val rows = mutableListOf<List<List<Inline>>>()
+            while (index < lines.size && lines[index].contains('|') && lines[index].isNotBlank()) {
+                // Squared off here so the renderer never has to decide which column a
+                // missing cell belonged to. Models drop a trailing pipe often enough
+                // that ragged rows are the common case rather than the odd one, and a
+                // row silently shifted left is worse than a blank cell.
+                val cells = splitRow(lines[index])
+                rows += List(header.size) { column -> parseInline(cells.getOrElse(column) { "" }) }
+                index++
+            }
+
+            blocks += MarkdownBlock.TableBlock(
+                header = header.map(::parseInline),
+                rows = rows,
+                alignments = alignments,
+            )
+            continue
+        }
+
         if (BULLET.matches(line) || NUMBERED.matches(line)) {
             val ordered = NUMBERED.matches(line)
             val items = mutableListOf<List<Inline>>()
@@ -172,7 +229,11 @@ fun parseMarkdown(source: String): List<MarkdownBlock> {
                 FENCE.matches(next) ||
                 HEADING.matches(next) ||
                 BULLET.matches(next) ||
-                NUMBERED.matches(next)
+                NUMBERED.matches(next) ||
+                // "Here is the comparison:" directly above a table, with no blank
+                // line between. Without this the paragraph swallows the whole grid
+                // and renders it as one long line of pipes.
+                startsTable(lines, index)
             ) {
                 break
             }
@@ -263,6 +324,79 @@ fun parseInline(source: String): List<Inline> {
 
     flush()
     return spans
+}
+
+/**
+ * Whether the line at [index] is the header of a table.
+ *
+ * Asked in two places — where a block begins, and where a paragraph must stop —
+ * because "Here is the comparison:" sitting directly above a table with no blank
+ * line is common, and a paragraph that does not stop there swallows the whole grid
+ * and prints it as one long line of pipes.
+ */
+private fun startsTable(lines: List<String>, index: Int): Boolean {
+    if (index + 1 >= lines.size) return false
+    if (!lines[index].contains('|')) return false
+    if (!TABLE_RULE.matches(lines[index + 1])) return false
+
+    // A single column, or a header that does not match its own rule, is a
+    // coincidence rather than a table: prose with a pipe in it, above something that
+    // happens to look like a rule.
+    val header = splitRow(lines[index])
+    return header.size >= 2 && header.size == splitRow(lines[index + 1]).size
+}
+
+/**
+ * One table row, as its cells.
+ *
+ * The outer pipes are optional in the format and inconsistent in practice — models
+ * write all three styles within a single reply — so they are stripped rather than
+ * relied upon. `\|` is an escaped pipe inside a cell and does not divide it, which
+ * matters because a table of shell commands is a table full of pipes.
+ */
+private fun splitRow(line: String): List<String> {
+    var body = line.trim()
+    if (body.startsWith("|")) body = body.substring(1)
+    if (body.endsWith("|") && !body.endsWith("\\|")) body = body.dropLast(1)
+
+    val cells = mutableListOf<String>()
+    val cell = StringBuilder()
+    var i = 0
+    while (i < body.length) {
+        val c = body[i]
+        when {
+            c == '\\' && i + 1 < body.length && body[i + 1] == '|' -> {
+                cell.append('|')
+                i += 2
+            }
+
+            c == '|' -> {
+                cells += cell.toString().trim()
+                cell.clear()
+                i++
+            }
+
+            else -> {
+                cell.append(c)
+                i++
+            }
+        }
+    }
+    cells += cell.toString().trim()
+
+    return cells
+}
+
+/** What one cell of a `:---:` rule asks for. */
+private fun alignOf(rule: String): Align {
+    val trimmed = rule.trim()
+    val left = trimmed.startsWith(":")
+    val right = trimmed.endsWith(":")
+    return when {
+        left && right -> Align.CENTER
+        right -> Align.END
+        else -> Align.START
+    }
 }
 
 /** The spans a `[label](target)` produced, and where to resume reading. */
