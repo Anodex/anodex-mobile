@@ -6,11 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,6 +21,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
@@ -199,20 +198,10 @@ fun AppDrawer(
                 .map { it.id }
                 .toSet()
 
-            // Dissolves at both ends rather than cutting off square, and the bottom
-            // fade is deep on purpose: it is sized to the floating button.
-            //
-            // That button is drawn *over* this list, and the only thing protecting
-            // the list from it was a spacer at the very end — which works when the
-            // list is short enough to scroll to the bottom and does nothing at all
-            // otherwise. With nine conversations it sat on top of one, and a title
-            // read "Which of my 14 unread ema" with a white pill where the rest of
-            // the sentence should have been.
-            //
-            // Fading is the right answer rather than reserving more room: the button
-            // is deliberately over the list, so content should dissolve as it passes
-            // behind it instead of colliding with it.
-            LazyColumn(Modifier.weight(1f).fadingEdges(Spacing.x4, FAB_FADE)) {
+            // Dissolves at both ends rather than cutting off square, so a long list
+            // reads as scrolled rather than cropped. Every other scrolling surface
+            // in the app does this.
+            LazyColumn(Modifier.weight(1f).fadingEdges(Spacing.x4, Spacing.x4)) {
                 if (sections.workspaces.isNotEmpty()) {
                     item(key = "kind-workspace") {
                         KindLabel("WORKSPACE", sections.workspaces.size)
@@ -323,33 +312,38 @@ fun AppDrawer(
                     }
                 }
 
-                // Room for the floating button, which is drawn over this list rather
-                // than in it. Without this the last line sits underneath the button —
-                // and the last line is the one explaining where everything else went.
-                item(key = "fab-clearance") {
-                    Spacer(Modifier.height(FAB_CLEARANCE))
-                }
+            }
+
+            // Pinned above the footer, not floating over the list.
+            //
+            // It was a pill drawn on top of the conversations, 88dp up from the
+            // bottom, and in a panel this narrow it covered most of the width. With
+            // nine conversations it sat on one: a title read "Which of my 14 unread
+            // ema" with a white pill where the rest of the sentence should have been.
+            // Fading the list behind it only made the covered title dimmer, which is
+            // not the same as readable.
+            //
+            // A floating button works over a full-width page where it occupies a
+            // corner. Here the sensible shape is a row that belongs to the panel —
+            // same thumb position, nothing hidden, and it reads as part of the menu
+            // rather than as something dropped on top of it.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.x4, vertical = Spacing.x3)
+                    .clip(Radii.pill)
+                    .background(colors.text)
+                    .clickable(onClick = onNewChat)
+                    .heightIn(min = Touch.minTarget)
+                    .padding(horizontal = Spacing.x5),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2, Alignment.CenterHorizontally),
+            ) {
+                Text("+", style = type.bodyEmphasis, color = colors.bgBase)
+                Text("New chat", style = type.bodyEmphasis, color = colors.bgBase)
             }
 
             HostFooter(hostName, hostDetail, connected, onOpenHost, onOpenSettings)
-        }
-
-        // Bottom-right, where the thumb already is. Both Claude apps put "new" there
-        // rather than as a small target in a header, and starting a conversation is
-        // the most common reason to open this drawer at all.
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = Spacing.x4, bottom = 88.dp)
-                .clip(Radii.pill)
-                .background(colors.text)
-                .clickable(onClick = onNewChat)
-                .padding(horizontal = Spacing.x5, vertical = Spacing.x3),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-        ) {
-            Text("+", style = type.bodyEmphasis, color = colors.bgBase)
-            Text("New chat", style = type.bodyEmphasis, color = colors.bgBase)
         }
     }
 }
@@ -434,6 +428,36 @@ private fun WorkspaceRow(
     }
 }
 
+/**
+ * How an open row is marked: a wash of light at the leading edge, not a bar.
+ *
+ * Copied in intent from the desktop's `ChatRow.module.css`, which says it plainly:
+ *
+ * > A gentle wash of light at the leading edge — not a bar. The accent sits softly
+ * > on the left and clears to plain surface by 45%, so the open chat reads as lit
+ * > rather than bracketed.
+ *
+ * The phone was doing the opposite — a full-width filled slab with an 8dp radius,
+ * which is a bracket, and a heavy one. Five of them stacked down a narrow panel is
+ * most of what made this menu feel bulky, and none of it looked like the product it
+ * belongs to.
+ *
+ * Full-bleed rather than inset, because a wash that stops short of the edge is a
+ * shape again. The clearing point is the desktop's 45%.
+ */
+@Composable
+private fun Modifier.leadingWash(active: Boolean): Modifier {
+    if (!active) return this
+
+    val accent = AnodexTheme.colors.accentSoft
+    return this.background(
+        Brush.horizontalGradient(0f to accent, WASH_CLEARS_AT to Color.Transparent)
+    )
+}
+
+/** Where the accent has faded out entirely. The desktop's figure, kept identical. */
+private const val WASH_CLEARS_AT = 0.45f
+
 /** A conversation, indented when it is filed under a workspace. */
 @Composable
 private fun ConversationRow(
@@ -450,6 +474,11 @@ private fun ConversationRow(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .fillMaxWidth()
+            // The open conversation was marked by text colour alone, which is a
+            // half-step of grey in a list of greys. It gets the same wash as an open
+            // destination, so one thing means "this is what you are looking at"
+            // throughout the panel.
+            .leadingWash(active)
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
             .padding(
@@ -497,14 +526,14 @@ private fun DestinationRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = Spacing.x2)
-            .clip(Radii.lg)
-            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .leadingWash(selected)
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.x3),
+            .padding(horizontal = Spacing.x4),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x4),
+        // 12dp, which is what the desktop puts between an icon and its label. The
+        // 16dp here was a step wider and read as loose down a column of five.
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
         AnodexIcon(destination.icon, size = 19.dp, tint = tint, contentDescription = null)
         Text(destination.label, style = type.body, color = tint, modifier = Modifier.weight(1f))
@@ -709,24 +738,6 @@ internal fun drawerSections(
         machineMade = conversations.size - mine.size,
     )
 }
-
-/**
- * How much room the list leaves under itself for the floating button.
- *
- * The button's own bottom offset plus its height and a little air. It is drawn in
- * the same Box as the list, so nothing else keeps them apart.
- */
-private val FAB_CLEARANCE = 140.dp
-
-/**
- * How far up the list dissolves, so nothing collides with the floating button.
- *
- * Matched to where the button actually sits — 88dp above the drawer's bottom, plus
- * its own height and a little air. Shorter than `FAB_CLEARANCE`, which is the gap
- * left at the *end* of the list; this is about the strip the button covers wherever
- * the list happens to be scrolled to.
- */
-private val FAB_FADE = 96.dp
 
 @Preview(name = "Drawer", showBackground = true, backgroundColor = 0xFF080808, heightDp = 700)
 @Composable
