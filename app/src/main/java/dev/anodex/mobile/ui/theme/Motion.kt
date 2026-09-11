@@ -45,9 +45,32 @@ object Motion {
     /** `--motion-long` (420ms). Whole-screen transitions and the one-shot arrival flares. */
     const val LONG_MS = 420
 
+    /**
+     * How long a reply takes to settle into place. See [arrive].
+     *
+     * Longer than every other duration here, and chosen by looking at it rather than
+     * derived from the scale: 220, 320, 420 and 880 were put side by side at real
+     * speed and this is the one that was picked. It is deliberately past the point
+     * where motion is felt rather than watched — the reply landing is meant to be
+     * seen landing.
+     *
+     * The cost is real and was accepted knowingly: a reply cannot be read until it
+     * has arrived, so this is added to every answer the app gives. It is the only
+     * duration in the app allowed to be this long, and it is spent exactly once per
+     * turn, on the one event the app exists to deliver.
+     */
+    const val ARRIVAL_MS = 880
+
     fun <T> fast(): FiniteAnimationSpec<T> = tween(FAST_MS, easing = standard)
     fun <T> normal(): FiniteAnimationSpec<T> = tween(NORMAL_MS, easing = standard)
-    fun <T> arrive(): FiniteAnimationSpec<T> = tween(MEDIUM_MS, easing = decelerate)
+    /**
+     * A reply arriving — the desktop's `messageIn`.
+     *
+     * The one piece of character motion in the app that is not also a state
+     * indicator, which is why it gets [decelerate]: it should look like something
+     * coming to rest, not like something being faded up.
+     */
+    fun <T> arrive(): FiniteAnimationSpec<T> = tween(ARRIVAL_MS, easing = decelerate)
     fun <T> screen(): FiniteAnimationSpec<T> = tween(LONG_MS, easing = emphasized)
 }
 
