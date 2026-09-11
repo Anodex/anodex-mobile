@@ -1210,9 +1210,14 @@ private fun ChatPane(
     // The system picker, which is the only way an app sees a file it did not create.
     // Narrowed to what the computer will actually accept, so the refusal happens in
     // the picker rather than after a transfer.
+    //
+    // `OpenMultipleDocuments`, because the single-file contract was the only reason
+    // one at a time was the limit. Everything behind it was already plural: the
+    // composer holds a list, the request carries a `userFiles` array, and the
+    // desktop reads one. The picker was the pinch point, and it was one word wide.
     val pickFile = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let(viewModel::attach) }
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris -> uris.forEach(viewModel::attach) }
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 

@@ -549,11 +549,34 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun sendMessage(text: String) {
         val session = _chat.value ?: return
         val ready = _attachments.value.filterIsInstance<UploadState.Done>()
+        val leftBehind = _attachments.value.filterIsInstance<UploadState.Sending>()
 
         session.send(text, ready.map { it.uploaded })
 
         // Only the ones that went. Anything still uploading is still the user's.
         _attachments.value = _attachments.value.filterNot { it is UploadState.Done }
+
+        // And said, rather than left to be noticed.
+        //
+        // Sending without an unfinished attachment is the right call — the rule the
+        // whole design rests on is that the computer never sees a message carrying
+        // an attachment until that attachment is whole, and blocking the text on a
+        // slow uplink would be worse. But it was happening silently: you attach a
+        // photo, type a line, send, and the message goes without the photo while
+        // the photo sits in the composer looking like it is still queued for it.
+        //
+        // From the outside that is indistinguishable from the attachment having been
+        // ignored, which is exactly how it gets reported.
+        if (leftBehind.isNotEmpty()) {
+            val names = leftBehind.joinToString(", ") { it.file.name }
+            _notice.value = if (leftBehind.size == 1) {
+                "Sent without $names — it had not finished uploading. It is still in " +
+                    "the composer; send again when it has."
+            } else {
+                "Sent without $names — they had not finished uploading. They are still " +
+                    "in the composer."
+            }
+        }
     }
 
 
