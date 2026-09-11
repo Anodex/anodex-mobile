@@ -126,14 +126,38 @@ class AnodexSocket(
         channel: String,
         args: List<JsonElement> = emptyList(),
         timeout: Duration = 60.seconds,
-    ): JsonElement? {
+    ): JsonElement? = awaitResult(enqueue(channel, args), timeout)
+
+    /**
+     * Put a call on the wire **now**, and hand back its id to await later.
+     *
+     * Split out of [invoke] so a caller can get the frame out before anything can
+     * cancel it. `WebSocket.send` does not suspend — it hands the frame to OkHttp's
+     * writer queue and returns — so the only way a call fails to reach the desktop
+     * is by never being reached at all. Inside a coroutine that is exactly what
+     * happens when the scope dies first.
+     *
+     * That is not hypothetical. Sending a message and leaving the app lost the
+     * message: `ChatSession` dispatched on `viewModelScope`, Android destroyed the
+     * Activity, the ViewModel was cleared, and the turn was cancelled somewhere
+     * before this line. The user had already seen "Thinking…", because the
+     * placeholder is appended before any of this runs.
+     *
+     * Closing is safe once the frame is queued: OkHttp transmits enqueued messages
+     * before the close frame.
+     */
+    fun enqueue(channel: String, args: List<JsonElement> = emptyList()): String {
         val socket = socket ?: error("not connected")
         val id = newCallId()
-        val deferred = CompletableDeferred<Result<JsonElement?>>()
-        pending[id] = deferred
+        pending[id] = CompletableDeferred()
+        socket.send(ClientFrames.invoke(id, channel, args))
+        return id
+    }
 
+    /** Wait for the reply to a call already sent by [enqueue]. */
+    suspend fun awaitResult(id: String, timeout: Duration = 60.seconds): JsonElement? {
+        val deferred = pending[id] ?: error("no call is waiting on $id")
         return try {
-            socket.send(ClientFrames.invoke(id, channel, args))
             withTimeout(timeout) { deferred.await() }.getOrThrow()
         } finally {
             // Removed on every path, including timeout and cancellation: a map that

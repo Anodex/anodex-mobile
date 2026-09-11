@@ -666,6 +666,9 @@ private fun ConnectedScaffold(
             onOpenNotificationSettings = {
                 settingsContext.startActivity(viewModel.notificationSettingsIntent())
             },
+            onAllowBackground = {
+                settingsContext.startActivity(viewModel.batteryExemptionIntent())
+            },
             memories = memories,
             memoryLoading = memoryLoading,
             memoryError = memoryError,

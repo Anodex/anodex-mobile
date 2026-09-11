@@ -39,6 +39,14 @@
       the trade Android is offering. It is therefore only running while actually
       connected, and it says which machine rather than "Anodex is running".
     -->
+    <!--
+      Asked for, never assumed. The foreground service keeps the link alive so an
+      approval can reach a phone in a pocket, and on manufacturers with aggressive
+      battery management — Samsung notably — that service is killed anyway unless
+      the app is exempt. Without it "notify me while I am away" is not a promise
+      this app can keep.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
