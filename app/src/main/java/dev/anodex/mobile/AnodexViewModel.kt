@@ -1446,9 +1446,21 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
                 // Tell the controller when this connection dies, rather than waiting
                 // for the user to discover it by typing into a dead socket.
-                candidate.onDropped = {
+                candidate.onDropped = { farewell ->
                     if (socket === candidate) {
                         _chat.value = null
+
+                        // The computer's own account of why it went, when it gave
+                        // one. It beats anything the phone can work out from a dead
+                        // socket — "Gort went to sleep" instead of three guesses —
+                        // so it replaces the diagnosis rather than sitting beside it.
+                        //
+                        // Set before `onDisconnected`, so the offline screen has the
+                        // explanation the first time it draws rather than a frame
+                        // later.
+                        if (farewell != null) {
+                            _connectionHint.value = farewell.explain(host.identity.displayName)
+                        }
                         controller.onDisconnected(host)
                     }
                 }
