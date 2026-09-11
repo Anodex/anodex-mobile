@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
+import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -64,6 +66,16 @@ fun OfflineScreen(
      * somebody sitting on a train.
      */
     hint: String? = null,
+    /**
+     * A way into Settings, or null where there is nowhere to go.
+     *
+     * Null in the design harness and in previews. Everywhere else it is wired,
+     * because this screen used to be a dead end: `Retry` and `Pair another…` were
+     * the only two controls on it, and the settings that fix a connection — keeping
+     * the link alive in the background, letting notifications through — were behind
+     * a menu that only exists once you are connected.
+     */
+    onOpenSettings: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -160,6 +172,26 @@ fun OfflineScreen(
             SecondaryButton(label = "Pair another…", onClick = onReplacePairing)
             PrimaryButton(label = "Retry", onClick = onRetry)
         }
+
+        // Quiet, and below the buttons, because it is not the answer most of the
+        // time — the computer being asleep is. But when it *is* the answer it is the
+        // only one, and it was unreachable: the phone-side settings that decide
+        // whether Anodex may keep its link alive in the background sit behind a menu
+        // that this screen replaces.
+        if (onOpenSettings != null) {
+            Row(
+                modifier = Modifier
+                    .padding(top = Spacing.x5)
+                    .clip(Radii.md)
+                    .clickable(onClick = onOpenSettings)
+                    .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AnodexIcon(AnodexIcon.SETTINGS, size = 15.dp, tint = colors.textMuted)
+                Text("Settings", style = type.label, color = colors.textMuted)
+            }
+        }
     }
 }
 
@@ -202,6 +234,7 @@ private fun PreviewOfflineNetworkChanged() {
             ),
             onRetry = {},
             onReplacePairing = {},
+            onOpenSettings = {},
             nowEpochMs = PREVIEW_NOW,
         )
     }
@@ -219,6 +252,7 @@ private fun PreviewOfflineSameNetwork() {
             ),
             onRetry = {},
             onReplacePairing = {},
+            onOpenSettings = {},
             nowEpochMs = PREVIEW_NOW,
         )
     }
