@@ -76,6 +76,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -1511,7 +1513,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         return ModelStatus(
             name = name,
-            contextUsedTokens = state.intOrZero("contextTokensUsed"),
+            // Not `intOrZero`. The desktop omits this whenever its engine has no
+            // live sequence, and reading that as zero is what made the meter look
+            // permanently empty instead of honestly blank.
+            contextUsedTokens = (state["contextTokensUsed"] as? JsonPrimitive)?.intOrNull,
+            contextConversationId =
+                (state["contextTokensConversationId"] as? JsonPrimitive)?.contentOrNull,
             contextTotalTokens = state.intOrZero("contextSize"),
             // Marks the running model in the picker. Empty is fine — the list simply
             // ticks nothing rather than ticking the wrong row.
