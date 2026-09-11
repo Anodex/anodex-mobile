@@ -34,11 +34,13 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Personality
 import dev.anodex.mobile.chat.detailLabel
+import dev.anodex.mobile.notify.NotificationAccess
 import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.PersonalityAvatar
+import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -86,6 +88,9 @@ fun SettingsScreen(
     /** How this app picks its palette \u2014 the one phone-local setting here. */
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     onSelectTheme: (ThemeMode) -> Unit = {},
+    /** What the system will actually let through. */
+    notificationAccess: NotificationAccess = NotificationAccess(true, true, true),
+    onOpenNotificationSettings: () -> Unit = {},
     /** What the computer remembers. Read and forget only; nothing here writes one. */
     memories: List<MemoryEntry> = emptyList(),
     memoryLoading: Boolean = false,
@@ -158,6 +163,11 @@ fun SettingsScreen(
                 activeModelPath = activeModelPath,
                 loadingModelPath = loadingModelPath,
                 onLoadModel = onLoadModel,
+            )
+
+            SettingsSection.NOTIFICATIONS -> NotificationsSection(
+                access = notificationAccess,
+                onOpenSystemSettings = onOpenNotificationSettings,
             )
 
             SettingsSection.REMOTE -> RemoteSection(hostName, hostStatus, onOpenHost)
@@ -312,6 +322,74 @@ private fun AiAndModelsSection(
                     "at the machine.",
             )
         }
+    }
+}
+
+@Composable
+private fun NotificationsSection(
+    access: NotificationAccess,
+    onOpenSystemSettings: () -> Unit,
+) {
+    SectionBody {
+        SectionLabel("What may reach you")
+
+        Group {
+            SettingsRow(
+                icon = AnodexIcon.INFO,
+                label = "Waiting for you",
+                value = if (access.approvals) "On" else "Off",
+                onClick = onOpenSystemSettings,
+            )
+            RowDivider()
+            SettingsRow(
+                icon = AnodexIcon.CLOCK,
+                label = "Finished work",
+                value = if (access.activity) "On" else "Off",
+                onClick = onOpenSystemSettings,
+            )
+        }
+
+        // Said plainly, because until now there was nowhere in the app that could
+        // say it. A phone that has refused the permission — or been refused it twice,
+        // after which Android stops delivering the request at all — simply went quiet,
+        // and looked identical to a computer with nothing to report.
+        if (!access.allowed) {
+            Footnote(
+                "Notifications are off, so nothing here can reach you. A run stopped " +
+                    "waiting for an approval will wait until you open the app and look.",
+            )
+            SecondaryButton(
+                label = "Turn them on",
+                onClick = onOpenSystemSettings,
+                modifier = Modifier.padding(top = Spacing.x3),
+            )
+        } else if (!access.approvals) {
+            // The one worth calling out separately. Silencing the quiet channel is a
+            // reasonable choice; silencing this one stops the phone being able to do
+            // the thing it is for.
+            Footnote(
+                "“Waiting for you” is switched off. That is the one that " +
+                    "matters: a run stopped until somebody answers cannot tell you, and " +
+                    "will stay stopped.",
+            )
+            SecondaryButton(
+                label = "Open notification settings",
+                onClick = onOpenSystemSettings,
+                modifier = Modifier.padding(top = Spacing.x3),
+            )
+        } else {
+            Footnote(
+                "Split by urgency rather than by feature, so an approval can interrupt " +
+                    "and a finished run cannot. Both are yours to change above — they " +
+                    "are ordinary Android channels.",
+            )
+        }
+
+        Footnote(
+            "These arrive over the link to your computer, so they reach you while " +
+                "Anodex is in the background — and not at all while the phone " +
+                "cannot see the computer.",
+        )
     }
 }
 
