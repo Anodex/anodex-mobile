@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
@@ -427,6 +428,36 @@ private fun WorkspaceRow(
     }
 }
 
+/**
+ * How an open row is marked: a wash of light at the leading edge, not a bar.
+ *
+ * Copied in intent from the desktop's `ChatRow.module.css`, which says it plainly:
+ *
+ * > A gentle wash of light at the leading edge — not a bar. The accent sits softly
+ * > on the left and clears to plain surface by 45%, so the open chat reads as lit
+ * > rather than bracketed.
+ *
+ * The phone was doing the opposite — a full-width filled slab with an 8dp radius,
+ * which is a bracket, and a heavy one. Five of them stacked down a narrow panel is
+ * most of what made this menu feel bulky, and none of it looked like the product it
+ * belongs to.
+ *
+ * Full-bleed rather than inset, because a wash that stops short of the edge is a
+ * shape again. The clearing point is the desktop's 45%.
+ */
+@Composable
+private fun Modifier.leadingWash(active: Boolean): Modifier {
+    if (!active) return this
+
+    val accent = AnodexTheme.colors.accentSoft
+    return this.background(
+        Brush.horizontalGradient(0f to accent, WASH_CLEARS_AT to Color.Transparent)
+    )
+}
+
+/** Where the accent has faded out entirely. The desktop's figure, kept identical. */
+private const val WASH_CLEARS_AT = 0.45f
+
 /** A conversation, indented when it is filed under a workspace. */
 @Composable
 private fun ConversationRow(
@@ -443,6 +474,11 @@ private fun ConversationRow(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .fillMaxWidth()
+            // The open conversation was marked by text colour alone, which is a
+            // half-step of grey in a list of greys. It gets the same wash as an open
+            // destination, so one thing means "this is what you are looking at"
+            // throughout the panel.
+            .leadingWash(active)
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
             .padding(
@@ -490,14 +526,14 @@ private fun DestinationRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = Spacing.x2)
-            .clip(Radii.lg)
-            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .leadingWash(selected)
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.x3),
+            .padding(horizontal = Spacing.x4),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x4),
+        // 12dp, which is what the desktop puts between an icon and its label. The
+        // 16dp here was a step wider and read as loose down a column of five.
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
         AnodexIcon(destination.icon, size = 19.dp, tint = tint, contentDescription = null)
         Text(destination.label, style = type.body, color = tint, modifier = Modifier.weight(1f))
