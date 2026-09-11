@@ -249,6 +249,28 @@ quietly rendering what it happens to have. That is the same defect described
 under **Absence is not failure** below, arriving through the UI instead of the
 data layer.
 
+## An unguarded `launch` is a crash waiting for a bad moment
+
+`viewModelScope.launch { }` with no `try`, no `runCatching` and no handler does not
+report a failure — the exception reaches the thread's default handler, and
+Android's default handler kills the process.
+
+That matters here more than in most apps, because `AnodexSocket.failPending`
+resumes **every** in-flight call with the failure when a socket dies. That is the
+right design: it is what lets a caller say the read failed. But it means any
+unguarded launch awaiting the computer is a crash waiting for a connection to drop
+at the wrong moment — and connections drop. One did, on a real phone, after
+fifteen good ping/pongs, while a file was open.
+
+Guard at the site when there is somewhere to report to; `FileContent.Failed` and
+`UploadState.Failed` both already existed for exactly this and were simply not
+reached. Use `viewModelScope.launch(farEnd)` otherwise, which reports and lets the
+connection machinery do its job.
+
+It is not only the socket. `DataStore.edit` throws on a disk it cannot write and
+`SecretCipher` throws when the Android keystore refuses — rarer by a long way, the
+same class exactly.
+
 ## Absence is not failure
 
 The most common defect shape in this codebase: a `getOrNull()` or
