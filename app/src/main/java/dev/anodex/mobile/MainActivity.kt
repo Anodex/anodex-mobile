@@ -294,6 +294,17 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
     // half-answered question about destroying the pairing. Dismissed is the safe
     // resting state, so losing it is the right way to lose it.
     var replacingPairing by remember { mutableStateOf(false) }
+
+    /**
+     * Whether Settings is open over the offline screen.
+     *
+     * Separate from the connected app's own flag because the two live in different
+     * composables — the connected one belongs to `ConnectedScaffold`, which does not
+     * run at all while the computer is unreachable.
+     */
+    var offlineSettings by rememberSaveable { mutableStateOf(false) }
+    val offlineThemeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val offlineNotificationAccess by viewModel.notificationAccess.collectAsStateWithLifecycle()
     val manualState by viewModel.manualState.collectAsStateWithLifecycle()
 
     // Pairing succeeds on a background coroutine, so the screen that started it has
@@ -353,7 +364,48 @@ private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexVie
                 onRetry = viewModel::retry,
                 onReplacePairing = { replacingPairing = true },
                 hint = connectionHint,
+                onOpenSettings = { offlineSettings = true },
             )
+
+            // Settings, on the one screen that used to have no way to reach them.
+            //
+            // Its own call rather than the connected one hoisted up here, because
+            // the arguments genuinely differ: there are no personalities, no models
+            // and no memories to offer while the computer is unreachable, and
+            // `SettingsScreen` already says "Waiting for your computer…" for each of
+            // them. What it *can* still offer is everything about this phone — the
+            // theme, whether notifications are allowed through, and whether Anodex
+            // may hold its link open in the background. That last one is sometimes
+            // the actual cause of the screen the user is looking at.
+            if (offlineSettings) {
+                val offlineContext = LocalContext.current
+
+                // Back closes Settings rather than leaving the app. Without it the
+                // one route off this screen is the header chevron, and a phone user
+                // reaches for back first.
+                BackHandler { offlineSettings = false }
+
+                // Looked at each time it opens: a channel can be switched off from
+                // the shade while the app sits in the background, and the answer read
+                // at launch would otherwise be the one still on show.
+                LaunchedEffect(Unit) { viewModel.refreshNotificationAccess() }
+
+                SettingsScreen(
+                    installedVersion = BuildConfig.VERSION_NAME,
+                    onClose = { offlineSettings = false },
+                    themeMode = offlineThemeMode,
+                    onSelectTheme = viewModel::setThemeMode,
+                    notificationAccess = offlineNotificationAccess,
+                    onOpenNotificationSettings = {
+                        offlineContext.startActivity(viewModel.notificationSettingsIntent())
+                    },
+                    onAllowBackground = {
+                        offlineContext.startActivity(viewModel.batteryExemptionIntent())
+                    },
+                    hostName = current.host.displayName,
+                    hostStatus = "Offline",
+                )
+            }
 
             // Asked before unpairing, because the phone cannot undo it. Re-pairing
             // needs a QR code only the desktop can show, so a mis-tap here does not
