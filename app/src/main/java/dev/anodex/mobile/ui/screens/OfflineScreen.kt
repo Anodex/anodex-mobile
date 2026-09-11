@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -86,79 +88,97 @@ fun OfflineScreen(
             .background(colors.bgApp)
             .safeDrawingPadding()
             .padding(horizontal = Spacing.x6),
-        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(colors.danger),
-        )
-
-        Text(
-            text = "${state.host.displayName} is offline.",
-            style = type.title,
-            color = colors.text,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = Spacing.x5),
-        )
-
-        val lastSeen = state.lastSeenEpochMs?.let { relativeLastSeen(it, nowEpochMs) }
-        if (lastSeen != null) {
-            Text(
-                text = "Last seen $lastSeen.",
-                style = type.body,
-                color = colors.textMuted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = Spacing.x2),
-            )
-        }
-
-        if (hint != null) {
-            Text(
-                text = hint,
-                style = type.body,
-                color = colors.warnInk,
-                textAlign = TextAlign.Center,
+        // The explanation takes all the height that is going, and the actions are
+        // pinned under it.
+        //
+        // Because the explanation *arrives late*. The diagnosis is the result of
+        // probing every known address, so for the first second or two this screen
+        // has a headline and nothing else — and when the reason lands, a
+        // centre-aligned column pushes everything below it down.
+        //
+        // What sits below it is `Pair another…`, which unpairs. Somebody reaching
+        // for `Settings` as the screen settles gets the destructive control in the
+        // place they aimed at; that is not hypothetical, it happened to me while
+        // testing this screen, and the confirm dialog is all that stopped it.
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
                 modifier = Modifier
-                    .padding(top = Spacing.x5)
-                    .fillMaxWidth()
-                    .clip(Radii.lg)
-                    .background(colors.warnSoft)
-                    .padding(Spacing.x4),
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(colors.danger),
             )
-        } else if (state.networkChanged) {
-            Text(
-                // Not "Anodex only connects over your local network" — that was never
-                // true, and this is the screen it was least true on. The phone reaches
-                // the desktop over the LAN, a private VPN, or a configured remote
-                // address, and the address list on the host screen is what decides
-                // which. Telling somebody sitting on a train that the product is
-                // LAN-only turns a solvable problem into a closed door.
-                text = "You're on a different network than the one you paired on. " +
-                    "This phone can still reach it over a VPN or a remote address " +
-                    "you've added.",
-                style = type.body,
-                color = colors.warnInk,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .padding(top = Spacing.x5)
-                    .fillMaxWidth()
-                    .clip(Radii.lg)
-                    .background(colors.warnSoft)
-                    .padding(Spacing.x4),
-            )
-        }
 
-        Text(
-            text = "Your work stays on your computer, so there's nothing to show until it's " +
-                "reachable again. Anodex reconnects on its own the moment it is.",
-            style = type.meta,
-            color = colors.textFaint,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = Spacing.x5),
-        )
+            Text(
+                text = "${state.host.displayName} is offline.",
+                style = type.title,
+                color = colors.text,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = Spacing.x5),
+            )
+
+            val lastSeen = state.lastSeenEpochMs?.let { relativeLastSeen(it, nowEpochMs) }
+            if (lastSeen != null) {
+                Text(
+                    text = "Last seen $lastSeen.",
+                    style = type.body,
+                    color = colors.textMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = Spacing.x2),
+                )
+            }
+
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    style = type.body,
+                    color = colors.warnInk,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .padding(top = Spacing.x5)
+                        .fillMaxWidth()
+                        .clip(Radii.lg)
+                        .background(colors.warnSoft)
+                        .padding(Spacing.x4),
+                )
+            } else if (state.networkChanged) {
+                Text(
+                    // Not "Anodex only connects over your local network" — that was never
+                    // true, and this is the screen it was least true on. The phone reaches
+                    // the desktop over the LAN, a private VPN, or a configured remote
+                    // address, and the address list on the host screen is what decides
+                    // which. Telling somebody sitting on a train that the product is
+                    // LAN-only turns a solvable problem into a closed door.
+                    text = "You're on a different network than the one you paired on. " +
+                        "This phone can still reach it over a VPN or a remote address " +
+                        "you've added.",
+                    style = type.body,
+                    color = colors.warnInk,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .padding(top = Spacing.x5)
+                        .fillMaxWidth()
+                        .clip(Radii.lg)
+                        .background(colors.warnSoft)
+                        .padding(Spacing.x4),
+                )
+            }
+
+            Text(
+                text = "Your work stays on your computer, so there's nothing to show until it's " +
+                    "reachable again. Anodex reconnects on its own the moment it is.",
+                style = type.meta,
+                color = colors.textFaint,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = Spacing.x5),
+            )
+
+        }
 
         Row(
             modifier = Modifier.padding(top = Spacing.x8),
@@ -192,6 +212,10 @@ fun OfflineScreen(
                 Text("Settings", style = type.label, color = colors.textMuted)
             }
         }
+
+        // Keeps the pinned actions off the very bottom edge without letting them
+        // drift when the explanation above changes size.
+        Spacer(Modifier.height(Spacing.x10))
     }
 }
 
