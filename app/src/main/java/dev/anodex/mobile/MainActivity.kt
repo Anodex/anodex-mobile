@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -735,6 +736,15 @@ private fun ConnectedScaffold(
         // the section is chosen inside that screen, and threading a callback back
         // out for one list costs more than the read it would save.
         LaunchedEffect(Unit) { viewModel.refreshMemories() }
+
+        // And kept current while this screen is up. The computer announces memory
+        // changes now, and most of them are written by the model partway through a
+        // turn rather than by anyone typing — so the list can go stale under
+        // somebody who is looking straight at it.
+        DisposableEffect(Unit) {
+            viewModel.onSettingsOpened()
+            onDispose { viewModel.onSettingsClosed() }
+        }
 
         // Looked at again every time Settings opens: a channel can be switched off
         // from the shade while the app sits in the background, and this process

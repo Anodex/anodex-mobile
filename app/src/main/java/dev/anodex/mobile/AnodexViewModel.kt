@@ -122,6 +122,15 @@ private const val CHANNEL_PROJECTS_CHANGED = "projects:changed"
  */
 private const val CHANNEL_CONVERSATIONS_CHANGED = "conversations:changed"
 
+/**
+ * What the assistant is carrying forward has changed on the computer.
+ *
+ * The payload is the scope that changed. The phone re-reads the whole list rather
+ * than trying to apply it, because the list is small and a scope key says that
+ * something moved without saying what.
+ */
+private const val CHANNEL_MEMORY_CHANGED = "memory:changed"
+
 class AnodexViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = PairedHostStore(application)
@@ -342,6 +351,27 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private var memoryClient: Memory? = null
+
+    /**
+     * Whether Settings is open.
+     *
+     * Settings, rather than the Memory section within it, because that is the
+     * granularity the app already has — the list is read when Settings opens and
+     * the section is chosen inside that screen without telling anyone.
+     *
+     * It exists so a push arriving while somebody is in a chat does not spend a
+     * round trip refreshing a list nobody can see. Memory is read fresh whenever
+     * Settings opens, so nothing is missed by staying quiet until then.
+     */
+    private val _settingsOpen = MutableStateFlow(false)
+
+    fun onSettingsOpened() {
+        _settingsOpen.value = true
+    }
+
+    fun onSettingsClosed() {
+        _settingsOpen.value = false
+    }
 
     private val _memories = MutableStateFlow<List<MemoryEntry>>(emptyList())
 
@@ -2145,6 +2175,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             CHANNEL_CONVERSATIONS_CHANGED -> onConversationChanged(event.payload)
+
+            // Most memory is written by the model mid-turn rather than by anyone
+            // typing, so this is the one that arrives while the phone is just
+            // sitting there. Refreshed only when the screen is being looked at:
+            // re-reading a list nobody is watching spends a round trip to update
+            // something off screen, and it is read fresh on open anyway.
+            CHANNEL_MEMORY_CHANGED -> if (_settingsOpen.value) refreshMemories()
         }
     }
 
