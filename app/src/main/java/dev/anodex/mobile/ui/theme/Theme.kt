@@ -57,10 +57,17 @@ fun AnodexTheme(
     fontScale: FontScale = FontScale.MEDIUM,
     /** The face for everything not deliberately monospaced. Phone-local. */
     uiFont: UiFont = UiFont.SYSTEM,
+    /** Whether this app animates, independently of the phone. Phone-local. */
+    motion: MotionPreference = MotionPreference.SYSTEM,
     content: @Composable () -> Unit,
 ) {
     val colors = if (darkTheme) MidnightColors else LightColors
-    val reducedMotion = rememberSystemReducedMotion()
+    val systemReducedMotion = rememberSystemReducedMotion()
+    val reducedMotion = when (motion) {
+        MotionPreference.SYSTEM -> systemReducedMotion
+        MotionPreference.REDUCED -> true
+        MotionPreference.FULL -> false
+    }
 
     val materialScheme = if (darkTheme) {
         darkColorScheme(

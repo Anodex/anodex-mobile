@@ -68,6 +68,7 @@ import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
+import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.FontScale
 import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.ui.theme.AppearanceStore
@@ -138,6 +139,9 @@ private const val CHANNEL_CONVERSATIONS_CHANGED = "conversations:changed"
  * something moved without saying what.
  */
 private const val CHANNEL_MEMORY_CHANGED = "memory:changed"
+
+/** Telling the computer whether to send tokens as it generates them. */
+private const val CHANNEL_SET_LIVE_TOKENS = "chat:set-live-tokens"
 
 class AnodexViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -1014,6 +1018,71 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { appearance.setUiFont(font) }
     }
 
+    val keepAwake: StateFlow<Boolean> = appearance.keepAwake
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setKeepAwake(enabled: Boolean) {
+        viewModelScope.launch { appearance.setKeepAwake(enabled) }
+    }
+
+    val motion: StateFlow<MotionPreference> = appearance.motion
+        .stateIn(viewModelScope, SharingStarted.Eagerly, MotionPreference.SYSTEM)
+
+    fun setMotion(preference: MotionPreference) {
+        viewModelScope.launch { appearance.setMotion(preference) }
+    }
+
+    val haptics: StateFlow<Boolean> = appearance.haptics
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setHaptics(enabled: Boolean) {
+        viewModelScope.launch { appearance.setHaptics(enabled) }
+    }
+
+    val streamOnMetered: StateFlow<Boolean> = appearance.streamOnMetered
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setStreamOnMetered(enabled: Boolean) {
+        viewModelScope.launch {
+            appearance.setStreamOnMetered(enabled)
+            tellComputerAboutTokens()
+        }
+    }
+
+    /**
+     * Tell the computer whether to send tokens as it generates them.
+     *
+     * Sent whenever the answer changes and whenever a socket is established, because
+     * the preference lives on the desktop for the life of that connection and a
+     * reconnect starts it back at "send everything".
+     *
+     * Failure is ignored on purpose. An older desktop has no such channel, and the
+     * result of it refusing is the behaviour that existed before this setting did.
+     */
+    private fun tellComputerAboutTokens() {
+        val open = socket ?: return
+        val wanted = streamOnMetered.value || !networkMonitor.onMeteredNetwork()
+        viewModelScope.launch {
+            runCatching { open.invoke(CHANNEL_SET_LIVE_TOKENS, listOf(JsonPrimitive(wanted))) }
+        }
+    }
+
+    /**
+     * Whether a reply is arriving right now.
+     *
+     * Watches the messages rather than [ChatSession.sending], because since the
+     * desktop started broadcasting a running turn, a reply can be arriving here that
+     * this phone did not send — which is exactly the case where somebody is watching
+     * and the screen must not sleep.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val replyArriving: StateFlow<Boolean> = _chat
+        .flatMapLatest { session ->
+            session?.messages?.map { turns -> turns.any { it.streaming } } ?: flowOf(false)
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     /**
      * What a *manual* check found.
      *
@@ -1739,6 +1808,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 schedulerClient = Scheduler(candidate)
                 memoryClient = Memory(candidate)
                 profileReader = ProfileReader(candidate)
+                // The desktop forgets this when the socket goes, so it is said again
+                // on every new one rather than only when the user changes it.
+                tellComputerAboutTokens()
                 modelClient = Models(candidate)
                 _chat.value = ChatSession(
                     socket = candidate,
@@ -2146,6 +2218,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        // Walking out of the house changes the answer, and the computer is still
+        // sending. Watched rather than checked on connect alone, because the case this
+        // exists for is exactly the one where the network changes underneath somebody.
+        viewModelScope.launch {
+            networkMonitor.meteredChanges().collect { tellComputerAboutTokens() }
+        }
+
         // Re-measure the open conversation's context every time a turn settles.
         viewModelScope.launch(farEnd) {
             settledTurns().collect { conversationId ->

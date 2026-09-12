@@ -72,6 +72,49 @@ class NetworkMonitor(context: Context) {
      * Null when there is nothing usable to identify, in which case the app simply declines to
      * offer a network explanation later — better than a confident wrong one.
      */
+    /**
+     * Whether the connection in use charges by the byte.
+     *
+     * Android's own answer rather than "is it cellular": a tethered laptop and a
+     * metered home broadband plan both report metered while being Wi-Fi, and an
+     * unmetered corporate SIM reports the reverse. Asking the capability gets the
+     * question right in all four cases; asking the transport gets it right in two.
+     *
+     * Unknown networks count as metered. Being wrong in that direction costs someone
+     * a slightly less live screen; being wrong in the other costs them money.
+     */
+    fun onMeteredNetwork(): Boolean {
+        val capabilities = connectivity.activeNetwork
+            ?.let(connectivity::getNetworkCapabilities)
+            ?: return true
+
+        return !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }
+
+    /** Emits whenever that answer changes — walking out of the house, and back in. */
+    fun meteredChanges(): Flow<Boolean> = callbackFlow {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                trySend(onMeteredNetwork())
+            }
+
+            override fun onCapabilitiesChanged(
+                network: Network,
+                capabilities: NetworkCapabilities,
+            ) {
+                trySend(onMeteredNetwork())
+            }
+
+            override fun onLost(network: Network) {
+                trySend(onMeteredNetwork())
+            }
+        }
+
+        trySend(onMeteredNetwork())
+        connectivity.registerDefaultNetworkCallback(callback)
+        awaitClose { connectivity.unregisterNetworkCallback(callback) }
+    }.distinctUntilChanged()
+
     fun currentNetworkId(): String? =
         connectivity.activeNetwork?.let(::identify)
 
