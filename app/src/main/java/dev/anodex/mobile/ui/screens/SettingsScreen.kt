@@ -98,6 +98,13 @@ fun SettingsScreen(
     archiveError: String? = null,
     onRestoreArchived: (Archived) -> Unit = {},
     onDeleteArchived: (Archived) -> Unit = {},
+    /** The computer's own explanation for the current connection state, if any. */
+    connectionHint: String? = null,
+    /** The last crash this app recorded, kept for reporting. Null if it never has. */
+    lastCrash: String? = null,
+    onCopyCrash: () -> Unit = {},
+    onReportCrash: () -> Unit = {},
+    onForgetCrash: () -> Unit = {},
     /** What a manual update check found, so the button can answer. */
     updateCheck: UpdateCheck = UpdateCheck.Idle,
     onCheckForUpdates: () -> Unit = {},
@@ -212,6 +219,20 @@ fun SettingsScreen(
                     error = archiveError,
                     onRestore = onRestoreArchived,
                     onDelete = onDeleteArchived,
+                    modifier = Modifier.padding(bottom = Spacing.x5),
+                )
+            }
+
+            SettingsSection.DIAGNOSTICS -> SectionBody(spacing = Spacing.x4) {
+                SectionLabel("Diagnostics")
+                DiagnosticsScreen(
+                    hostName = hostName,
+                    connectionStatus = hostStatus,
+                    connectionHint = connectionHint,
+                    lastCrash = lastCrash,
+                    onCopyCrash = onCopyCrash,
+                    onReportCrash = onReportCrash,
+                    onForgetCrash = onForgetCrash,
                     modifier = Modifier.padding(bottom = Spacing.x5),
                 )
             }

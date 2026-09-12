@@ -30,6 +30,16 @@ object CrashLog {
     private const val FILE_NAME = "last-crash.txt"
 
     /**
+     * Where a crash goes once it has been shown.
+     *
+     * Dismissing used to delete it, which meant the one artefact worth attaching
+     * to a bug report existed only on the screen that interrupted you, and only
+     * until you tapped past it. Kept here instead so Diagnostics can offer it
+     * later, when somebody has the patience to file the report.
+     */
+    private const val SEEN_FILE_NAME = "previous-crash.txt"
+
+    /**
      * Record uncaught exceptions from every thread, then let the system carry on.
      *
      * The default handler is always called afterwards. Swallowing it would leave the
@@ -55,10 +65,38 @@ object CrashLog {
             if (file.exists()) file.readText().takeIf { it.isNotBlank() } else null
         }.getOrNull()
 
-    /** Called once the user has seen it, so it is not reported twice. */
+    /**
+     * Called once the user has seen it, so the crash screen does not appear again.
+     *
+     * The report is moved rather than deleted: it stops interrupting, and stays
+     * available to Diagnostics for as long as it is the most recent one.
+     */
     fun clear(context: Context) {
-        runCatching { file(context).delete() }
+        runCatching {
+            val fresh = file(context)
+            if (fresh.exists()) {
+                val seen = seenFile(context)
+                seen.delete()
+                if (!fresh.renameTo(seen)) fresh.delete()
+            }
+        }
     }
+
+    /** The last crash this app recorded, shown or not. Null if it has never crashed. */
+    fun lastRecorded(context: Context): String? =
+        read(context) ?: runCatching {
+            seenFile(context).takeIf { it.exists() }?.readText()?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+
+    /** Throw the kept copy away. Only Diagnostics offers this, and only deliberately. */
+    fun forget(context: Context) {
+        runCatching {
+            file(context).delete()
+            seenFile(context).delete()
+        }
+    }
+
+    private fun seenFile(context: Context): File = File(context.filesDir, SEEN_FILE_NAME)
 
     private fun write(context: Context, threadName: String, error: Throwable) {
         val stack = StringWriter().also { error.printStackTrace(PrintWriter(it)) }
