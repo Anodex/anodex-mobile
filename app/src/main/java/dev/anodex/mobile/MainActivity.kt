@@ -778,6 +778,7 @@ private fun ConnectedScaffold(
         val settingsMotion by viewModel.motion.collectAsStateWithLifecycle()
         val settingsKeepAwake by viewModel.keepAwake.collectAsStateWithLifecycle()
         val settingsHaptics by viewModel.haptics.collectAsStateWithLifecycle()
+        val settingsStreamOnMetered by viewModel.streamOnMetered.collectAsStateWithLifecycle()
         val archivedChats by viewModel.archivedChats.collectAsStateWithLifecycle()
         val archivedProjects by viewModel.archivedProjects.collectAsStateWithLifecycle()
         val archiveLoading by viewModel.archiveLoading.collectAsStateWithLifecycle()
@@ -860,6 +861,8 @@ private fun ConnectedScaffold(
             onSetKeepAwake = viewModel::setKeepAwake,
             haptics = settingsHaptics,
             onSetHaptics = viewModel::setHaptics,
+            streamOnMetered = settingsStreamOnMetered,
+            onSetStreamOnMetered = viewModel::setStreamOnMetered,
             updateCheck = updateCheck,
             onCheckForUpdates = viewModel::checkForUpdateNow,
             user = user,

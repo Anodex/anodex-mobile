@@ -114,8 +114,28 @@ class AppearanceStore(private val context: Context) {
         context.appearanceDataStore.edit { it[KEY_HAPTICS] = enabled }
     }
 
+    /**
+     * Whether to take the live token stream on a metered connection.
+     *
+     * Off by default, and that default is the point. Since the computer started
+     * broadcasting a running turn, a phone on mobile data receives every token of
+     * every turn — including for a conversation it does not have open. It costs
+     * nothing to decline: the conversation still arrives whole when the turn is
+     * saved, a moment later rather than a word at a time.
+     *
+     * Wi-Fi is never affected. This is about connections charged by the byte.
+     */
+    val streamOnMetered: Flow<Boolean> = context.appearanceDataStore.data.map { prefs ->
+        prefs[KEY_STREAM_ON_METERED] ?: false
+    }
+
+    suspend fun setStreamOnMetered(enabled: Boolean) {
+        context.appearanceDataStore.edit { it[KEY_STREAM_ON_METERED] = enabled }
+    }
+
     private companion object {
         val KEY_THEME = stringPreferencesKey("theme_mode")
+        val KEY_STREAM_ON_METERED = booleanPreferencesKey("stream_on_metered")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
         val KEY_FONT = stringPreferencesKey("ui_font")
         val KEY_KEEP_AWAKE = booleanPreferencesKey("keep_awake")

@@ -139,6 +139,8 @@ fun SettingsScreen(
     onSetKeepAwake: (Boolean) -> Unit = {},
     haptics: Boolean = true,
     onSetHaptics: (Boolean) -> Unit = {},
+    streamOnMetered: Boolean = false,
+    onSetStreamOnMetered: (Boolean) -> Unit = {},
     /** What the system will actually let through. */
     notificationAccess: NotificationAccess = NotificationAccess(true, true, true, true),
     onOpenNotificationSettings: () -> Unit = {},
@@ -221,6 +223,8 @@ fun SettingsScreen(
                 onSetKeepAwake = onSetKeepAwake,
                 haptics = haptics,
                 onSetHaptics = onSetHaptics,
+                streamOnMetered = streamOnMetered,
+                onSetStreamOnMetered = onSetStreamOnMetered,
             )
 
             SettingsSection.AI_MODELS -> AiAndModelsSection(
@@ -348,6 +352,8 @@ private fun AppearanceSection(
     onSetKeepAwake: (Boolean) -> Unit,
     haptics: Boolean,
     onSetHaptics: (Boolean) -> Unit,
+    streamOnMetered: Boolean,
+    onSetStreamOnMetered: (Boolean) -> Unit,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -448,6 +454,13 @@ private fun AppearanceSection(
                 detail = "A tap you can feel when something needs you",
                 checked = haptics,
                 onChange = onSetHaptics,
+            )
+            RowDivider()
+            ToggleRow(
+                label = "Live text on mobile data",
+                detail = "Off, replies arrive whole when they finish. Wi-Fi is unaffected.",
+                checked = streamOnMetered,
+                onChange = onSetStreamOnMetered,
             )
         }
 
