@@ -2,59 +2,42 @@
 
 The native Android companion to [Anodex](https://github.com/Anodex/Anodex).
 
-Pair it with your desktop over a QR code and you get Chat, Agent, Workspace, Email and Critical
-Thinking on the phone, as you have them on the computer. **Every bit of the work still happens on
+Pair it with your desktop over a QR code and you get Chat, Workspace, Agents, Email and Scheduler
+on the phone, as you have them on the computer. **Every bit of the work still happens on
 your machine.** The phone renders, asks and answers; it does not run a model, hold the workspace,
 execute a tool, or touch a file. Your models, projects, keys and history never leave your PC —
 which is the same promise the desktop app makes, and the reason this app exists in this shape.
 
 The honest cost of that promise: if the desktop is asleep, closed or unreachable, the app says so
-and does nothing. There is no offline mode and no fallback model.
+and does nothing. There is no offline mode and no fallback model. What it does do is say *which* of
+those it is, because the desktop tells it before going away.
 
-## Status
+## Install
 
-**Early.** The design system and the connection-state model are in; there is no transport yet.
+APKs are published on the [Releases page](https://github.com/Anodex/anodex-mobile/releases).
+Download the `.apk`, allow installation from your browser when Android asks, and open it. The app
+checks for its own updates and offers them; it never installs one behind you.
 
-The full design lives in the desktop repo at
-[`docs/HANDOFF_REMOTE_MOBILE.md`](https://github.com/Anodex/Anodex/blob/main/docs/HANDOFF_REMOTE_MOBILE.md)
-— read it before adding anything here. It is self-contained and settles most of the questions you
-are likely to have, including several that look open and are not.
+Then, in the desktop app, open **Settings → Remote** and scan the code.
 
-| Phase | What                                                       | State           |
-| ----- | ---------------------------------------------------------- | --------------- |
-| 1     | Protocol generator + CI gate (desktop repo)                | not started     |
-| 2     | `ClientChannel` refactor + `RemoteBridge` (desktop repo)   | not started     |
-| 3     | App skeleton: pairing, transport, reconnect + resume       | **in progress** |
-| 4     | Chat + tool confirmations                                  | not started     |
-| 5–8   | Agent, Critical Thinking, Workspace, Email                 | not started     |
+Requires Android 8.0 (API 26) or newer.
 
-What is here now — Phase 3 groundwork, with no transport yet:
+## What is on the phone
 
-**The design system** (`ui/theme/`) ported from the desktop's `styles/theme.css` and
-`styles/themes/`. Colours are exact. Typography is deliberately **re-stepped** for a phone rather
-than copied, and `Typography.kt` explains why at length. The launcher icon is Anodex's real mark,
-regenerated from the desktop's own asset by `tools/generate_icons.py` — never redrawn by hand.
+| Section | What it does |
+| --- | --- |
+| **Chat** | General conversation and lookup. It can read your code and your projects; it cannot change them. |
+| **Workspace** | Your projects, their files, and the runs that touched them. Project chats live here, and only here. |
+| **Agents** | Start a run from away, watch it work, and see what it changed before it lands. |
+| **Email** | The desktop's mailbox, with the same triage. |
+| **Scheduler** | What is due, what ran, and what it did. |
 
-**The connection model**, which is the app's top-level state because the phone caches nothing:
+Settings carries the rest: the model, the personality, what the assistant is remembering, and the
+pairing itself.
 
-- `connection/ConnectionReducer.kt` — a pure function over `(state, event, now)`. What a fact
-  *means*.
-- `connection/ConnectionController.kt` — the grace timer and the reconnect backoff. When to *act*.
-  Split from the reducer so the timing is testable in virtual time instead of by standing in a lift
-  with a phone.
-- `connection/NetworkMonitor.kt` — whether the phone is on the network it paired on, derived from
-  routing properties so it costs no location permission.
-
-**Pairing storage** (`pairing/`) — the paired secret encrypted under a non-exportable Android
-Keystore key. This is the entire local persistence story; see the note in `PairedHost.kt` before
-adding a field to it.
-
-**Screens** — `NotPairedScreen`, `OfflineScreen`, `ConnectionHeader`. The offline screen gets real
-design attention because a phone that caches nothing shows it more than anything except the chat.
-
-A design harness lives behind a tap on the unpaired screen, since there is no transport and
-therefore no way to reach the connected states on a device. It is scaffolding; delete it when
-pairing and the transport are real.
+Chat and Workspace are deliberately not the same thing. A conversation's placement *is* its
+permission: no project means no create, no edit, no run. That rule is enforced on the desktop, in
+`buildTools`, not here — the phone cannot grant itself anything the computer would not.
 
 ## Building
 
@@ -68,6 +51,37 @@ Requires **JDK 17** and the Android SDK (compileSdk 35).
 The wrapper pins Gradle 8.9 and CI runs both of these on every push, so the build is verified even
 if you have no local toolchain. `gradle/actions/wrapper-validation` checks the committed wrapper jar
 against Gradle's published checksums on every run.
+
+CI is the only compiler that counts here. Kotlin's exhaustiveness and scope rules are not visible to
+a text search, and a green local test run proves nothing about whether the module builds.
+
+## How it is put together
+
+**The design system** (`ui/theme/`) is ported from the desktop's `styles/theme.css` and
+`styles/themes/`. Colours are exact. Typography is deliberately **re-stepped** for a phone rather
+than copied, and `Typography.kt` explains why at length. The launcher icon and the icon set are
+Anodex's real marks, taken from the desktop's own assets — `AnodexIcon.kt` holds the same path
+strings `Icon.tsx` does, and a test pins them so the two cannot drift in silence.
+
+**The connection model** is the app's top-level state, because the phone caches nothing:
+
+- `connection/ConnectionReducer.kt` — a pure function over `(state, event, now)`. What a fact
+  *means*.
+- `connection/ConnectionController.kt` — the grace timer and the reconnect backoff. When to *act*.
+  Split from the reducer so the timing is testable in virtual time instead of by standing in a lift
+  with a phone.
+- `connection/NetworkMonitor.kt` — whether the phone is on the network it paired on, derived from
+  routing properties so it costs no location permission.
+- `connection/RemoteFarewell.kt` — the reasons the computer gives for going away, mirroring
+  `src/shared/remoteFarewell.ts` by hand. A socket that simply dies tells you nothing; quitting,
+  sleeping and "remote access switched off" send you to three different places.
+
+**Pairing storage** (`pairing/`) — the paired secret encrypted under a non-exportable Android
+Keystore key. This is the entire local persistence story; see the note in `PairedHost.kt` before
+adding a field to it.
+
+**The transport** (`transport/`) speaks the desktop's generated protocol. Every channel the phone
+uses is in that artifact; nothing is hand-written.
 
 ## House rules
 
@@ -83,12 +97,13 @@ These are inherited from the desktop app and are not negotiable per-PR.
   `LocalReducedMotion`.
 - **48dp touch targets.** The desktop's 26px controls do not port. Keep the control small and
   expand its touch target with padding.
-- **Never hand-write a channel definition.** Once the protocol artifact exists, if a channel is
-  not in it, it does not exist.
+- **Never hand-write a channel definition.** If a channel is not in the protocol artifact, it does
+  not exist.
+- **Never show a number nobody measured.** An absent reading is not zero. The context ring shipped
+  a percentage derived from a count that was never taken, and it looked entirely convincing.
 - **The APK signing keystore never enters this repository.** Android identifies an app by its
   signing key: lose it and existing installs can never be updated, only uninstalled and replaced —
-  taking their paired keys with them. Back it up off-machine before the first release. It is the
-  only irreversible mistake available in this project.
+  taking their paired keys with them. It is the only irreversible mistake available in this project.
 
 ## Licence
 
