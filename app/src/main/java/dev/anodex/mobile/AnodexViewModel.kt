@@ -415,11 +415,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             user.getOrNull()?.let { _user.value = it }
             usage.getOrNull()?.let { _usage.value = it }
 
+            // A read that succeeds and returns nothing is a failure too. The profile
+            // shipped exactly that way: the call worked, the parse quietly produced
+            // null, and the screen showed an em dash with no error to explain it.
+            // `isFailure` alone would let it through again.
             _profileError.value = when {
                 usage.isFailure -> usage.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
                     ?.let { "Could not read your activity: $it" }
                     ?: "Could not read your activity."
-                user.isFailure && _user.value == null -> "Could not read your profile."
+                usage.getOrNull() == null -> "Could not read your activity."
+                user.isFailure || _user.value == null -> "Could not read your profile."
                 else -> null
             }
         }
