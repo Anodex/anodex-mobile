@@ -46,6 +46,9 @@ import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
 import dev.anodex.mobile.memory.MemoryEntry
+import dev.anodex.mobile.profile.UserProfile
+import dev.anodex.mobile.profile.UsageProfile
+import dev.anodex.mobile.profile.ProfileReader
 import dev.anodex.mobile.notify.NotificationAccess
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
@@ -351,6 +354,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private var memoryClient: Memory? = null
+    private var profileReader: ProfileReader? = null
 
     /**
      * Whether Settings is open.
@@ -371,6 +375,51 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onSettingsClosed() {
         _settingsOpen.value = false
+    }
+
+    private val _user = MutableStateFlow<UserProfile?>(null)
+
+    /** Whose Anodex this is. Read only — the name and avatar are set at the computer. */
+    val user: StateFlow<UserProfile?> = _user.asStateFlow()
+
+    private val _usage = MutableStateFlow<UsageProfile?>(null)
+
+    /** Lifetime activity, as the computer has counted it. */
+    val usage: StateFlow<UsageProfile?> = _usage.asStateFlow()
+
+    private val _profileLoading = MutableStateFlow(false)
+    val profileLoading: StateFlow<Boolean> = _profileLoading.asStateFlow()
+
+    private val _profileError = MutableStateFlow<String?>(null)
+    val profileError: StateFlow<String?> = _profileError.asStateFlow()
+
+    /**
+     * Read the profile and the usage numbers.
+     *
+     * Two independent reads rather than one, and a failure of either is reported
+     * rather than folded into an empty screen: "nothing recorded yet" and "could not
+     * reach the computer" look identical once both render as blank, and only one of
+     * them is the user's fault to fix.
+     */
+    fun refreshProfile() {
+        val reader = profileReader ?: return
+        _profileLoading.value = true
+        viewModelScope.launch {
+            val user = runCatching { reader.user() }
+            val usage = runCatching { reader.usage() }
+            _profileLoading.value = false
+
+            user.getOrNull()?.let { _user.value = it }
+            usage.getOrNull()?.let { _usage.value = it }
+
+            _profileError.value = when {
+                usage.isFailure -> usage.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
+                    ?.let { "Could not read your activity: $it" }
+                    ?: "Could not read your activity."
+                user.isFailure && _user.value == null -> "Could not read your profile."
+                else -> null
+            }
+        }
     }
 
     private val _memories = MutableStateFlow<List<MemoryEntry>>(emptyList())
@@ -1533,6 +1582,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 uploads = Uploads(candidate, getApplication<Application>().contentResolver)
                 schedulerClient = Scheduler(candidate)
                 memoryClient = Memory(candidate)
+                profileReader = ProfileReader(candidate)
                 modelClient = Models(candidate)
                 _chat.value = ChatSession(
                     socket = candidate,

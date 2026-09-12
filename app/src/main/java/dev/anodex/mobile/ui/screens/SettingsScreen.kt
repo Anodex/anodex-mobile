@@ -46,6 +46,8 @@ import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.memory.MemoryEntry
+import dev.anodex.mobile.profile.UserProfile
+import dev.anodex.mobile.profile.UsageProfile
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -80,6 +82,12 @@ fun SettingsScreen(
     hostName: String? = null,
     hostStatus: String = "Not connected",
     onOpenHost: (() -> Unit)? = null,
+    /** Whose Anodex this is, read from the computer. Null until it answers. */
+    user: UserProfile? = null,
+    /** Lifetime activity, as the computer counts it. Null until it answers. */
+    usage: UsageProfile? = null,
+    profileLoading: Boolean = false,
+    profileError: String? = null,
     /** The build the computer expects, when this phone is behind it. Null if not. */
     newerVersion: String? = null,
     /** What is already on the computer. Never what could be downloaded. */
@@ -128,16 +136,20 @@ fun SettingsScreen(
                 onOpen = { section = it },
             )
 
-            // Still at the computer, and this one is right: a profile is a setting,
-            // and the `settings:` prefix carries the permission mode and the model
-            // directory beside it.
-            SettingsSection.PROFILE -> AtTheComputer(
-                what = "Your name, avatar and account",
-                why = "A phone cannot reach the computer's settings. That prefix carries " +
-                    "the permission mode, the MCP servers and the model directory, and a " +
-                    "client able to write to it could dismantle the protections that let " +
-                    "it connect at all.",
-            )
+            // No longer "at the computer, and nothing else". Editing a profile is
+            // still a setting and still unreachable — `settings:` carries the
+            // permission mode and the model directory — but that was being used to
+            // justify an empty screen, including the numbers the computer already
+            // keeps. `settings:get-profile` is a read and nothing more.
+            SettingsSection.PROFILE -> SectionBody(spacing = Spacing.x5) {
+                ProfileScreen(
+                    user = user,
+                    usage = usage,
+                    loading = profileLoading,
+                    error = profileError,
+                    modifier = Modifier.padding(vertical = Spacing.x4),
+                )
+            }
 
             // Reading was previously refused here on the grounds that it would put
             // the contents of every note on a device that gets left on tables. That
