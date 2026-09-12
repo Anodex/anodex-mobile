@@ -298,6 +298,9 @@ SOFTWARE.
   equivalent from the installed dependency tree and fails CI when the two drift apart. There
   is no such check here, so **update this file whenever
   [`gradle/libs.versions.toml`](gradle/libs.versions.toml) changes.**
+- **It is paired with the desktop repository's licensing documents.** A change to what this
+  project grants, asks or promises has to land in both repositories in the same sitting,
+  whichever one it started in. See `AGENTS.md`.
 
 ## The desktop application
 

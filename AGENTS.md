@@ -110,6 +110,43 @@ the code comments use. A list of commit subjects is not release notes. This is
 the part people actually read, and it is the standard the desktop repository was
 asked to match.
 
+## Policy documents change in both repositories at once
+
+`Anodex/Anodex` and `Anodex/anodex-mobile` are two repositories and one product.
+Anybody reading them is deciding one thing: what they are allowed to do with
+Anodex, and what happens if they send something back. That answer cannot differ
+by repository, and it cannot be right in one of them for a week.
+
+So these are **paired**. Change one, change the other in the same sitting:
+
+| Document | What it settles |
+| --- | --- |
+| `LICENSE.md` | what people may and may not do with the source |
+| `CONTRIBUTING.md` | the terms attached to anything somebody sends |
+| `SECURITY.md` | how a vulnerability is reported, and what is promised back |
+| `THIRD-PARTY-NOTICES.md` | the notices third-party licences require |
+| `.github/ISSUE_TEMPLATE/*`, `.github/pull_request_template.md` | what a reporter is warned about and asked to agree to |
+| `.github/FUNDING.yml` | where support goes |
+| the README's "Source available, not open source" section | the same answer, where people actually read it |
+
+**Which repository the change starts in does not matter.** A wording fix noticed
+while working on the phone app is still a change to the desktop's licence, and
+the reverse. The rule is symmetric on purpose, because the asymmetric version —
+"remember to port desktop changes down" — is the one that gets forgotten in the
+direction nobody is watching.
+
+Paired does not mean identical. Each file is written for its own product and
+should keep its own examples, its own threat model, and its own voice. What has
+to match is the **policy**: the same permissions granted, the same terms on
+contributions, the same answer to the same question. If a deliberate difference
+is genuinely correct, say so in both files rather than leaving a reader to work
+out which one is stale.
+
+Two open pull requests, one per repository, cross-linked in their descriptions,
+is the shape this takes. Nothing enforces it — there is no CI check spanning two
+repositories — so it is a convention, and the reason it is written down here is
+that conventions nobody wrote down are the ones that quietly stop happening.
+
 ## Attribution
 
 `tools/strip_attribution.py` is installed as a `commit-msg` hook and removes
