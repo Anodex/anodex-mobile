@@ -99,6 +99,8 @@ import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.screens.TaskScreen
 import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.screens.WorkspaceScreen
+import dev.anodex.mobile.ui.theme.FontScale
+import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.AppearanceStore
 import dev.anodex.mobile.ui.theme.Radii
@@ -150,6 +152,8 @@ class MainActivity : ComponentActivity() {
             // everything including the crash screen. SYSTEM until the store has
             // answered, which is one frame and is also the right default.
             val mode by appearance.themeMode.collectAsStateWithLifecycle(ThemeMode.SYSTEM)
+            val fontScale by appearance.fontScale.collectAsStateWithLifecycle(FontScale.MEDIUM)
+            val uiFont by appearance.uiFont.collectAsStateWithLifecycle(UiFont.SYSTEM)
 
             AnodexTheme(
                 darkTheme = when (mode) {
@@ -157,6 +161,8 @@ class MainActivity : ComponentActivity() {
                     ThemeMode.LIGHT -> false
                     ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 },
+                fontScale = fontScale,
+                uiFont = uiFont,
             ) {
                 if (crash != null) {
                     CrashReportScreen(
@@ -738,6 +744,8 @@ private fun ConnectedScaffold(
         val profileLoading by viewModel.profileLoading.collectAsStateWithLifecycle()
         val profileError by viewModel.profileError.collectAsStateWithLifecycle()
         val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
+        val settingsFontScale by viewModel.fontScale.collectAsStateWithLifecycle()
+        val settingsUiFont by viewModel.uiFont.collectAsStateWithLifecycle()
         val archivedChats by viewModel.archivedChats.collectAsStateWithLifecycle()
         val archivedProjects by viewModel.archivedProjects.collectAsStateWithLifecycle()
         val archiveLoading by viewModel.archiveLoading.collectAsStateWithLifecycle()
@@ -810,6 +818,10 @@ private fun ConnectedScaffold(
                 CrashLog.forget(settingsContext)
                 lastCrash = null
             },
+            fontScale = settingsFontScale,
+            onSelectFontScale = viewModel::setFontScale,
+            uiFont = settingsUiFont,
+            onSelectFont = viewModel::setUiFont,
             updateCheck = updateCheck,
             onCheckForUpdates = viewModel::checkForUpdateNow,
             user = user,

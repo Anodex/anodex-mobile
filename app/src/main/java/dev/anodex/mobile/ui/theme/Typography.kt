@@ -61,12 +61,63 @@ object TextSize {
  * Roboto. Nothing is bundled, and the app inherits the user's font-size accessibility setting for
  * free because every size here is in sp.
  */
+/**
+ * How much bigger or smaller than the designed scale, and in what face.
+ *
+ * The ladder in [AnodexTypography] is designed, not arbitrary — every step has a
+ * comment explaining why it sits where it does, and `chatBody` is deliberately off
+ * the ladder entirely. So a size preference multiplies the whole thing rather than
+ * setting sizes: the relationships between body, label and meta survive, and a reader
+ * who wants everything larger gets everything larger rather than a flattened scale.
+ *
+ * Sizes stay in `sp`, so this multiplies whatever the phone's own accessibility
+ * text-size setting already did. Somebody who has turned Android up to maximum and
+ * then picks Large here means it.
+ */
+@Immutable
+enum class FontScale(val label: String, val description: String, val factor: Float) {
+    SMALL("Small", "Tighter, fits more on screen", 0.88f),
+    MEDIUM("Medium", "The designed size", 1f),
+    LARGE("Large", "Easier to read at arm's length", 1.15f),
+}
+
+/**
+ * Which face the interface is set in.
+ *
+ * Mirrors the desktop's three, and means the same thing by them. `SYSTEM` is the
+ * phone's own — Roboto on most, whatever the manufacturer shipped on others — which
+ * is why it is the default: it is the face every other app on the device uses.
+ *
+ * `MONO` is a deliberate oddity rather than an oversight. Some people read a dense
+ * interface better in a fixed pitch, and the desktop offers it, so this does too.
+ * Chat code and tool output stay monospaced under every choice; this is about
+ * everything else.
+ */
+@Immutable
+enum class UiFont(val label: String, val description: String) {
+    SYSTEM("System", "Whatever this phone uses elsewhere"),
+    SANS("Sans-serif", "A plain proportional face"),
+    MONO("Monospace", "Fixed pitch, for the whole interface"),
+    ;
+
+    val family: FontFamily
+        get() = when (this) {
+            SYSTEM -> FontFamily.Default
+            SANS -> FontFamily.SansSerif
+            MONO -> FontFamily.Monospace
+        }
+}
+
 @Immutable
 data class AnodexTypography(
+    /** Multiplies every size below. See [FontScale]. */
+    val scale: Float = 1f,
+    /** The face for everything that is not deliberately monospaced. */
+    val family: FontFamily = FontFamily.Default,
     val body: TextStyle = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontSize = TextSize.base,
-        lineHeight = 22.sp,
+        fontFamily = family,
+        fontSize = TextSize.base * scale,
+        lineHeight = 22.sp * scale,
         fontWeight = FontWeight.Normal,
     ),
     val bodyEmphasis: TextStyle = body.copy(fontWeight = FontWeight.Medium),
@@ -85,13 +136,13 @@ data class AnodexTypography(
      * The generous line height is the other half of it. Long-form text on a narrow
      * column needs the leading more than it needs the point size.
      */
-    val chatBody: TextStyle = body.copy(fontSize = 17.sp, lineHeight = 26.sp),
+    val chatBody: TextStyle = body.copy(fontSize = 17.sp * scale, lineHeight = 26.sp * scale),
     val chatBodyEmphasis: TextStyle = chatBody.copy(fontWeight = FontWeight.Medium),
 
     /** A heading inside a reply, kept a clear step above `chatBody`. */
     val chatHeading: TextStyle = chatBody.copy(
-        fontSize = 20.sp,
-        lineHeight = 28.sp,
+        fontSize = 20.sp * scale,
+        lineHeight = 28.sp * scale,
         fontWeight = FontWeight.SemiBold,
     ),
 
@@ -104,49 +155,49 @@ data class AnodexTypography(
      */
     val chatMono: TextStyle = TextStyle(
         fontFamily = FontFamily.Monospace,
-        fontSize = 15.sp,
-        lineHeight = 22.sp,
+        fontSize = 15.sp * scale,
+        lineHeight = 22.sp * scale,
     ),
     val label: TextStyle = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontSize = TextSize.sm,
-        lineHeight = 18.sp,
+        fontFamily = family,
+        fontSize = TextSize.sm * scale,
+        lineHeight = 18.sp * scale,
         fontWeight = FontWeight.Medium,
     ),
     val meta: TextStyle = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontSize = TextSize.xs,
-        lineHeight = 16.sp,
+        fontFamily = family,
+        fontSize = TextSize.xs * scale,
+        lineHeight = 16.sp * scale,
         fontWeight = FontWeight.Normal,
     ),
     val badge: TextStyle = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontSize = TextSize.xxs,
-        lineHeight = 14.sp,
+        fontFamily = family,
+        fontSize = TextSize.xxs * scale,
+        lineHeight = 14.sp * scale,
         fontWeight = FontWeight.Medium,
     ),
     val heading: TextStyle = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontSize = TextSize.lg,
-        lineHeight = 24.sp,
+        fontFamily = family,
+        fontSize = TextSize.lg * scale,
+        lineHeight = 24.sp * scale,
         fontWeight = FontWeight.SemiBold,
     ),
     val title: TextStyle = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontSize = TextSize.xl,
-        lineHeight = 28.sp,
+        fontFamily = family,
+        fontSize = TextSize.xl * scale,
+        lineHeight = 28.sp * scale,
         fontWeight = FontWeight.SemiBold,
     ),
     val display: TextStyle = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontSize = TextSize.xxl,
-        lineHeight = 36.sp,
+        fontFamily = family,
+        fontSize = TextSize.xxl * scale,
+        lineHeight = 36.sp * scale,
         fontWeight = FontWeight.SemiBold,
     ),
     /** Code, tool output, file paths. Desktop `--font-mono`. */
     val mono: TextStyle = TextStyle(
         fontFamily = FontFamily.Monospace,
-        fontSize = TextSize.sm,
-        lineHeight = 20.sp,
+        fontSize = TextSize.sm * scale,
+        lineHeight = 20.sp * scale,
     ),
 )

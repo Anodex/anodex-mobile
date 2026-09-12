@@ -68,6 +68,8 @@ import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
+import dev.anodex.mobile.ui.theme.FontScale
+import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.ui.theme.AppearanceStore
 import dev.anodex.mobile.update.UpdateCheck
 import dev.anodex.mobile.update.UpdateState
@@ -995,6 +997,21 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { appearance.setThemeMode(mode) }
+    }
+
+    /** How large the interface is set, and in what face. Phone-local, like the theme. */
+    val fontScale: StateFlow<FontScale> = appearance.fontScale
+        .stateIn(viewModelScope, SharingStarted.Eagerly, FontScale.MEDIUM)
+
+    fun setFontScale(scale: FontScale) {
+        viewModelScope.launch { appearance.setFontScale(scale) }
+    }
+
+    val uiFont: StateFlow<UiFont> = appearance.uiFont
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UiFont.SYSTEM)
+
+    fun setUiFont(font: UiFont) {
+        viewModelScope.launch { appearance.setUiFont(font) }
     }
 
     /**

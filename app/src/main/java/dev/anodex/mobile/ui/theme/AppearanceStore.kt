@@ -38,7 +38,36 @@ class AppearanceStore(private val context: Context) {
         context.appearanceDataStore.edit { it[KEY_THEME] = mode.name }
     }
 
+    /**
+     * How large the interface is set, and in what face.
+     *
+     * Phone-local for the same reason the theme is: this is about the screen in your
+     * hand and how far away you are holding it, which has nothing to do with the
+     * machine at the other end.
+     */
+    val fontScale: Flow<FontScale> = context.appearanceDataStore.data.map { prefs ->
+        prefs[KEY_FONT_SCALE]
+            ?.let { stored -> FontScale.entries.firstOrNull { it.name == stored } }
+            ?: FontScale.MEDIUM
+    }
+
+    suspend fun setFontScale(scale: FontScale) {
+        context.appearanceDataStore.edit { it[KEY_FONT_SCALE] = scale.name }
+    }
+
+    val uiFont: Flow<UiFont> = context.appearanceDataStore.data.map { prefs ->
+        prefs[KEY_FONT]
+            ?.let { stored -> UiFont.entries.firstOrNull { it.name == stored } }
+            ?: UiFont.SYSTEM
+    }
+
+    suspend fun setUiFont(font: UiFont) {
+        context.appearanceDataStore.edit { it[KEY_FONT] = font.name }
+    }
+
     private companion object {
         val KEY_THEME = stringPreferencesKey("theme_mode")
+        val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
+        val KEY_FONT = stringPreferencesKey("ui_font")
     }
 }
