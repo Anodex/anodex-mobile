@@ -51,6 +51,11 @@ import dev.anodex.mobile.profile.UsageProfile
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.update.UpdateCheck
+import dev.anodex.mobile.ui.theme.FontScale
+import dev.anodex.mobile.ui.theme.UiFont
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -120,6 +125,11 @@ fun SettingsScreen(
     /** How this app picks its palette \u2014 the one phone-local setting here. */
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     onSelectTheme: (ThemeMode) -> Unit = {},
+    /** How large the interface is set. Phone-local, like the theme. */
+    fontScale: FontScale = FontScale.MEDIUM,
+    onSelectFontScale: (FontScale) -> Unit = {},
+    uiFont: UiFont = UiFont.SYSTEM,
+    onSelectFont: (UiFont) -> Unit = {},
     /** What the system will actually let through. */
     notificationAccess: NotificationAccess = NotificationAccess(true, true, true, true),
     onOpenNotificationSettings: () -> Unit = {},
@@ -189,7 +199,14 @@ fun SettingsScreen(
                 onForget = onForgetMemory,
             )
 
-            SettingsSection.APPEARANCE -> AppearanceSection(themeMode, onSelectTheme)
+            SettingsSection.APPEARANCE -> AppearanceSection(
+                mode = themeMode,
+                onSelect = onSelectTheme,
+                fontScale = fontScale,
+                onSelectFontScale = onSelectFontScale,
+                uiFont = uiFont,
+                onSelectFont = onSelectFont,
+            )
 
             SettingsSection.AI_MODELS -> AiAndModelsSection(
                 personalities = personalities,
@@ -303,7 +320,17 @@ private fun AtTheComputer(what: String, why: String) {
 }
 
 @Composable
-private fun AppearanceSection(mode: ThemeMode, onSelect: (ThemeMode) -> Unit) {
+private fun AppearanceSection(
+    mode: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+    fontScale: FontScale,
+    onSelectFontScale: (FontScale) -> Unit,
+    uiFont: UiFont,
+    onSelectFont: (UiFont) -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
     SectionBody {
         SectionLabel("Theme")
 
@@ -319,9 +346,61 @@ private fun AppearanceSection(mode: ThemeMode, onSelect: (ThemeMode) -> Unit) {
             }
         }
 
+        SectionLabel("Text size")
+
+        Group {
+            FontScale.entries.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = entry.label,
+                    detail = entry.description,
+                    selected = entry == fontScale,
+                    onClick = { onSelectFontScale(entry) },
+                )
+            }
+        }
+
+        SectionLabel("Font")
+
+        Group {
+            UiFont.entries.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = entry.label,
+                    detail = entry.description,
+                    selected = entry == uiFont,
+                    onClick = { onSelectFont(entry) },
+                )
+            }
+        }
+
+        // A preview, so the choice is visible without leaving the screen to check.
+        // These two lines are the ones that matter: a reply is read at length, and the
+        // line under it is the smallest thing the app ever asks anyone to read. If
+        // both are comfortable here, the setting is right.
+        Column(
+            modifier = Modifier
+                .padding(top = Spacing.x4)
+                .fillMaxWidth()
+                .clip(Radii.lg)
+                .background(colors.bgSurface)
+                .padding(Spacing.x4),
+        ) {
+            Text("Preview", style = type.label, color = colors.textFaint)
+            Spacer(Modifier.height(Spacing.x2))
+            Text(
+                text = "Anodex replies look like this — a paragraph or two, read rather " +
+                    "than scanned, held at whatever distance you hold your phone.",
+                style = type.chatBody,
+                color = colors.text,
+            )
+            Spacer(Modifier.height(Spacing.x2))
+            Text("Qwen3-30B · 12% of 32K", style = type.meta, color = colors.textMuted)
+        }
+
         Footnote(
-            "This one is only about this phone. Everything else in Settings is your " +
-                "computer\u2019s, and moves for whoever is sitting at it too.",
+            "These are only about this phone. Everything else in Settings is your " +
+                "computer’s, and moves for whoever is sitting at it too.",
         )
     }
 }
