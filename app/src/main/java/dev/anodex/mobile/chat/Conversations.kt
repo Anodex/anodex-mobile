@@ -69,9 +69,16 @@ class Conversations(private val socket: AnodexSocket) {
 
     suspend fun list(): List<ConversationSummary> {
         val result = socket.invoke(CHANNEL_SUMMARIES) as? JsonArray ?: return emptyList()
-        return result.mapNotNull { it.asSummary() }
+        // Archived rows are dropped here rather than inside the parser, so the same
+        // parse can serve the archive screen, where they are the entire point.
+        return result.filterNot { it.isArchived() }
+            .mapNotNull { it.asSummary() }
             .sortedByDescending { it.updatedAtEpochMs }
     }
+
+    /** Whether the computer has archived this row. */
+    private fun kotlinx.serialization.json.JsonElement.isArchived(): Boolean =
+        (this as? JsonObject)?.get("archived")?.jsonPrimitive?.contentOrNull() == "true"
 
     /**
      * Load one conversation's most recent turns.
@@ -121,9 +128,34 @@ class Conversations(private val socket: AnodexSocket) {
         socket.invoke(CHANNEL_RESTORE, listOf(JsonPrimitive(conversationId)))
     }
 
+    /**
+     * What has been archived.
+     *
+     * A separate channel rather than a flag on [list], because `list` deliberately
+     * drops archived rows — the drawer must never show one — and a boolean argument
+     * threading through it would be one `false` away from putting them back.
+     */
+    suspend fun listArchived(): List<ConversationSummary> {
+        val result = socket.invoke(CHANNEL_LIST_ARCHIVED) as? JsonArray ?: return emptyList()
+        // `asSummary` drops archived rows, which is exactly wrong here: every row in
+        // this answer is archived by definition. Parsed without that filter.
+        return result.mapNotNull { it.asSummary() }
+            .sortedByDescending { it.updatedAtEpochMs }
+    }
+
+    /**
+     * Gone, not hidden.
+     *
+     * The only call in this client that cannot be undone from either end. The screen
+     * that reaches it asks first, and asks in terms of what is lost rather than
+     * whether the user is sure.
+     */
+    suspend fun deletePermanently(conversationId: String) {
+        socket.invoke(CHANNEL_DELETE_PERMANENT, listOf(JsonPrimitive(conversationId)))
+    }
+
     private fun kotlinx.serialization.json.JsonElement.asSummary(): ConversationSummary? {
         val fields = this as? JsonObject ?: return null
-        if (fields["archived"]?.jsonPrimitive?.contentOrNull() == "true") return null
 
         val id = fields["id"]?.jsonPrimitive?.contentOrNull() ?: return null
         // Counted by the desktop now. The summary deliberately carries no messages —
@@ -187,6 +219,8 @@ class Conversations(private val socket: AnodexSocket) {
         /** Archive, in the desktop's own words. See [archive]. */
         const val CHANNEL_ARCHIVE = "conversations:delete"
         const val CHANNEL_RESTORE = "conversations:restore"
+        const val CHANNEL_LIST_ARCHIVED = "conversations:list-archived"
+        const val CHANNEL_DELETE_PERMANENT = "conversations:delete-permanent"
 
         /**
          * How much of a transcript to pull when opening one.

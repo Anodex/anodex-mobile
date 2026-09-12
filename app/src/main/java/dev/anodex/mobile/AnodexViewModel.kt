@@ -21,6 +21,7 @@ import dev.anodex.mobile.chat.MessagePersona
 import dev.anodex.mobile.chat.Models
 import dev.anodex.mobile.chat.Personalities
 import dev.anodex.mobile.chat.PersonalityState
+import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.chat.Projects
 import dev.anodex.mobile.chat.ProjectsState
 import dev.anodex.mobile.chat.UploadState
@@ -45,6 +46,7 @@ import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
+import dev.anodex.mobile.ui.screens.Archived
 import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.profile.UsageProfile
@@ -420,6 +422,83 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 user.isFailure && _user.value == null -> "Could not read your profile."
                 else -> null
             }
+        }
+    }
+
+    private val _archivedChats = MutableStateFlow<List<ConversationSummary>>(emptyList())
+    val archivedChats: StateFlow<List<ConversationSummary>> = _archivedChats.asStateFlow()
+
+    private val _archivedProjects = MutableStateFlow<List<Project>>(emptyList())
+    val archivedProjects: StateFlow<List<Project>> = _archivedProjects.asStateFlow()
+
+    private val _archiveLoading = MutableStateFlow(false)
+    val archiveLoading: StateFlow<Boolean> = _archiveLoading.asStateFlow()
+
+    private val _archiveError = MutableStateFlow<String?>(null)
+    val archiveError: StateFlow<String?> = _archiveError.asStateFlow()
+
+    fun refreshArchive() {
+        val conversations = conversationReader
+        val projects = projectClient
+        if (conversations == null || projects == null) return
+
+        _archiveLoading.value = true
+        viewModelScope.launch {
+            val chats = runCatching { conversations.listArchived() }
+            val workspaces = runCatching { projects.listArchived() }
+            _archiveLoading.value = false
+
+            chats.getOrNull()?.let { _archivedChats.value = it }
+            workspaces.getOrNull()?.let { _archivedProjects.value = it }
+            _archiveError.value = if (chats.isFailure || workspaces.isFailure) {
+                "Could not read the archive from the computer."
+            } else {
+                null
+            }
+        }
+    }
+
+    /** Put something back. Reversible, so it happens without asking. */
+    fun restoreArchived(item: Archived) {
+        val conversations = conversationReader
+        val projects = projectClient
+        viewModelScope.launch {
+            runCatching {
+                when (item) {
+                    is Archived.Chat -> conversations?.restore(item.id)
+                    is Archived.Workspace -> projects?.restore(item.id)
+                }
+            }
+            // Re-read rather than removing the row locally: restoring a project moves
+            // its conversations too, and guessing at that here would leave the two
+            // lists disagreeing with the computer.
+            refreshArchive()
+            refreshConversations()
+        }
+    }
+
+    /**
+     * Remove something for good.
+     *
+     * The screen asks first. This does not ask again — a second confirmation in a
+     * different layer is how a destructive path ends up with two half-checks and no
+     * whole one.
+     */
+    fun deleteArchived(item: Archived) {
+        val conversations = conversationReader
+        val projects = projectClient
+        viewModelScope.launch {
+            val done = runCatching {
+                when (item) {
+                    is Archived.Chat -> conversations?.deletePermanently(item.id)
+                    is Archived.Workspace -> projects?.deletePermanently(item.id)
+                }
+            }
+            if (done.isFailure) {
+                _archiveError.value = "Could not delete that. Nothing was removed."
+            }
+            refreshArchive()
+            refreshConversations()
         }
     }
 

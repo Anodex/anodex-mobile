@@ -52,6 +52,11 @@ enum class SettingsSection(
         icon = AnodexIcon.SMARTPHONE,
         summary = "This phone and the computer it drives",
     ),
+    ARCHIVE(
+        label = "Archive",
+        icon = AnodexIcon.ARCHIVE,
+        summary = "What you put away, and the only place to throw it out",
+    ),
     ABOUT(
         label = "About",
         icon = AnodexIcon.INFO,

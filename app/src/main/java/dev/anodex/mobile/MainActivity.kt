@@ -736,6 +736,10 @@ private fun ConnectedScaffold(
         val profileLoading by viewModel.profileLoading.collectAsStateWithLifecycle()
         val profileError by viewModel.profileError.collectAsStateWithLifecycle()
         val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
+        val archivedChats by viewModel.archivedChats.collectAsStateWithLifecycle()
+        val archivedProjects by viewModel.archivedProjects.collectAsStateWithLifecycle()
+        val archiveLoading by viewModel.archiveLoading.collectAsStateWithLifecycle()
+        val archiveError by viewModel.archiveError.collectAsStateWithLifecycle()
 
         // Read when Settings opens rather than when the Memory section is reached:
         // the section is chosen inside that screen, and threading a callback back
@@ -746,6 +750,7 @@ private fun ConnectedScaffold(
         // Profile section is reached. Two reads on open is cheaper than threading a
         // callback back out of a screen that already knows which section it is on.
         LaunchedEffect(Unit) { viewModel.refreshProfile() }
+        LaunchedEffect(Unit) { viewModel.refreshArchive() }
 
         // And kept current while this screen is up. The computer announces memory
         // changes now, and most of them are written by the model partway through a
@@ -771,6 +776,12 @@ private fun ConnectedScaffold(
             onAllowBackground = {
                 settingsContext.startActivity(viewModel.batteryExemptionIntent())
             },
+            archivedChats = archivedChats,
+            archivedProjects = archivedProjects,
+            archiveLoading = archiveLoading,
+            archiveError = archiveError,
+            onRestoreArchived = viewModel::restoreArchived,
+            onDeleteArchived = viewModel::deleteArchived,
             updateCheck = updateCheck,
             onCheckForUpdates = viewModel::checkForUpdateNow,
             user = user,

@@ -48,6 +48,8 @@ import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.profile.UsageProfile
+import dev.anodex.mobile.chat.ConversationSummary
+import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.update.UpdateCheck
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -89,6 +91,13 @@ fun SettingsScreen(
     usage: UsageProfile? = null,
     profileLoading: Boolean = false,
     profileError: String? = null,
+    /** Chats the computer has archived. Restored or deleted from here only. */
+    archivedChats: List<ConversationSummary> = emptyList(),
+    archivedProjects: List<Project> = emptyList(),
+    archiveLoading: Boolean = false,
+    archiveError: String? = null,
+    onRestoreArchived: (Archived) -> Unit = {},
+    onDeleteArchived: (Archived) -> Unit = {},
     /** What a manual update check found, so the button can answer. */
     updateCheck: UpdateCheck = UpdateCheck.Idle,
     onCheckForUpdates: () -> Unit = {},
@@ -193,6 +202,19 @@ fun SettingsScreen(
             )
 
             SettingsSection.REMOTE -> RemoteSection(hostName, hostStatus, onOpenHost)
+
+            SettingsSection.ARCHIVE -> SectionBody(spacing = Spacing.x4) {
+                SectionLabel("Archive")
+                ArchiveScreen(
+                    chats = archivedChats,
+                    projects = archivedProjects,
+                    loading = archiveLoading,
+                    error = archiveError,
+                    onRestore = onRestoreArchived,
+                    onDelete = onDeleteArchived,
+                    modifier = Modifier.padding(bottom = Spacing.x5),
+                )
+            }
 
             SettingsSection.ABOUT -> AboutSection(
                 installedVersion = installedVersion,
