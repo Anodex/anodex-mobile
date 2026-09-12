@@ -64,6 +64,20 @@ class AnodexIconTest {
     }
 
     @Test
+    fun `refresh is the desktop's arrow curling back on itself`() {
+        // Copied from `Icon.tsx` rather than drawn. An arrow that means "check
+        // again" on the computer has to mean it on the phone, and the two split
+        // into the same sub-paths so a diff between them stays line-for-line.
+        assertEquals(
+            listOf(
+                "M21 12a9 9 0 1 1-3-6.7L21 8",
+                "M21 3v5h-5",
+            ),
+            AnodexIcon.REFRESH.strokes,
+        )
+    }
+
+    @Test
     fun `every glyph parses as a closed set of sub-paths`() {
         // A path string with a typo does not throw — it silently renders as
         // nothing, which on a tab bar looks like a blank space rather than a bug.

@@ -67,6 +67,7 @@ import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.theme.AppearanceStore
+import dev.anodex.mobile.update.UpdateCheck
 import dev.anodex.mobile.update.UpdateState
 import dev.anodex.mobile.update.Updater
 import dev.anodex.mobile.workspace.FileContent
@@ -905,6 +906,55 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { appearance.setThemeMode(mode) }
+    }
+
+    /**
+     * What a *manual* check found.
+     *
+     * Separate from [update], which drives the banner, because the two answer
+     * different questions. The banner exists to interrupt somebody who was not
+     * asking; this exists because somebody tapped a button and is owed a reply.
+     *
+     * Without it a manual check that finds nothing is indistinguishable from a
+     * manual check that did nothing — `checkForUpdate` returns silently when there
+     * is no newer release, which is right for the automatic path and reads as a
+     * broken button on the manual one.
+     */
+    private val _updateCheck = MutableStateFlow<UpdateCheck>(UpdateCheck.Idle)
+    val updateCheck: StateFlow<UpdateCheck> = _updateCheck.asStateFlow()
+
+    /**
+     * Ask now, and say what came back.
+     *
+     * Ignores the interval that throttles the automatic check: a person who taps
+     * this has a reason, and "we looked recently" is not an answer to it.
+     */
+    fun checkForUpdateNow() {
+        if (_updateCheck.value is UpdateCheck.Checking) return
+        _updateCheck.value = UpdateCheck.Checking
+
+        viewModelScope.launch {
+            val found = runCatching { updater.check(BuildConfig.VERSION_NAME) }
+            lastUpdateCheck = System.currentTimeMillis()
+
+            _updateCheck.value = found.fold(
+                onSuccess = { release ->
+                    if (release == null) {
+                        UpdateCheck.UpToDate
+                    } else {
+                        // Feed the banner too, so accepting from Settings and
+                        // accepting from the banner are the same code path.
+                        _update.value = UpdateState.Available(release)
+                        UpdateCheck.Found(release.version)
+                    }
+                },
+                onFailure = { failure ->
+                    UpdateCheck.Failed(
+                        failure.message?.takeIf { it.isNotBlank() } ?: "Could not reach GitHub."
+                    )
+                },
+            )
+        }
     }
 
     private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
