@@ -1,5 +1,9 @@
 package dev.anodex.mobile.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -449,6 +453,20 @@ private fun RemoteSection(hostName: String?, hostStatus: String, onOpenHost: (()
 private fun AboutSection(installedVersion: String, newerVersion: String?) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    val context = LocalContext.current
+
+    /**
+     * Open a page in the browser.
+     *
+     * Wrapped because a phone can be without a browser — rare, but the throw is an
+     * `ActivityNotFoundException` that takes the app down, and a dead link is a much
+     * smaller problem than a crash from Settings.
+     */
+    fun open(url: String) {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
 
     SectionBody {
         SectionLabel("About")
@@ -473,7 +491,73 @@ private fun AboutSection(installedVersion: String, newerVersion: String?) {
                 }
             }
         }
+
+        SectionLabel("This phone")
+
+        // What a bug report asks for, in the order the form asks for it, so it can be
+        // read off rather than hunted down in the system settings.
+        Group {
+            SettingsRow(
+                icon = AnodexIcon.SMARTPHONE,
+                label = "Device",
+                trailing = deviceName(),
+            )
+            RowDivider()
+            SettingsRow(
+                icon = AnodexIcon.CPU,
+                label = "Android",
+                trailing = "${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}",
+            )
+        }
+
+        SectionLabel("Something wrong, or something missing?")
+
+        Group {
+            SettingsRow(
+                icon = AnodexIcon.CHAT,
+                label = "Report a bug",
+                value = "Opens the form, which asks for what is usually missing",
+                onClick = { open("$REPOSITORY/issues/new?template=bug_report.yml") },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = AnodexIcon.BOT,
+                label = "Suggest an idea",
+                value = "The problem you are trying to solve is the useful half",
+                onClick = { open("$REPOSITORY/issues/new?template=feature_request.yml") },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = AnodexIcon.SEARCH,
+                label = "Ask a question",
+                value = "Discussions, for anything that is not a defect",
+                onClick = { open("$REPOSITORY/discussions") },
+            )
+        }
+
+        Text(
+            text = "Please leave keys, tokens and pairing codes out of anything you post.",
+            style = type.meta,
+            color = colors.textMuted,
+            modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+        )
     }
+}
+
+/** Where a report goes. Public so that problems can be reported against it. */
+private const val REPOSITORY = "https://github.com/Anodex/anodex-mobile"
+
+/**
+ * The phone, as a person would name it.
+ *
+ * `MODEL` alone reads as a part number on most devices — "SM-S911B" rather than
+ * anything somebody would recognise — so the manufacturer goes in front of it,
+ * unless the model already starts with it and would stutter.
+ */
+private fun deviceName(): String {
+    val maker = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+    val model = Build.MODEL.orEmpty()
+    return if (model.startsWith(maker, ignoreCase = true)) model else "$maker $model".trim()
 }
 
 /** The scrolling body every section shares, so they cannot drift apart. */
