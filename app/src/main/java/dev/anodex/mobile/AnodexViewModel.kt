@@ -450,10 +450,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
             chats.getOrNull()?.let { _archivedChats.value = it }
             workspaces.getOrNull()?.let { _archivedProjects.value = it }
-            _archiveError.value = if (chats.isFailure || workspaces.isFailure) {
-                "Could not read the archive from the computer."
-            } else {
-                null
+            // Named separately, because "chats did not load" and "projects did not
+            // load" send somebody to different places, and the screen shows whichever
+            // list did arrive underneath this.
+            _archiveError.value = when {
+                chats.isFailure && workspaces.isFailure ->
+                    "Could not read the archive from the computer."
+                chats.isFailure -> "Could not read archived chats."
+                workspaces.isFailure -> "Could not read archived projects."
+                else -> null
             }
         }
     }
