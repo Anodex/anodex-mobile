@@ -76,17 +76,36 @@ fun ArchiveScreen(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Spacing.x4),
     ) {
-        when {
-            error != null -> Text(error, style = type.body, color = colors.textMuted)
+        // Above whatever loaded, not instead of it. The archive is two independent
+        // reads, and the first version of this screen replaced everything with the
+        // error — so one failing read hid the other one's perfectly good list, and
+        // a screen that was half working looked entirely broken.
+        error?.let {
+            Text(
+                text = it,
+                style = type.body,
+                color = colors.danger,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.dangerSoft)
+                    .padding(Spacing.x3),
+            )
+        }
 
+        when {
             loading && chats.isEmpty() && projects.isEmpty() ->
                 Text("Reading the archive…", style = type.body, color = colors.textMuted)
 
-            chats.isEmpty() && projects.isEmpty() -> Text(
+            // Only when the lists are genuinely empty. Under a failed read, "nothing
+            // archived" is a claim the app cannot make — it does not know.
+            chats.isEmpty() && projects.isEmpty() && error == null -> Text(
                 "Nothing archived. Chats and projects you archive on either device end up here.",
                 style = type.body,
                 color = colors.textMuted,
             )
+
+            chats.isEmpty() && projects.isEmpty() -> Unit
 
             else -> {
                 if (projects.isNotEmpty()) {
