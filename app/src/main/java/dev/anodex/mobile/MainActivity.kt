@@ -731,11 +731,20 @@ private fun ConnectedScaffold(
         val memories by viewModel.memories.collectAsStateWithLifecycle()
         val memoryLoading by viewModel.memoryLoading.collectAsStateWithLifecycle()
         val memoryError by viewModel.memoryError.collectAsStateWithLifecycle()
+        val user by viewModel.user.collectAsStateWithLifecycle()
+        val usage by viewModel.usage.collectAsStateWithLifecycle()
+        val profileLoading by viewModel.profileLoading.collectAsStateWithLifecycle()
+        val profileError by viewModel.profileError.collectAsStateWithLifecycle()
 
         // Read when Settings opens rather than when the Memory section is reached:
         // the section is chosen inside that screen, and threading a callback back
         // out for one list costs more than the read it would save.
         LaunchedEffect(Unit) { viewModel.refreshMemories() }
+
+        // Same reasoning, same place: read when Settings opens rather than when the
+        // Profile section is reached. Two reads on open is cheaper than threading a
+        // callback back out of a screen that already knows which section it is on.
+        LaunchedEffect(Unit) { viewModel.refreshProfile() }
 
         // And kept current while this screen is up. The computer announces memory
         // changes now, and most of them are written by the model partway through a
@@ -761,6 +770,10 @@ private fun ConnectedScaffold(
             onAllowBackground = {
                 settingsContext.startActivity(viewModel.batteryExemptionIntent())
             },
+            user = user,
+            usage = usage,
+            profileLoading = profileLoading,
+            profileError = profileError,
             memories = memories,
             memoryLoading = memoryLoading,
             memoryError = memoryError,
