@@ -9,7 +9,7 @@ body:
 
         **Before you paste anything:** no pairing codes or pairing secrets, no API keys, tokens, passwords or certificates, no private email contents, nothing from a workspace you would not publish. `adb logcat` picks up more than you might expect — read it before pasting it. Redact rather than omit; `10.0.0.x` and `sk-…REDACTED` still tell me the shape of the thing.
 
-        Found a **security** problem? Do not open this. See [SECURITY.md](../blob/main/SECURITY.md) for the private channel.
+        Found a **security** problem? Do not open this. See [SECURITY.md](https://github.com/Anodex/anodex-mobile/blob/main/SECURITY.md) for the private channel.
 
   - type: textarea
     id: what-happened
