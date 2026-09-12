@@ -6,6 +6,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /** A project on the computer. */
 data class Project(
@@ -48,6 +50,42 @@ class Projects(private val socket: AnodexSocket) {
      * that refusal is worth showing rather than swallowing: it is the difference
      * between "not now" and "that did not work".
      */
+    /**
+     * Projects the computer has archived.
+     *
+     * `projects:list` filters these out — which is the bug that emptied a project
+     * into Chats once already, when an archived project was mistaken for a deleted
+     * one. Here they are the whole point.
+     */
+    suspend fun listArchived(): List<Project> {
+        val rows = socket.invoke(CHANNEL_LIST_ARCHIVED) as? JsonArray ?: return emptyList()
+        return rows.mapNotNull { row ->
+            val fields = row as? JsonObject ?: return@mapNotNull null
+            val id = fields["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            Project(
+                id = id,
+                name = fields["name"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                    ?: "Untitled project",
+                folderPath = fields["folderPath"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            )
+        }
+    }
+
+    /** Put one back. Its conversations come with it. */
+    suspend fun restore(projectId: String) {
+        socket.invoke(CHANNEL_RESTORE, listOf(JsonPrimitive(projectId)))
+    }
+
+    /**
+     * Gone, and its conversations with it.
+     *
+     * Worth saying plainly wherever this is offered: a project is not a folder of
+     * links, and deleting one takes the work done inside it.
+     */
+    suspend fun deletePermanently(projectId: String) {
+        socket.invoke(CHANNEL_DELETE_PERMANENT, listOf(JsonPrimitive(projectId)))
+    }
+
     suspend fun setActive(projectId: String?): ProjectsState {
         val argument = projectId?.let { JsonPrimitive(it) } ?: JsonNull
         val result = socket.invoke(CHANNEL_SET_ACTIVE, listOf(argument)) as? JsonObject
@@ -56,6 +94,9 @@ class Projects(private val socket: AnodexSocket) {
 
     private companion object {
         const val CHANNEL_LIST = "projects:list"
+        const val CHANNEL_LIST_ARCHIVED = "projects:list-archived"
+        const val CHANNEL_RESTORE = "projects:restore"
+        const val CHANNEL_DELETE_PERMANENT = "projects:delete-permanent"
         const val CHANNEL_SET_ACTIVE = "projects:set-active"
         val EMPTY = ProjectsState(emptyList(), null)
     }
