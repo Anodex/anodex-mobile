@@ -68,6 +68,7 @@ import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
+import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.FontScale
 import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.ui.theme.AppearanceStore
@@ -1013,6 +1014,43 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun setUiFont(font: UiFont) {
         viewModelScope.launch { appearance.setUiFont(font) }
     }
+
+    val keepAwake: StateFlow<Boolean> = appearance.keepAwake
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setKeepAwake(enabled: Boolean) {
+        viewModelScope.launch { appearance.setKeepAwake(enabled) }
+    }
+
+    val motion: StateFlow<MotionPreference> = appearance.motion
+        .stateIn(viewModelScope, SharingStarted.Eagerly, MotionPreference.SYSTEM)
+
+    fun setMotion(preference: MotionPreference) {
+        viewModelScope.launch { appearance.setMotion(preference) }
+    }
+
+    val haptics: StateFlow<Boolean> = appearance.haptics
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setHaptics(enabled: Boolean) {
+        viewModelScope.launch { appearance.setHaptics(enabled) }
+    }
+
+    /**
+     * Whether a reply is arriving right now.
+     *
+     * Watches the messages rather than [ChatSession.sending], because since the
+     * desktop started broadcasting a running turn, a reply can be arriving here that
+     * this phone did not send — which is exactly the case where somebody is watching
+     * and the screen must not sleep.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val replyArriving: StateFlow<Boolean> = _chat
+        .flatMapLatest { session ->
+            session?.messages?.map { turns -> turns.any { it.streaming } } ?: flowOf(false)
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
      * What a *manual* check found.

@@ -32,6 +32,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import android.view.WindowManager
+import dev.anodex.mobile.ui.theme.MotionPreference
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -154,6 +157,7 @@ class MainActivity : ComponentActivity() {
             val mode by appearance.themeMode.collectAsStateWithLifecycle(ThemeMode.SYSTEM)
             val fontScale by appearance.fontScale.collectAsStateWithLifecycle(FontScale.MEDIUM)
             val uiFont by appearance.uiFont.collectAsStateWithLifecycle(UiFont.SYSTEM)
+            val motion by appearance.motion.collectAsStateWithLifecycle(MotionPreference.SYSTEM)
 
             AnodexTheme(
                 darkTheme = when (mode) {
@@ -163,6 +167,7 @@ class MainActivity : ComponentActivity() {
                 },
                 fontScale = fontScale,
                 uiFont = uiFont,
+                motion = motion,
             ) {
                 if (crash != null) {
                     CrashReportScreen(
@@ -235,6 +240,26 @@ private fun CrashReportScreen(report: String, onDismiss: () -> Unit) {
 }
 
 /**
+ * Hold the screen on while a reply is arriving.
+ *
+ * Tied to the flag on the window rather than a wake lock: it needs no permission, it
+ * cannot outlive the window, and Android clears it if the process dies. A wake lock
+ * leaked by a crash keeps somebody's screen on until they notice.
+ *
+ * Only while tokens are actually arriving. "While the app is open" would be a
+ * different and much worse setting.
+ */
+@Composable
+private fun KeepScreenOn(enabled: Boolean) {
+    val view = LocalView.current
+    DisposableEffect(view, enabled) {
+        val window = (view.context as? android.app.Activity)?.window
+        if (enabled) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+}
+
+/**
  * The app's root, switching on connection state.
  *
  * Because the phone caches nothing, connection state *is* the top-level state — there is no
@@ -243,7 +268,11 @@ private fun CrashReportScreen(report: String, onDismiss: () -> Unit) {
  * the surfaces arrive beneath it.
  */
 @Composable
-private fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexViewModel.Factory)) {
+fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexViewModel.Factory)) {
+    val keepAwake by viewModel.keepAwake.collectAsStateWithLifecycle()
+    val replyArriving by viewModel.replyArriving.collectAsStateWithLifecycle()
+    KeepScreenOn(enabled = keepAwake && replyArriving)
+
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showingDesignPreview by remember { mutableStateOf(false) }
 
@@ -746,6 +775,9 @@ private fun ConnectedScaffold(
         val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
         val settingsFontScale by viewModel.fontScale.collectAsStateWithLifecycle()
         val settingsUiFont by viewModel.uiFont.collectAsStateWithLifecycle()
+        val settingsMotion by viewModel.motion.collectAsStateWithLifecycle()
+        val settingsKeepAwake by viewModel.keepAwake.collectAsStateWithLifecycle()
+        val settingsHaptics by viewModel.haptics.collectAsStateWithLifecycle()
         val archivedChats by viewModel.archivedChats.collectAsStateWithLifecycle()
         val archivedProjects by viewModel.archivedProjects.collectAsStateWithLifecycle()
         val archiveLoading by viewModel.archiveLoading.collectAsStateWithLifecycle()
@@ -822,6 +854,12 @@ private fun ConnectedScaffold(
             onSelectFontScale = viewModel::setFontScale,
             uiFont = settingsUiFont,
             onSelectFont = viewModel::setUiFont,
+            motion = settingsMotion,
+            onSelectMotion = viewModel::setMotion,
+            keepAwake = settingsKeepAwake,
+            onSetKeepAwake = viewModel::setKeepAwake,
+            haptics = settingsHaptics,
+            onSetHaptics = viewModel::setHaptics,
             updateCheck = updateCheck,
             onCheckForUpdates = viewModel::checkForUpdateNow,
             user = user,

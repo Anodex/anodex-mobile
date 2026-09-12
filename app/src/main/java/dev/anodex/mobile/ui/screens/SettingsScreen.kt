@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,6 +58,7 @@ import dev.anodex.mobile.ui.theme.UiFont
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -130,6 +133,12 @@ fun SettingsScreen(
     onSelectFontScale: (FontScale) -> Unit = {},
     uiFont: UiFont = UiFont.SYSTEM,
     onSelectFont: (UiFont) -> Unit = {},
+    motion: MotionPreference = MotionPreference.SYSTEM,
+    onSelectMotion: (MotionPreference) -> Unit = {},
+    keepAwake: Boolean = true,
+    onSetKeepAwake: (Boolean) -> Unit = {},
+    haptics: Boolean = true,
+    onSetHaptics: (Boolean) -> Unit = {},
     /** What the system will actually let through. */
     notificationAccess: NotificationAccess = NotificationAccess(true, true, true, true),
     onOpenNotificationSettings: () -> Unit = {},
@@ -206,6 +215,12 @@ fun SettingsScreen(
                 onSelectFontScale = onSelectFontScale,
                 uiFont = uiFont,
                 onSelectFont = onSelectFont,
+                motion = motion,
+                onSelectMotion = onSelectMotion,
+                keepAwake = keepAwake,
+                onSetKeepAwake = onSetKeepAwake,
+                haptics = haptics,
+                onSetHaptics = onSetHaptics,
             )
 
             SettingsSection.AI_MODELS -> AiAndModelsSection(
@@ -327,6 +342,12 @@ private fun AppearanceSection(
     onSelectFontScale: (FontScale) -> Unit,
     uiFont: UiFont,
     onSelectFont: (UiFont) -> Unit,
+    motion: MotionPreference,
+    onSelectMotion: (MotionPreference) -> Unit,
+    keepAwake: Boolean,
+    onSetKeepAwake: (Boolean) -> Unit,
+    haptics: Boolean,
+    onSetHaptics: (Boolean) -> Unit,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -396,6 +417,38 @@ private fun AppearanceSection(
             )
             Spacer(Modifier.height(Spacing.x2))
             Text("Qwen3-30B · 12% of 32K", style = type.meta, color = colors.textMuted)
+        }
+
+        SectionLabel("Motion")
+
+        Group {
+            MotionPreference.entries.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = entry.label,
+                    detail = entry.description,
+                    selected = entry == motion,
+                    onClick = { onSelectMotion(entry) },
+                )
+            }
+        }
+
+        SectionLabel("While you are watching")
+
+        Group {
+            ToggleRow(
+                label = "Keep the screen awake",
+                detail = "While a reply is arriving, and only then",
+                checked = keepAwake,
+                onChange = onSetKeepAwake,
+            )
+            RowDivider()
+            ToggleRow(
+                label = "Haptics",
+                detail = "A tap you can feel when something needs you",
+                checked = haptics,
+                onChange = onSetHaptics,
+            )
         }
 
         Footnote(
@@ -741,6 +794,49 @@ private fun SectionBody(spacing: Dp = 0.dp, content: @Composable ColumnScope.() 
 }
 
 /** One of a set, with a tick on the one in force. */
+/**
+ * A setting that is on or off.
+ *
+ * Styled as [ChoiceRow] rather than as a Material switch row, so a list mixing the two
+ * does not look like two different settings screens stitched together. The whole row
+ * is the target, which is the only sane size for one on a phone.
+ */
+@Composable
+private fun ToggleRow(label: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.minTarget)
+            .clickable { onChange(!checked) }
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = type.bodyEmphasis, color = colors.text)
+            Text(detail, style = type.meta, color = colors.textMuted)
+        }
+
+        Switch(
+            checked = checked,
+            // Null, because the row above already handles the tap. A switch with its
+            // own handler inside a clickable row toggles twice when the switch itself
+            // is hit, which reads as the setting refusing to change.
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.textOnAccent,
+                checkedTrackColor = colors.accent,
+                uncheckedThumbColor = colors.textMuted,
+                uncheckedTrackColor = colors.bgElevated,
+                uncheckedBorderColor = colors.border,
+            ),
+        )
+    }
+}
+
 @Composable
 private fun ChoiceRow(label: String, detail: String, selected: Boolean, onClick: () -> Unit) {
     val colors = AnodexTheme.colors
