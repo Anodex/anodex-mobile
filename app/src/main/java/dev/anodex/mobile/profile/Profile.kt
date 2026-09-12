@@ -84,7 +84,16 @@ data class UsageProfile(
 class ProfileReader(private val socket: AnodexSocket) {
 
     suspend fun user(): UserProfile? {
-        val fields = socket.invoke(CHANNEL_PROFILE).unwrap()?.asObject() ?: return null
+        // Not unwrapped. `settings:get-profile` answers with the profile itself, the
+        // way `models:get-state` does — `protocol/anodex-protocol.json` records it as
+        // `{"$ref": "ProfileSettings"}` rather than a Result union, and that artifact
+        // is the place to check before assuming.
+        //
+        // Unwrapping it anyway is what shipped: `unwrap` finds no `ok: true`, returns
+        // null, and the screen shows an em dash where a name should be — with no
+        // error, because nothing failed. The context ring had this exact bug in the
+        // other direction, which is why `unwrap` is applied per channel and says so.
+        val fields = socket.invoke(CHANNEL_PROFILE)?.asObject() ?: return null
         return UserProfile(
             displayName = fields.string("displayName")?.takeIf { it.isNotBlank() } ?: "You",
             avatarBase64 = fields.string("avatarBase64")?.takeIf { it.isNotBlank() },
@@ -94,6 +103,9 @@ class ProfileReader(private val socket: AnodexSocket) {
     }
 
     suspend fun usage(): UsageProfile? {
+        // This one *is* wrapped — `stats:get-usage-profile` returns `ok(...)`. The two
+        // reads on this screen differ, which is the whole reason to check rather than
+        // match the neighbour.
         val fields = socket.invoke(CHANNEL_USAGE).unwrap()?.asObject() ?: return null
         return UsageProfile(
             lifetimeTokens = fields.long("lifetimeTokens") ?: 0L,
