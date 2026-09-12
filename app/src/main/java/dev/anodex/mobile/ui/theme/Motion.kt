@@ -85,6 +85,20 @@ object Motion {
  */
 val LocalReducedMotion: ProvidableCompositionLocal<Boolean> = staticCompositionLocalOf { false }
 
+/**
+ * What this app should do about animation, whatever the phone is doing.
+ *
+ * `SYSTEM` defers to the phone's own animator scale, which is where accessibility
+ * settings land and is the right default. The other two exist because deferring is
+ * not always what somebody wants: an app can be the one thing they want still, or the
+ * one thing they want moving.
+ */
+enum class MotionPreference(val label: String, val description: String) {
+    SYSTEM("Follow the phone", "Matches your accessibility settings"),
+    REDUCED("Reduce motion", "Still, in this app only"),
+    FULL("Full motion", "Animate even if the phone does not"),
+}
+
 @Composable
 internal fun rememberSystemReducedMotion(): Boolean {
     val context = LocalContext.current
