@@ -122,5 +122,9 @@ usual shape is that you describe the problem and the fix gets written here.
 do send code. Security findings have their own private channel:
 [SECURITY.md](SECURITY.md).
 
+Anodex Mobile is built on software other people wrote, none of which the licence above
+covers. Those components keep their own terms; their licences and copyright notices are in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 The same policy covers the [desktop application](https://github.com/Anodex/Anodex). They
 are one product.

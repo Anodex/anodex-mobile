@@ -77,6 +77,11 @@ What the app depends on is declared in `gradle/libs.versions.toml` and used in
 serialization libraries, OkHttp, CameraX and ZXing. All are permissive, and at the time of
 writing all are Apache-2.0.
 
+Their licences and copyright notices are reproduced in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md), along with the attribution for the icon
+set. That file also says plainly what is not done yet: the app does not display those
+licences on a screen of its own.
+
 The desktop application's dependencies are separate and are audited in its own repository,
 in [`docs/THIRD_PARTY_AUDIT.md`](https://github.com/Anodex/Anodex/blob/main/docs/THIRD_PARTY_AUDIT.md).
 
