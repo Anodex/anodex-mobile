@@ -57,6 +57,11 @@ enum class SettingsSection(
         icon = AnodexIcon.ARCHIVE,
         summary = "What you put away, and the only place to throw it out",
     ),
+    DIAGNOSTICS(
+        label = "Diagnostics",
+        icon = AnodexIcon.INFO,
+        summary = "What went wrong, and how to say so",
+    ),
     ABOUT(
         label = "About",
         icon = AnodexIcon.INFO,

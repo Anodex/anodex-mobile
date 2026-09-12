@@ -1,5 +1,7 @@
 package dev.anodex.mobile
 
+import android.net.Uri
+import android.content.Intent
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
@@ -766,6 +768,13 @@ private fun ConnectedScaffold(
         // would otherwise keep showing the answer it read at launch.
         LaunchedEffect(Unit) { viewModel.refreshNotificationAccess() }
         val settingsContext = LocalContext.current
+        val clipboard = LocalClipboardManager.current
+        val connectionHint by viewModel.connectionHint.collectAsStateWithLifecycle()
+
+        // Re-read whenever Settings opens rather than held in the view model: the
+        // file changes only when the process dies, so there is nothing to keep in
+        // sync and a stale copy would outlive a "Forget".
+        var lastCrash by remember { mutableStateOf(CrashLog.lastRecorded(settingsContext)) }
 
         SettingsScreen(
             installedVersion = BuildConfig.VERSION_NAME,
@@ -782,6 +791,25 @@ private fun ConnectedScaffold(
             archiveError = archiveError,
             onRestoreArchived = viewModel::restoreArchived,
             onDeleteArchived = viewModel::deleteArchived,
+            connectionHint = connectionHint,
+            lastCrash = lastCrash,
+            onCopyCrash = { lastCrash?.let { clipboard.setText(AnnotatedString(it)) } },
+            onReportCrash = {
+                // The report goes in the body by hand: a stack trace can carry a
+                // file path or an address, and putting it in the URL would post it
+                // before anybody had a chance to look at it. Copied instead, so the
+                // form opens with it on the clipboard and the choice still open.
+                lastCrash?.let { clipboard.setText(AnnotatedString(it)) }
+                runCatching {
+                    settingsContext.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(CRASH_REPORT_URL))
+                    )
+                }
+            },
+            onForgetCrash = {
+                CrashLog.forget(settingsContext)
+                lastCrash = null
+            },
             updateCheck = updateCheck,
             onCheckForUpdates = viewModel::checkForUpdateNow,
             user = user,
@@ -1491,3 +1519,14 @@ private fun DesignStateHarness(onExit: () -> Unit) {
         }
     }
 }
+
+/**
+ * Where a crash gets reported.
+ *
+ * The bug form rather than a blank issue, so the version, device and Android
+ * version are asked for rather than remembered. The trace itself is put on the
+ * clipboard instead of in the URL — it can carry a file path or an address, and a
+ * pre-filled body posts that before anyone has read it.
+ */
+private const val CRASH_REPORT_URL =
+    "https://github.com/Anodex/anodex-mobile/issues/new?template=bug_report.yml"
