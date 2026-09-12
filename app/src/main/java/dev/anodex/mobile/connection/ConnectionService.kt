@@ -54,6 +54,8 @@ class ConnectionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val hostName = intent?.getStringExtra(EXTRA_HOST) ?: "your computer"
         val connected = intent?.getBooleanExtra(EXTRA_CONNECTED, true) ?: true
+        val working = intent?.getBooleanExtra(EXTRA_WORKING, false) ?: false
+        val detail = intent?.getStringExtra(EXTRA_DETAIL).orEmpty()
 
         ensureChannel()
 
@@ -74,7 +76,7 @@ class ConnectionService : Service() {
             ServiceCompat.startForeground(
                 this,
                 NOTIFICATION_ID,
-                buildNotification(hostName, connected),
+                buildNotification(hostName, connected, working, detail),
                 // The constant only exists from API 34. Below that the type is
                 // taken from the manifest and this argument is ignored anyway.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -98,7 +100,12 @@ class ConnectionService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun buildNotification(hostName: String, connected: Boolean): Notification {
+    private fun buildNotification(
+        hostName: String,
+        connected: Boolean,
+        working: Boolean,
+        detail: String,
+    ): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -109,14 +116,17 @@ class ConnectionService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(if (connected) "Connected to $hostName" else "Reconnecting to $hostName")
-            .setContentText(
-                if (connected) {
-                    "Anodex can reach your computer."
-                } else {
-                    "Trying to reach your computer."
+            // The title carries the state and the body carries the substance. While
+            // a turn is running that is worth saying in the title itself — it is the
+            // one thing somebody glancing at a locked screen actually wants.
+            .setContentTitle(
+                when {
+                    !connected -> "Reconnecting to $hostName"
+                    working -> "$hostName is working"
+                    else -> "Connected to $hostName"
                 }
             )
+            .setContentText(detail)
             .setContentIntent(open)
             // Silent and unrankable: this is a status line, not news. Every actual
             // event the user needs gets its own notification on its own channel.
@@ -150,6 +160,8 @@ class ConnectionService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_HOST = "host"
         private const val EXTRA_CONNECTED = "connected"
+        private const val EXTRA_WORKING = "working"
+        private const val EXTRA_DETAIL = "detail"
 
         /**
          * Start or update the service.
@@ -163,10 +175,18 @@ class ConnectionService : Service() {
          * background, so this is called on the connection transition, which only
          * happens with the app open.
          */
-        fun start(context: Context, hostName: String, connected: Boolean) {
+        fun start(
+            context: Context,
+            hostName: String,
+            connected: Boolean,
+            working: Boolean = false,
+            detail: String = "",
+        ) {
             val intent = Intent(context, ConnectionService::class.java)
                 .putExtra(EXTRA_HOST, hostName)
                 .putExtra(EXTRA_CONNECTED, connected)
+                .putExtra(EXTRA_WORKING, working)
+                .putExtra(EXTRA_DETAIL, detail)
 
             runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -200,6 +220,55 @@ data class ProcessHold(val hostName: String, val connected: Boolean)
  * lets the process die during precisely the Wi-Fi handoff the grace period exists to
  * ride out.
  */
+/**
+ * What the ongoing notification should say, under the host's name.
+ *
+ * This line used to read "Anodex can reach your computer." — every minute of every
+ * day, whatever the computer was doing. Which is the one thing the user already
+ * knows, because the notification's existence says it.
+ *
+ * A phone in a pocket is exactly where "what is it doing right now" is worth
+ * knowing, and it is the only place this app can say it without being opened. So
+ * the line carries the answer instead: the turn in flight, or the model and how full
+ * its context is, or plainly that nothing is loaded.
+ *
+ * Pure, and tested, for the same reason `processHoldFor` is — everything else in the
+ * service needs a real Android context, and this is the part with the decisions in it.
+ */
+fun connectionDetail(
+    connected: Boolean,
+    working: Boolean,
+    modelName: String?,
+    usedTokens: Int?,
+    contextSize: Int?,
+): String {
+    if (!connected) return "Trying to reach your computer."
+
+    // The most useful thing it can say, and the reason to glance at all: a run is
+    // going on over there while this phone is in a pocket.
+    if (working) return "Working on a reply."
+
+    // Nothing loaded is a fact worth carrying, not an absence to paper over: a
+    // reachable computer that cannot answer looks identical to a working one until
+    // you ask it something.
+    val model = modelName?.takeIf { it.isNotBlank() } ?: return "No model loaded."
+
+    // Only when both halves are known. A percentage derived from a count nobody took
+    // is the defect this app has already had once, in the context ring.
+    val fullness = percentFull(usedTokens, contextSize) ?: return model
+    return "$model · $fullness% of ${compactTokens(contextSize!!)}"
+}
+
+/** Whole percent, or null when there is no honest figure. */
+private fun percentFull(usedTokens: Int?, contextSize: Int?): Int? {
+    if (usedTokens == null || contextSize == null || contextSize <= 0) return null
+    return ((usedTokens.toFloat() / contextSize) * 100).toInt().coerceIn(0, 100)
+}
+
+/** "32K", "8K", "900" — the window, short enough for one line of a notification. */
+private fun compactTokens(tokens: Int): String =
+    if (tokens < 1_000) tokens.toString() else "${tokens / 1_000}K"
+
 fun processHoldFor(state: ConnectionState): ProcessHold? = when (state) {
     is ConnectionState.Connected -> ProcessHold(state.host.displayName, connected = true)
 
