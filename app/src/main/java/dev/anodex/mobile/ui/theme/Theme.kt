@@ -53,6 +53,10 @@ object AnodexTheme {
 @Composable
 fun AnodexTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    /** How much larger or smaller than the designed scale. Phone-local. */
+    fontScale: FontScale = FontScale.MEDIUM,
+    /** The face for everything not deliberately monospaced. Phone-local. */
+    uiFont: UiFont = UiFont.SYSTEM,
     content: @Composable () -> Unit,
 ) {
     val colors = if (darkTheme) MidnightColors else LightColors
@@ -120,7 +124,10 @@ fun AnodexTheme(
 
     CompositionLocalProvider(
         LocalAnodexColors provides colors,
-        LocalAnodexTypography provides AnodexTypography(),
+        LocalAnodexTypography provides AnodexTypography(
+            scale = fontScale.factor,
+            family = uiFont.family,
+        ),
         LocalReducedMotion provides reducedMotion,
     ) {
         MaterialTheme(colorScheme = materialScheme) {
