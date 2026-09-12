@@ -735,6 +735,7 @@ private fun ConnectedScaffold(
         val usage by viewModel.usage.collectAsStateWithLifecycle()
         val profileLoading by viewModel.profileLoading.collectAsStateWithLifecycle()
         val profileError by viewModel.profileError.collectAsStateWithLifecycle()
+        val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
 
         // Read when Settings opens rather than when the Memory section is reached:
         // the section is chosen inside that screen, and threading a callback back
@@ -770,6 +771,8 @@ private fun ConnectedScaffold(
             onAllowBackground = {
                 settingsContext.startActivity(viewModel.batteryExemptionIntent())
             },
+            updateCheck = updateCheck,
+            onCheckForUpdates = viewModel::checkForUpdateNow,
             user = user,
             usage = usage,
             profileLoading = profileLoading,
