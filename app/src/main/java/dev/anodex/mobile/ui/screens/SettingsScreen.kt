@@ -48,6 +48,7 @@ import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.profile.UsageProfile
+import dev.anodex.mobile.update.UpdateCheck
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -88,6 +89,9 @@ fun SettingsScreen(
     usage: UsageProfile? = null,
     profileLoading: Boolean = false,
     profileError: String? = null,
+    /** What a manual update check found, so the button can answer. */
+    updateCheck: UpdateCheck = UpdateCheck.Idle,
+    onCheckForUpdates: () -> Unit = {},
     /** The build the computer expects, when this phone is behind it. Null if not. */
     newerVersion: String? = null,
     /** What is already on the computer. Never what could be downloaded. */
@@ -190,7 +194,12 @@ fun SettingsScreen(
 
             SettingsSection.REMOTE -> RemoteSection(hostName, hostStatus, onOpenHost)
 
-            SettingsSection.ABOUT -> AboutSection(installedVersion, newerVersion)
+            SettingsSection.ABOUT -> AboutSection(
+                installedVersion = installedVersion,
+                newerVersion = newerVersion,
+                updateCheck = updateCheck,
+                onCheckForUpdates = onCheckForUpdates,
+            )
         }
     }
 }
@@ -462,7 +471,12 @@ private fun RemoteSection(hostName: String?, hostStatus: String, onOpenHost: (()
 }
 
 @Composable
-private fun AboutSection(installedVersion: String, newerVersion: String?) {
+private fun AboutSection(
+    installedVersion: String,
+    newerVersion: String?,
+    updateCheck: UpdateCheck,
+    onCheckForUpdates: () -> Unit,
+) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val context = LocalContext.current
@@ -502,6 +516,21 @@ private fun AboutSection(installedVersion: String, newerVersion: String?) {
                     )
                 }
             }
+        }
+
+        Group {
+            SettingsRow(
+                icon = AnodexIcon.REFRESH,
+                label = "Check for updates",
+                value = when (updateCheck) {
+                    is UpdateCheck.Checking -> "Looking…"
+                    is UpdateCheck.UpToDate -> "This is the newest build"
+                    is UpdateCheck.Found -> "${updateCheck.version} is available"
+                    is UpdateCheck.Failed -> updateCheck.message
+                    else -> "Asks GitHub for the latest release"
+                },
+                onClick = onCheckForUpdates,
+            )
         }
 
         SectionLabel("This phone")

@@ -17,6 +17,25 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
+/**
+ * The result of a check somebody asked for.
+ *
+ * Distinct from [UpdateState] because "nothing to do" and "I looked, and there is
+ * nothing to do" are different things to a person who just tapped a button.
+ */
+sealed interface UpdateCheck {
+    data object Idle : UpdateCheck
+
+    data object Checking : UpdateCheck
+
+    /** Looked, and this is the newest build. */
+    data object UpToDate : UpdateCheck
+
+    data class Found(val version: String) : UpdateCheck
+
+    data class Failed(val message: String) : UpdateCheck
+}
+
 /** Where the app is in the business of updating itself. */
 sealed interface UpdateState {
     /** Nothing to do, as far as anybody knows. */

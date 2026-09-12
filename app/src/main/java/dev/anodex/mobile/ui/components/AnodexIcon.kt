@@ -284,6 +284,19 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
      */
     CLOSE(listOf("M18 6 6 18", "M6 6l12 12")),
 
+    /**
+     * An arrow curling back on itself. The desktop's `refresh`, path for path.
+     *
+     * The open circle and the arrowhead are two sub-paths exactly as `Icon.tsx`
+     * splits them, so a diff against it stays line-for-line.
+     */
+    REFRESH(
+        listOf(
+            "M21 12a9 9 0 1 1-3-6.7L21 8",
+            "M21 3v5h-5",
+        )
+    ),
+
     /** A lidded box with the Anodex corner cut. The desktop's `archive`. */
     ARCHIVE(
         listOf(
