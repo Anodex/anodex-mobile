@@ -114,6 +114,14 @@ private const val CHANNEL_MODEL_STATE = "models:state-changed"
 /** Which projects exist on the computer, and which one it has open. */
 private const val CHANNEL_PROJECTS_CHANGED = "projects:changed"
 
+/**
+ * A conversation on the computer has turns this phone has not got.
+ *
+ * The payload is the conversation's id and nothing else, because the change could be
+ * a whole turn or a renamed title and the phone should not guess which.
+ */
+private const val CHANNEL_CONVERSATIONS_CHANGED = "conversations:changed"
+
 class AnodexViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = PairedHostStore(application)
@@ -2135,7 +2143,38 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             CHANNEL_PROJECTS_CHANGED -> parseProjectsState(event.payload)?.let {
                 _projects.value = it
             }
+
+            CHANNEL_CONVERSATIONS_CHANGED -> onConversationChanged(event.payload)
         }
+    }
+
+    /**
+     * A conversation changed at the computer.
+     *
+     * Tokens already arrive live while a turn is running, so this is not how the
+     * phone watches one happen — it is how it ends up holding the same thing the
+     * computer saved once the turn is over. A stream is a picture of a turn; the save
+     * is the turn. They can differ: a reply may be rewritten on completion, a title
+     * gets written afterwards, and a turn that began before this phone connected was
+     * never streamed to it at all.
+     *
+     * The list is always refreshed, because a change is as likely to be a new
+     * conversation or a new title as it is new turns in this one.
+     *
+     * The open conversation is re-read unless this phone is the one mid-send. The
+     * computer already excludes whoever wrote the change, so a save of this phone's
+     * own turn does not come back here — the guard is for the window between sending
+     * and that save, where a re-read would replace a turn in flight with the version
+     * on disk that does not have it yet.
+     */
+    private fun onConversationChanged(payload: JsonElement?) {
+        val changedId = (payload as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: return
+
+        refreshConversations()
+
+        val open = _chat.value ?: return
+        if (open.conversationId != changedId || open.sending.value) return
+        openConversation(changedId)
     }
 
     private fun onNotification(payload: JsonElement?) {
