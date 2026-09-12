@@ -25,7 +25,7 @@ enum class SettingsSection(
     PROFILE(
         label = "Profile",
         icon = AnodexIcon.USER,
-        summary = "Your name and account, at the computer",
+        summary = "You, and what you have been doing",
     ),
     APPEARANCE(
         label = "Appearance",
@@ -44,7 +44,7 @@ enum class SettingsSection(
     ),
     NOTIFICATIONS(
         label = "Notifications",
-        icon = AnodexIcon.INFO,
+        icon = AnodexIcon.ALERT,
         summary = "What the computer may interrupt you for",
     ),
     REMOTE(
@@ -59,7 +59,7 @@ enum class SettingsSection(
     ),
     DIAGNOSTICS(
         label = "Diagnostics",
-        icon = AnodexIcon.INFO,
+        icon = AnodexIcon.ACTIVITY,
         summary = "What went wrong, and how to say so",
     ),
     ABOUT(

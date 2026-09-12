@@ -297,6 +297,31 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
         )
     ),
 
+    /**
+     * A pulse line. The desktop's `activity`.
+     *
+     * Diagnostics, where the question is whether anything is wrong rather than what
+     * something is — which is what `INFO` says, and why three rows of this menu were
+     * wearing the same glyph.
+     */
+    ACTIVITY(listOf("M2 12h4l3 6 4-12 2.5 6H19")),
+
+    /**
+     * A warning triangle. The desktop's `alert`.
+     *
+     * Its bar and dot are `<line>` elements there, transcribed as paths here the
+     * same way `USER` and `MONITOR` already are — a path parser has no line
+     * primitive. The dot is a zero-length stroke, which round caps render as a
+     * point.
+     */
+    ALERT(
+        listOf(
+            "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
+            "M12 9v4",
+            "M12 17h.01",
+        )
+    ),
+
     /** A lidded box with the Anodex corner cut. The desktop's `archive`. */
     ARCHIVE(
         listOf(

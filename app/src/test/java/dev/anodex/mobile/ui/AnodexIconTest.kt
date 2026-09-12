@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui
 
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.screens.SettingsSection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -74,6 +75,29 @@ class AnodexIconTest {
                 "M21 3v5h-5",
             ),
             AnodexIcon.REFRESH.strokes,
+        )
+    }
+
+    @Test
+    fun `no two settings sections wear the same glyph`() {
+        // Three of the nine did — Notifications, Diagnostics and About were all
+        // `INFO`, which on a list this short reads as a rendering fault rather than
+        // a choice. An icon that means three things means none of them.
+        val icons = SettingsSection.entries.map { it.icon }
+
+        assertEquals(icons.size, icons.toSet().size)
+    }
+
+    @Test
+    fun `activity and alert are the desktop's, path for path`() {
+        assertEquals(listOf("M2 12h4l3 6 4-12 2.5 6H19"), AnodexIcon.ACTIVITY.strokes)
+        assertEquals(
+            listOf(
+                "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
+                "M12 9v4",
+                "M12 17h.01",
+            ),
+            AnodexIcon.ALERT.strokes,
         )
     }
 
