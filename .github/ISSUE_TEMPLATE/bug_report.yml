@@ -1,0 +1,84 @@
+name: Bug report
+description: Something in Anodex Mobile does not work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A report that reproduces is the single most useful thing you can send.
+
+        **Before you paste anything:** no pairing codes or pairing secrets, no API keys, tokens, passwords or certificates, no private email contents, nothing from a workspace you would not publish. `adb logcat` picks up more than you might expect — read it before pasting it. Redact rather than omit; `10.0.0.x` and `sk-…REDACTED` still tell me the shape of the thing.
+
+        Found a **security** problem? Do not open this. See [SECURITY.md](../blob/main/SECURITY.md) for the private channel.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what the app did instead.
+      placeholder: |
+        I expected …
+        Instead, …
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: What you did, in order. If it only happens sometimes, say roughly how often.
+      placeholder: |
+        1. Open …
+        2. …
+        3. …
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings → About, or the APK filename.
+      placeholder: "0.66.0"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Pixel 8 · Android 15"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How was the phone connected
+      description: A surprising number of bugs turn out to be about this.
+      options:
+        - Same Wi-Fi as the computer
+        - Mobile data, via a forwarded port
+        - Different Wi-Fi
+        - Not connected / could not connect
+        - Not relevant
+
+  - type: input
+    id: desktop-version
+    attributes:
+      label: Desktop Anodex version
+      description: The app is a window onto the computer, so its version usually matters.
+      placeholder: "0.4.0"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, crash output or screenshots
+      description: Drag in a screenshot, or paste a crash trace. Check it for secrets first.
+      render: text
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Guesses about the cause are welcome — they are often right.

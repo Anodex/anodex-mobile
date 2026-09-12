@@ -105,6 +105,22 @@ These are inherited from the desktop app and are not negotiable per-PR.
   signing key: lose it and existing installs can never be updated, only uninstalled and replaced —
   taking their paired keys with them. It is the only irreversible mistake available in this project.
 
-## Licence
+## Source available, not open source
 
-Not yet chosen.
+Anodex Mobile's source is published so you can read it, audit it, learn from it, and check
+what the app does with a key that can drive your computer — which is not something you
+should have to take on trust. It is not an open-source licence: redistribution, republished
+builds and derivative products are not granted by default, and it remains copyright
+© 2026 Anodex. See [LICENSE.md](LICENSE.md).
+
+That limit is about ownership and distribution, not about keeping people out.
+
+**Bug reports, reproduction steps, UX criticism and feature ideas are welcome**, and they
+are the most useful thing you can send — the project is maintained centrally, so the
+usual shape is that you describe the problem and the fix gets written here.
+[CONTRIBUTING.md](CONTRIBUTING.md) explains how that works and the terms that apply if you
+do send code. Security findings have their own private channel:
+[SECURITY.md](SECURITY.md).
+
+The same policy covers the [desktop application](https://github.com/Anodex/Anodex). They
+are one product.
