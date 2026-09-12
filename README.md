@@ -32,8 +32,20 @@ Requires Android 8.0 (API 26) or newer.
 | **Email** | The desktop's mailbox, with the same triage. |
 | **Scheduler** | What is due, what ran, and what it did. |
 
-Settings carries the rest: the model, the personality, what the assistant is remembering, and the
-pairing itself.
+Settings carries the rest:
+
+| Section         | What it does                                                                     |
+| --------------- | -------------------------------------------------------------------------------- |
+| **Profile**     | Who you are, and what you have been doing — lifetime tokens, the last four weeks, the tools you reach for most |
+| **Archive**     | What you put away, and the only place in the app anything can be deleted for good |
+| **Diagnostics** | The connection, the computer's reason for going away, and the last crash — with a way to report it |
+| **About**       | The version, this phone, a check for updates, and where to report a problem       |
+
+Plus the model, the personality, what the assistant is remembering, and the pairing itself.
+
+Everything in Profile is a read. A phone cannot reach the computer's settings — that prefix
+carries the permission mode, the MCP servers and the model directory — so there is one narrow
+channel for the profile alone, and a name and an avatar are all it answers with.
 
 Chat and Workspace are deliberately not the same thing. A conversation's placement *is* its
 permission: no project means no create, no edit, no run. That rule is enforced on the desktop, in
@@ -52,8 +64,12 @@ The wrapper pins Gradle 8.9 and CI runs both of these on every push, so the buil
 if you have no local toolchain. `gradle/actions/wrapper-validation` checks the committed wrapper jar
 against Gradle's published checksums on every run.
 
-CI is the only compiler that counts here. Kotlin's exhaustiveness and scope rules are not visible to
-a text search, and a green local test run proves nothing about whether the module builds.
+**Compile before you push.** Kotlin's exhaustiveness and scope rules are invisible to a text
+search, and hand-checking a change for missing symbols is slower and worse than asking the
+compiler. `local.properties` is gitignored, so point `sdk.dir` at your own SDK.
+
+CI is still the final word — it builds on its own JDK from cold caches, and a local pass is a
+faster check rather than the same one.
 
 ## How it is put together
 
