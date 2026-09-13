@@ -920,6 +920,7 @@ private fun ConnectedScaffold(
         // sync and a stale copy would outlive a "Forget".
         var lastCrash by remember { mutableStateOf(CrashLog.lastRecorded(settingsContext)) }
 
+        val pairedDevices by viewModel.pairedDevices.collectAsStateWithLifecycle()
         SettingsScreen(
             installedVersion = BuildConfig.VERSION_NAME,
             notificationAccess = notificationAccess,
@@ -983,6 +984,10 @@ private fun ConnectedScaffold(
             onSelectPersonality = viewModel::setPersonality,
             hostName = hostNameOf(state),
             hostStatus = hostDetailOf(state, projects.active?.name),
+            pairedDevices = pairedDevices,
+            onRefreshDevices = viewModel::refreshPairedDevices,
+            onRenameDevice = viewModel::renamePairedDevice,
+            onUnpairDevice = viewModel::unpairDevice,
             onOpenHost = {
                 showingSettings = false
                 showingHost = true

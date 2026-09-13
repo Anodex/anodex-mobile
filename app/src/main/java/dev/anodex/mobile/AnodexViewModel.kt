@@ -272,6 +272,42 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** Reads the desktop's conversation store. Null until a socket is open. */
     private var conversationReader: Conversations? = null
 
+    private var devicesClient: dev.anodex.mobile.devices.Devices? = null
+
+    private val _pairedDevices = MutableStateFlow<List<dev.anodex.mobile.devices.PairedDeviceInfo>?>(null)
+
+    /**
+     * Every device paired with the computer, or null until read — and still null
+     * against a computer too old to say.
+     */
+    val pairedDevices: StateFlow<List<dev.anodex.mobile.devices.PairedDeviceInfo>?> = _pairedDevices.asStateFlow()
+
+    fun refreshPairedDevices() {
+        val client = devicesClient ?: return
+        viewModelScope.launch {
+            runCatching { client.list() }.onSuccess { _pairedDevices.value = it }
+        }
+    }
+
+    fun renamePairedDevice(deviceId: String, name: String) {
+        val client = devicesClient ?: return
+        viewModelScope.launch {
+            runCatching { client.rename(deviceId, name) }.onSuccess { _pairedDevices.value = it }
+        }
+    }
+
+    /**
+     * Unpair a device. For this phone, the computer drops the connection straight after
+     * answering, and the app goes back to the pairing screen as it would for an unpair
+     * done at the computer.
+     */
+    fun unpairDevice(deviceId: String) {
+        val client = devicesClient ?: return
+        viewModelScope.launch {
+            runCatching { client.unpair(deviceId) }.onSuccess { _pairedDevices.value = it }
+        }
+    }
+
     /** Pictures read back from the computer, by conversation, message and position. */
     private val pictureCache = object : android.util.LruCache<String, ByteArray>(PICTURE_CACHE_BYTES) {
         override fun sizeOf(key: String, value: ByteArray) = value.size
@@ -1972,6 +2008,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 _connectionHint.value = null
                 socket = candidate
                 conversationReader = Conversations(candidate)
+                devicesClient = dev.anodex.mobile.devices.Devices(candidate)
                 projectClient = Projects(candidate)
                 agentClient = Agents(candidate)
                 emailClient = Email(candidate)
