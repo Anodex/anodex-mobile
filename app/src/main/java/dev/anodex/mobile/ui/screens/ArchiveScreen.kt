@@ -3,15 +3,18 @@ package dev.anodex.mobile.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,12 +24,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.SearchField
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 
@@ -68,18 +74,26 @@ fun ArchiveScreen(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    // Held here rather than in the view model: it is a question on screen, and it
-    // should not survive leaving the screen that asked it.
-    var confirming by remember { mutableStateOf<Archived?>(null) }
+    // All three held here rather than in the view model: they are questions on this
+    // screen, and none should survive leaving it. A selection that outlived the screen
+    // would be a pending deletion nobody can see.
+    var query by remember { mutableStateOf("") }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    var confirming by remember { mutableStateOf<List<Archived>?>(null) }
+
+    val visibleProjects = remember(projects, query) { projects.filter { it.name.matches(query) } }
+    val visibleChats = remember(chats, query) { chats.filter { it.title.matches(query) } }
+    val visible = remember(visibleProjects, visibleChats) {
+        visibleProjects.map { Archived.Workspace(it) as Archived } +
+            visibleChats.map { Archived.Chat(it) as Archived }
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Spacing.x4),
     ) {
         // Above whatever loaded, not instead of it. The archive is two independent
-        // reads, and the first version of this screen replaced everything with the
-        // error — so one failing read hid the other one's perfectly good list, and
-        // a screen that was half working looked entirely broken.
+        // reads, and one failing should not hide the other's perfectly good list.
         error?.let {
             Text(
                 text = it,
@@ -87,9 +101,27 @@ fun ArchiveScreen(
                 color = colors.danger,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(Radii.lg)
                     .background(colors.dangerSoft)
                     .padding(Spacing.x3),
+            )
+        }
+
+        // Only once there is enough here to be worth searching. A search box above
+        // three rows is furniture.
+        if (chats.size + projects.size >= SEARCH_WORTH_IT) {
+            SearchField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = "Search the archive",
+            )
+        }
+
+        if (selected.isNotEmpty()) {
+            SelectionBar(
+                count = selected.size,
+                onClear = { selected = emptySet() },
+                onDelete = { confirming = visible.filter { it.id in selected } },
             )
         }
 
@@ -107,29 +139,43 @@ fun ArchiveScreen(
 
             chats.isEmpty() && projects.isEmpty() -> Unit
 
+            visible.isEmpty() -> Text(
+                "Nothing matching “$query”.",
+                style = type.body,
+                color = colors.textMuted,
+            )
+
             else -> {
-                if (projects.isNotEmpty()) {
-                    Label("Projects", projects.size)
-                    projects.forEach { project ->
+                if (visibleProjects.isNotEmpty()) {
+                    Label("Projects", visibleProjects.size)
+                    visibleProjects.forEach { project ->
+                        val item = Archived.Workspace(project)
                         Entry(
-                            title = project.name,
+                            item = item,
                             detail = project.folderPath.takeIf { it.isNotBlank() },
                             icon = AnodexIcon.FOLDER,
-                            onRestore = { onRestore(Archived.Workspace(project)) },
-                            onDelete = { confirming = Archived.Workspace(project) },
+                            selecting = selected.isNotEmpty(),
+                            checked = item.id in selected,
+                            onToggle = { selected = selected.toggle(item.id) },
+                            onRestore = { onRestore(item) },
+                            onDelete = { confirming = listOf(item) },
                         )
                     }
                 }
 
-                if (chats.isNotEmpty()) {
-                    Label("Chats", chats.size)
-                    chats.forEach { chat ->
+                if (visibleChats.isNotEmpty()) {
+                    Label("Chats", visibleChats.size)
+                    visibleChats.forEach { chat ->
+                        val item = Archived.Chat(chat)
                         Entry(
-                            title = chat.title,
+                            item = item,
                             detail = null,
                             icon = AnodexIcon.CHAT,
-                            onRestore = { onRestore(Archived.Chat(chat)) },
-                            onDelete = { confirming = Archived.Chat(chat) },
+                            selecting = selected.isNotEmpty(),
+                            checked = item.id in selected,
+                            onToggle = { selected = selected.toggle(item.id) },
+                            onRestore = { onRestore(item) },
+                            onDelete = { confirming = listOf(item) },
                         )
                     }
                 }
@@ -137,15 +183,55 @@ fun ArchiveScreen(
         }
     }
 
-    confirming?.let { target ->
+    confirming?.let { targets ->
         ConfirmDelete(
-            target = target,
+            targets = targets,
             onCancel = { confirming = null },
             onConfirm = {
-                onDelete(target)
+                targets.forEach(onDelete)
+                selected = emptySet()
                 confirming = null
             },
         )
+    }
+}
+
+/** Case-insensitive, and an empty query matches everything rather than nothing. */
+private fun String.matches(query: String): Boolean =
+    query.isBlank() || contains(query.trim(), ignoreCase = true)
+
+private fun Set<String>.toggle(id: String): Set<String> =
+    if (id in this) this - id else this + id
+
+/**
+ * What is selected, and the one thing that can be done to all of it.
+ *
+ * Restore is deliberately absent. Putting a dozen things back at once is harmless and
+ * nobody asks for it; deleting a dozen one confirmation at a time is what made this
+ * screen unusable with a real archive in it.
+ */
+@Composable
+private fun SelectionBar(count: Int, onClear: () -> Unit, onDelete: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radii.lg)
+            .background(colors.bgSurface)
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (count == 1) "1 selected" else "$count selected",
+            style = type.bodyEmphasis,
+            color = colors.text,
+            modifier = Modifier.weight(1f),
+        )
+        Action("Cancel", colors.textMuted, onClear)
+        Spacer(Modifier.width(Spacing.x2))
+        Action("Delete", colors.danger, onDelete)
     }
 }
 
@@ -161,9 +247,12 @@ private fun Label(text: String, count: Int) {
 
 @Composable
 private fun Entry(
-    title: String,
+    item: Archived,
     detail: String?,
     icon: AnodexIcon,
+    selecting: Boolean,
+    checked: Boolean,
+    onToggle: () -> Unit,
     onRestore: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -173,18 +262,36 @@ private fun Entry(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(colors.bgSurface)
+            .clip(Radii.lg)
+            .background(if (checked) colors.accentSoft else colors.bgSurface)
+            // Tapping a row does nothing until a selection exists, so nothing can be
+            // selected by accident on the way past. The icon starts one.
+            .clickable(
+                onClickLabel = if (selecting) "Select" else null,
+                onClick = { if (selecting) onToggle() },
+            )
             .padding(horizontal = Spacing.x4, vertical = Spacing.x3)
             .heightIn(min = Touch.minTarget),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AnodexIcon(icon, size = 18.dp, tint = colors.textMuted)
-        Spacer(Modifier.width(Spacing.x3))
+        Box(
+            modifier = Modifier
+                .size(Touch.minTarget)
+                .clip(CircleShape)
+                .clickable(onClickLabel = "Select", onClick = onToggle),
+            contentAlignment = Alignment.Center,
+        ) {
+            AnodexIcon(
+                if (checked) AnodexIcon.CHECK else icon,
+                size = 18.dp,
+                tint = if (checked) colors.accentInk else colors.textMuted,
+            )
+        }
+        Spacer(Modifier.width(Spacing.x2))
 
         Column(Modifier.weight(1f)) {
             Text(
-                text = title,
+                text = item.title,
                 style = type.body,
                 color = colors.text,
                 maxLines = 1,
@@ -201,14 +308,18 @@ private fun Entry(
             }
         }
 
-        Action("Restore", colors.accent, onRestore)
-        Spacer(Modifier.width(Spacing.x2))
-        Action("Delete", colors.danger, onDelete)
+        // Hidden while selecting. Two ways to delete the same row on screen at once is
+        // how somebody deletes one thing while meaning to delete twelve.
+        if (!selecting) {
+            Action("Restore", colors.accent, onRestore)
+            Spacer(Modifier.width(Spacing.x2))
+            Action("Delete", colors.danger, onDelete)
+        }
     }
 }
 
 @Composable
-private fun Action(label: String, tint: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+private fun Action(label: String, tint: Color, onClick: () -> Unit) {
     Text(
         text = label,
         style = AnodexTheme.type.meta,
@@ -216,8 +327,8 @@ private fun Action(label: String, tint: androidx.compose.ui.graphics.Color, onCl
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
-            // The row is already at the minimum target height, so the padding here
-            // is what gives each word a tap area of its own rather than a shared one.
+            // The row is already at the minimum target height, so this padding is what
+            // gives each word a tap area of its own rather than a shared one.
             .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
     )
 }
@@ -230,18 +341,21 @@ private fun Action(label: String, tint: androidx.compose.ui.graphics.Color, onCl
  * takes its conversations with it, and that is the part somebody would not guess.
  */
 @Composable
-private fun ConfirmDelete(target: Archived, onCancel: () -> Unit, onConfirm: () -> Unit) {
+private fun ConfirmDelete(targets: List<Archived>, onCancel: () -> Unit, onConfirm: () -> Unit) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    val projects = targets.count { it is Archived.Workspace }
+    val single = targets.singleOrNull()
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onCancel,
         containerColor = colors.bgElevated,
         title = {
             Text(
-                text = when (target) {
-                    is Archived.Workspace -> "Delete this project?"
-                    is Archived.Chat -> "Delete this chat?"
+                text = when {
+                    single is Archived.Workspace -> "Delete this project?"
+                    single != null -> "Delete this chat?"
+                    else -> "Delete ${targets.size} things?"
                 },
                 style = type.bodyEmphasis,
                 color = colors.text,
@@ -249,14 +363,27 @@ private fun ConfirmDelete(target: Archived, onCancel: () -> Unit, onConfirm: () 
         },
         text = {
             Text(
-                text = when (target) {
-                    is Archived.Workspace ->
-                        "“${target.title}” and every conversation inside it are " +
+                text = when {
+                    single is Archived.Workspace ->
+                        "“${single.title}” and every conversation inside it are " +
                             "removed from the computer. Files on disk are left alone. This " +
                             "cannot be undone."
 
-                    is Archived.Chat ->
-                        "“${target.title}” is removed from the computer. This " +
+                    single != null ->
+                        "“${single.title}” is removed from the computer. This " +
+                            "cannot be undone."
+
+                    // The project count is called out separately because a project is
+                    // not one item. Deleting three of them may be deleting a hundred
+                    // conversations, and a flat total would hide that.
+                    projects > 0 ->
+                        "${targets.size} things are removed from the computer, including " +
+                            "$projects ${if (projects == 1) "project" else "projects"} and " +
+                            "every conversation inside them. Files on disk are left alone. " +
+                            "This cannot be undone."
+
+                    else ->
+                        "${targets.size} conversations are removed from the computer. This " +
                             "cannot be undone."
                 },
                 style = type.body,
@@ -287,3 +414,6 @@ private fun ConfirmDelete(target: Archived, onCancel: () -> Unit, onConfirm: () 
         },
     )
 }
+
+/** Below this, a search box is furniture rather than help. */
+private const val SEARCH_WORTH_IT = 8
