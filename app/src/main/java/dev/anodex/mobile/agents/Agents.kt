@@ -23,7 +23,29 @@ data class AgentRun(
     val lastError: String?,
     val plan: Plan?,
     val updatedAtEpochMs: Long,
+    /** The workspace it runs in, or null. The card names it, as the desktop's does. */
+    val projectId: String? = null,
+    /** `local`, `anthropic`, … — the desktop's provider id. */
+    val provider: String? = null,
+    val model: String? = null,
+    val tokensUsed: Long = 0,
+    val maxTokens: Long = 0,
+    val maxDurationMinutes: Int = 0,
+    /** Time spent actually working, banked at the end of each segment. */
+    val activeMs: Long = 0,
+    /** When the segment in progress began, or null when it is not generating. */
+    val activeSinceAtEpochMs: Long? = null,
 ) {
+    /**
+     * How long this run has worked, the same reading the desktop stops it on.
+     *
+     * `activeElapsedMs` on the desktop: banked time plus the segment in flight. Not
+     * `now - createdAt`, which climbs while a run sits waiting for approval and would
+     * disagree with the budget it is drawn against.
+     */
+    fun activeElapsedMs(now: Long = System.currentTimeMillis()): Long =
+        activeMs + (activeSinceAtEpochMs?.let { (now - it).coerceAtLeast(0) } ?: 0)
+
     enum class Status {
         RUNNING,
 
@@ -203,6 +225,14 @@ private fun JsonObject.toRun(): AgentRun? {
         lastError = str("lastError")?.takeIf { it.isNotBlank() },
         plan = (this["plan"] as? JsonObject)?.toPlan(),
         updatedAtEpochMs = long("updatedAt"),
+        projectId = str("projectId")?.takeIf { it.isNotBlank() },
+        provider = str("provider")?.takeIf { it.isNotBlank() },
+        model = str("model")?.takeIf { it.isNotBlank() },
+        tokensUsed = long("tokensUsed"),
+        maxTokens = long("maxTokens"),
+        maxDurationMinutes = num("maxDurationMinutes"),
+        activeMs = long("activeMs"),
+        activeSinceAtEpochMs = long("activeSinceAt").takeIf { it > 0 },
     )
 }
 
@@ -235,7 +265,7 @@ private fun JsonObject.num(key: String): Int =
     (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: 0
 
 /**
- * A number too big for [num] — which means every timestamp.
+ * A number too big for [num] — every timestamp, and a token count past two billion.
  *
  * `updatedAt` used to be read through `num` and widened afterwards, but the
  * narrowing had already happened: `Double.toInt()` clamps rather than wraps, so
@@ -244,3 +274,26 @@ private fun JsonObject.num(key: String): Int =
  */
 private fun JsonObject.long(key: String): Long =
     (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toLong() ?: 0L
+
+/**
+ * The name the desktop shows for a provider, from its `AGENT_RUN_PROVIDERS` table.
+ *
+ * Copied rather than derived — the phone has no provider registry — and falling back
+ * to the id, which is also what the desktop does for one it does not know.
+ */
+fun providerVendor(id: String?): String? = when (id) {
+    null -> null
+    "local" -> "Local"
+    "anthropic" -> "Claude"
+    "openai" -> "OpenAI"
+    "google" -> "Google AI"
+    "xai" -> "xAI"
+    "deepseek" -> "DeepSeek"
+    "mistral" -> "Mistral AI"
+    "groq" -> "Groq"
+    "openrouter" -> "OpenRouter"
+    "azure" -> "Azure OpenAI"
+    "kimi" -> "Kimi"
+    "qwen" -> "Qwen"
+    else -> id
+}
