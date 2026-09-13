@@ -373,9 +373,17 @@ private fun ConfirmDelete(targets: List<Archived>, onCancel: () -> Unit, onConfi
                         "“${single.title}” is removed from the computer. This " +
                             "cannot be undone."
 
-                    // The project count is called out separately because a project is
-                    // not one item. Deleting three of them may be deleting a hundred
-                    // conversations, and a flat total would hide that.
+                    // Everything selected is a project, so "2 things, including 2
+                    // projects" says it twice. Seen on a real archive, where selecting
+                    // two projects produced exactly that.
+                    projects == targets.size ->
+                        "$projects projects and every conversation inside them are removed " +
+                            "from the computer. Files on disk are left alone. This cannot " +
+                            "be undone."
+
+                    // A mixture. The project count is called out separately because a
+                    // project is not one item — deleting three of them may be deleting
+                    // a hundred conversations, and a flat total would hide that.
                     projects > 0 ->
                         "${targets.size} things are removed from the computer, including " +
                             "$projects ${if (projects == 1) "project" else "projects"} and " +
