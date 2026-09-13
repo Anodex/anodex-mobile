@@ -766,8 +766,11 @@ internal fun titleFromFirstTurn(turns: List<ChatMessage>): String {
  */
 internal fun withoutMarkdown(line: String): String = line
     .replace(Regex("""^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)"""), "")
-    .replace(Regex("""(\*\*|__)(.+?)\1"""), "$2")
-    .replace(Regex("""(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])"""), "$1")
+    // Flanked the way emphasis is, so a path like `src/**/*.ts` or a name like
+    // `__init__.py` is text rather than a pair of marks.
+    .replace(Regex("""(?<![\w*/])\*\*(?![\s*])(.+?)(?<![\s*])\*\*(?![\w*/])"""), "$1")
+    .replace(Regex("""(?<!\w)__(?![\s_])(.+?)(?<![\s_])__(?![\w.])"""), "$1")
+    .replace(Regex("""(?<![\w*/])\*(?![\s*])([^*]+?)(?<!\s)\*(?![\w*/])"""), "$1")
     .replace(Regex("""`([^`]*)`"""), "$1")
     .replace(Regex("""\s+"""), " ")
     .trim()

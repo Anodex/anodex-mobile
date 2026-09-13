@@ -119,6 +119,8 @@ class ConversationTitleTest {
     @Test
     fun `asterisks that are not emphasis are left alone`() {
         assertEquals("2 * 3 * 4 is 24", titleToSave(null, listOf(user("2 * 3 * 4 is 24"))))
+        assertEquals("glob src/**/*.ts", titleToSave(null, listOf(user("glob src/**/*.ts"))))
+        assertEquals("Why does __init__.py run", titleToSave(null, listOf(user("Why does __init__.py run"))))
     }
 
     @Test
