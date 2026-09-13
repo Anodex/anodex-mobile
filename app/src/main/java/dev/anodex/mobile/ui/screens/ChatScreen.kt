@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -186,6 +187,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val composerFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     /**
      * A message written while the last one was still being answered.
@@ -455,6 +457,9 @@ fun ChatScreen(
                             onEdit = { text ->
                                 draft = text
                                 runCatching { composerFocus.requestFocus() }
+                                // Focus alone leaves the keyboard shut, so Edit ended in a
+                                // second tap on the field before anything could be changed.
+                                keyboard?.show()
                             },
                             waitingForComputer = waitingForComputer,
                         )
