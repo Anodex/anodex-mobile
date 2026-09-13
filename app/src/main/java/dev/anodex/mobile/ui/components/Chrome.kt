@@ -58,6 +58,9 @@ val SCRIM_FADE = 28.dp
 /** How far into the scrim the page's colour has arrived, as a fraction of its height. */
 const val SCRIM_HOLD = 0.55f
 
+/** How far above a bar's lower edge scrolling content starts to show again. */
+val EDGE_FADE = 20.dp
+
 /**
  * How much of the page's colour the scrim carries behind the bar itself.
  *
@@ -76,6 +79,12 @@ const val SCRIM_ALPHA = 0.82f
  *
  * Lived in `ChatScreen` as a private modifier, which is why it was the only screen in
  * the app that had it.
+ *
+ * Gone behind the bar, faded in only over its last [EDGE_FADE]. The fade used to run
+ * the whole height of the bar, so a line scrolled up under a title or a subtitle was
+ * still most of the way to full strength — "Working in Nebula2" printed over the
+ * middle of a reply, on every screen with a long page. The page still visibly runs on
+ * beneath; it just stops competing with the words on top of it.
  */
 fun Modifier.fadingEdges(top: Dp, bottom: Dp): Modifier =
     this
@@ -89,10 +98,12 @@ fun Modifier.fadingEdges(top: Dp, bottom: Dp): Modifier =
             val topStop = (top.toPx() / height).coerceIn(0f, 1f)
             val bottomStop = (1f - bottom.toPx() / height).coerceIn(topStop, 1f)
             if (topStop == 0f && bottomStop == 1f) return@drawWithContent
+            val clearUntil = ((top.toPx() - EDGE_FADE.toPx()) / height).coerceIn(0f, topStop)
 
             drawRect(
                 brush = Brush.verticalGradient(
                     0f to Color.Transparent,
+                    clearUntil to Color.Transparent,
                     topStop to Color.Black,
                     bottomStop to Color.Black,
                     1f to Color.Transparent,
