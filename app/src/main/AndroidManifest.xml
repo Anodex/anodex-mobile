@@ -103,6 +103,36 @@
         </activity>
 
         <!--
+          Android's share menu. A separate, invisible activity that forwards to
+          MainActivity, so sharing never starts a second copy of the app inside the
+          sharing app's task. The types match what an attachment may be.
+        -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/app_name"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/png" />
+                <data android:mimeType="image/jpeg" />
+                <data android:mimeType="image/gif" />
+                <data android:mimeType="image/bmp" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+        </activity>
+
+        <!--
           Hands one downloaded APK to the system installer. Exports a single cache
           subdirectory and nothing else: grantUriPermissions means the installer gets
           read access to the one file it is passed, for as long as it is handling it.
@@ -134,6 +164,10 @@
           What it actually does is hold a long-lived connection to a computer the user
           owns, which is what specialUse is for.
         -->
+        <receiver
+            android:name=".notify.RunActionReceiver"
+            android:exported="false" />
+
         <service
             android:name=".connection.ConnectionService"
             android:exported="false"

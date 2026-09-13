@@ -110,10 +110,16 @@ class Notifications(private val context: Context) {
         body: String,
         /** The conversation a tap should open. Null opens the app where it was. */
         conversationId: String? = null,
+        /**
+         * The run whose plan this is waiting on, when it is one. Adds Approve and
+         * Reject to the notification, so a plan can be answered from the lock screen
+         * or the shade without opening the app at all.
+         */
+        planRunId: String? = null,
     ): Boolean {
         if (!canNotify()) return false
 
-        val notification = NotificationCompat.Builder(context, channelFor(kind))
+        val builder = NotificationCompat.Builder(context, channelFor(kind))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
@@ -134,7 +140,13 @@ class Notifications(private val context: Context) {
             // finishing left the phone exactly where it was — the one moment the app
             // should come forward, it did not.
             .setContentIntent(openIntent(id, conversationId))
-            .build()
+
+        if (planRunId != null && kind == NotificationKind.NEEDS_APPROVAL) {
+            // Reject first, so the positive answer sits at the end where the thumb is.
+            builder.addAction(0, "Reject", runActionIntent(id, planRunId, conversationId, approve = false))
+            builder.addAction(0, "Approve", runActionIntent(id, planRunId, conversationId, approve = true))
+        }
+        val notification = builder.build()
 
         return try {
             manager.notify(id, notification)
@@ -156,6 +168,37 @@ class Notifications(private val context: Context) {
             id,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun runActionIntent(id: Int, runId: String, conversationId: String?, approve: Boolean): PendingIntent {
+        val intent = Intent(context, RunActionReceiver::class.java)
+            .putExtra(RunActionReceiver.EXTRA_RUN_ID, runId)
+            .putExtra(RunActionReceiver.EXTRA_APPROVE, approve)
+            .apply { conversationId?.let { putExtra(RunActionReceiver.EXTRA_CONVERSATION_ID, it) } }
+        // Distinct request codes, or the second action's intent replaces the first and
+        // both buttons do the same thing.
+        return PendingIntent.getBroadcast(
+            context,
+            id * 2 + if (approve) 1 else 0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    /**
+     * A plan was answered from the notification with nothing to send it through.
+     *
+     * The app, and its connection, had been closed. Replaces the plan notification,
+     * so the buttons that could not work are gone and a tap opens the app to answer.
+     */
+    fun showOpenToAnswer(conversationId: String?) {
+        show(
+            id = ID_APPROVAL,
+            kind = NotificationKind.NEEDS_APPROVAL,
+            title = "Open Anodex to answer",
+            body = "Anodex was closed, so the plan could not be answered from here. It is still waiting.",
+            conversationId = conversationId,
         )
     }
 
@@ -262,8 +305,13 @@ class Notifications(private val context: Context) {
          * One at a time, on purpose: only one prompt can be outstanding, and a
          * stable id means answering it on the desktop replaces or clears this one
          * rather than leaving a dead notification the user taps into nothing.
+         *
+         * Not 1. That is the connection service's ongoing notification, and sharing it
+         * made every approval take that slot: posted as the foreground service's own
+         * notification it could not be swiped away or cancelled — answering the plan
+         * left it in the shade for good — and "Connected to" vanished while it stood.
          */
-        const val ID_APPROVAL = 1
+        const val ID_APPROVAL = 2
 
         /** The conversation a notification tap should open, on the launch intent. */
         const val EXTRA_CONVERSATION_ID = "dev.anodex.mobile.conversationId"

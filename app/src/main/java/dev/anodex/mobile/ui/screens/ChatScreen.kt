@@ -165,10 +165,19 @@ fun ChatScreen(
      * the rest fold to a line each.
      */
     runGoal: String? = null,
+    /** Text shared from another app, for the composer. See `AnodexViewModel.receiveShare`. */
+    sharedDraft: String? = null,
+    onSharedDraftTaken: () -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     var draft by remember { mutableStateOf("") }
+
+    LaunchedEffect(sharedDraft) {
+        val shared = sharedDraft ?: return@LaunchedEffect
+        draft = if (draft.isBlank()) shared else draft.trimEnd() + "\n\n" + shared
+        onSharedDraftTaken()
+    }
 
     // Dictation. Spoken words are added to whatever is already written rather than
     // replacing it, so a message can be half typed and half said.

@@ -57,6 +57,7 @@ import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.notify.NotificationAccess
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
+import dev.anodex.mobile.notify.RunActionBridge
 import dev.anodex.mobile.pairing.CertificateProbe
 import dev.anodex.mobile.pairing.PairedHost
 import dev.anodex.mobile.pairing.PairedHostStore
@@ -1500,6 +1501,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * plan makes the desktop start work, and what the run becomes is its business
      * to report, not the phone's to predict.
      */
+    /** Approve or Reject pressed on a plan's notification. See [RunActionReceiver]. */
+    private val runActionHandler: (String, Boolean) -> Unit = { runId, approve ->
+        if (approve) approvePlan(runId) else rejectPlan(runId)
+    }
+
+    init {
+        RunActionBridge.handler = runActionHandler
+    }
+
     private fun actOnRun(runId: String, action: suspend (Agents) -> Unit) {
         val client = agentClient ?: return
         _busyRunId.value = runId
@@ -1974,6 +1984,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 refreshPersonalities()
                 refreshModels()
                 resumeAfterReconnect()
+                pendingShare?.let { (text, uris) ->
+                    pendingShare = null
+                    applyShare(text, uris)
+                }
                 pendingNotificationOpen?.let {
                     pendingNotificationOpen = null
                     openConversation(it)
@@ -2537,6 +2551,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() {
+        if (RunActionBridge.handler === runActionHandler) RunActionBridge.handler = null
         socket?.close()
         // viewModelScope cancellation would stop the loop anyway; saying so explicitly means the
         // controller's lifecycle does not depend on knowing that.
@@ -2576,6 +2591,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
             CHANNEL_AGENT_RUNS -> {
                 _agentRuns.value = parseAgentRuns(event.payload)
+                clearSettledPlanNotification()
                 // Something about a run changed — a turn, most often — so the page
                 // following one reads its turns again.
                 // A run deleted on the computer closes its page rather than leaving
@@ -2659,7 +2675,55 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             nextNotificationId++
         }
 
-        if (!notifications.show(id, kind, title, body, conversationId)) {
+        // A plan waiting for review gets Approve and Reject on the notification. The
+        // computer's notification names the conversation, not the run, so the run is
+        // found by it — in the list already here, or read fresh when this arrived
+        // ahead of the list's own update.
+        if (kind == NotificationKind.NEEDS_APPROVAL && conversationId != null) {
+            viewModelScope.launch {
+                val planRunId = reviewRunFor(conversationId)
+                    ?: runCatching { agentClient?.list() }.getOrNull()?.let { runs ->
+                        _agentRuns.value = runs
+                        reviewRunFor(conversationId)
+                    }
+                postNotification(id, kind, title, body, conversationId, planRunId)
+            }
+            return
+        }
+        postNotification(id, kind, title, body, conversationId, null)
+    }
+
+    /** The run a plan notification with Approve and Reject is up for, if one is. */
+    private var planNotificationRunId: String? = null
+
+    /**
+     * Take the plan notification down once its run is no longer waiting.
+     *
+     * Answered at the computer, or on this phone's own run page, the notification would
+     * otherwise sit in the shade offering buttons for a question already settled.
+     */
+    private fun clearSettledPlanNotification() {
+        val runId = planNotificationRunId ?: return
+        if (_agentRuns.value.any { it.id == runId && it.status == AgentRun.Status.NEEDS_REVIEW }) return
+        notifications.cancel(Notifications.ID_APPROVAL)
+        planNotificationRunId = null
+    }
+
+    private fun reviewRunFor(conversationId: String): String? =
+        _agentRuns.value.firstOrNull {
+            it.conversationId == conversationId && it.status == AgentRun.Status.NEEDS_REVIEW
+        }?.id
+
+    private fun postNotification(
+        id: Int,
+        kind: NotificationKind,
+        title: String,
+        body: String,
+        conversationId: String?,
+        planRunId: String?,
+    ) {
+        planNotificationRunId = planRunId ?: planNotificationRunId.takeIf { kind != NotificationKind.NEEDS_APPROVAL }
+        if (!notifications.show(id, kind, title, body, conversationId, planRunId)) {
             // Could not be shown — almost always an ungranted permission, or the app
             // switched off in system settings. Feeds the same sequence the first
             // connection uses rather than a second, separate flag: there is one
@@ -2784,13 +2848,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * Back where the connection dropped: the same conversation, then anything written
      * while it was away, sent one after another.
      *
-     * A notification tap waiting on this connection is somewhere the user
+     * A notification tap or a share waiting on this connection is somewhere the user
      * asked to go, so it wins and the old conversation is not reopened over it.
      */
     private fun resumeAfterReconnect() {
         val offline = _offlineChat.value ?: return
         val queued = _queuedMessages.value
-        val goingElsewhere = pendingNotificationOpen != null
+        val goingElsewhere = pendingNotificationOpen != null || pendingShare != null
 
         if (offline.conversationId.isNotEmpty() && !goingElsewhere) {
             openConversation(offline.conversationId)
@@ -2813,6 +2877,39 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 _queuedMessages.value = _queuedMessages.value.drop(1)
             }
         }
+    }
+
+    private val _sharedDraft = MutableStateFlow<String?>(null)
+
+    /** Text shared into the app, waiting to be put in the composer. */
+    val sharedDraft: StateFlow<String?> = _sharedDraft.asStateFlow()
+
+    fun consumeSharedDraft() {
+        _sharedDraft.value = null
+    }
+
+    private var pendingShare: Pair<String?, List<android.net.Uri>>? = null
+
+    /**
+     * Something shared from another app: a new chat, the text in its composer and the
+     * files attached, ready to send — never sent on its own, because what to ask about
+     * a shared screenshot is still the user's to say.
+     *
+     * Held until connected when it arrives first; a share is often what opened the app.
+     */
+    fun receiveShare(text: String?, uris: List<android.net.Uri>) {
+        if (socket == null || uploads == null) {
+            pendingShare = text to uris
+            return
+        }
+        applyShare(text, uris)
+    }
+
+    private fun applyShare(text: String?, uris: List<android.net.Uri>) {
+        newConversation()
+        uris.forEach(::attach)
+        _sharedDraft.value = text
+        _chat.value?.let { _chatOpenRequest.value = it.conversationId }
     }
 
     /** Take the approval notification down once the prompt is gone. */
