@@ -122,6 +122,7 @@ import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.ui.theme.UiFont
+import dev.anodex.mobile.widget.AskWidget
 import kotlinx.coroutines.delay
 
 /**
@@ -159,6 +160,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             openNotificationTarget(intent)
             receiveShare(intent)
+            receiveQuickAction(intent)
         }
         // Installed before anything else runs, so a crash during start-up is caught
         // too. Start-up is exactly when the crashes that matter happen: a phone that
@@ -210,6 +212,18 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         openNotificationTarget(intent)
         receiveShare(intent)
+        receiveQuickAction(intent)
+    }
+
+    /** A tap on the home screen widget. Read once and removed, like a notification's. */
+    private fun receiveQuickAction(intent: Intent?) {
+        val action = when (intent?.getStringExtra(AskWidget.EXTRA_QUICK_ACTION)) {
+            AskWidget.ACTION_NEW_CHAT -> AnodexViewModel.QuickAction.NEW_CHAT
+            AskWidget.ACTION_CAMERA -> AnodexViewModel.QuickAction.CAMERA
+            else -> return
+        }
+        intent.removeExtra(AskWidget.EXTRA_QUICK_ACTION)
+        viewModel.receiveQuickAction(action)
     }
 
     /**
@@ -1640,6 +1654,20 @@ private fun ChatPane(
     val cameraPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) launchCamera() }
+    fun takePhotoNow() {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            cameraContext,
+            android.Manifest.permission.CAMERA,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) launchCamera() else cameraPermission.launch(android.Manifest.permission.CAMERA)
+    }
+
+    // The widget's camera: the new chat is already open, so this is the photo.
+    val quickAction by viewModel.quickAction.collectAsStateWithLifecycle()
+    LaunchedEffect(quickAction) {
+        if (quickAction == AnodexViewModel.QuickAction.CAMERA) takePhotoNow()
+        if (quickAction != null && quickAction != AnodexViewModel.QuickAction.NEW_CHAT) viewModel.consumeQuickAction()
+    }
 
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -1720,6 +1748,9 @@ private fun ChatPane(
             // Only when the connection is what took the screen away. Leaving a chat on
             // purpose mid-turn is not a reason to send what was left in the box later.
             onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
+            // The widget's "Ask Anodex…": the keyboard is up and waiting on arrival.
+            focusComposer = quickAction == AnodexViewModel.QuickAction.NEW_CHAT,
+            onComposerFocused = viewModel::consumeQuickAction,
             temporary = chat.temporary,
             onToggleTemporary = if (messages.isEmpty()) viewModel::setTemporary else null,
             sharedDraft = sharedDraft,
@@ -1748,13 +1779,7 @@ private fun ChatPane(
             onPickPhoto = {
                 pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
-            onTakePhoto = {
-                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                    cameraContext,
-                    android.Manifest.permission.CAMERA,
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                if (granted) launchCamera() else cameraPermission.launch(android.Manifest.permission.CAMERA)
-            },
+            onTakePhoto = ::takePhotoNow,
             onRemoveAttachment = viewModel::removeAttachment,
         )
     }

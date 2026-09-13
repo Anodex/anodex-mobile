@@ -187,6 +187,9 @@ fun ChatScreen(
      * the computer instead.
      */
     onDraftStranded: (String) -> Unit = {},
+    /** Put the cursor in the composer with the keyboard up, once, then report it done. */
+    focusComposer: Boolean = false,
+    onComposerFocused: () -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -206,6 +209,15 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val composerFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(focusComposer) {
+        if (!focusComposer) return@LaunchedEffect
+        // A frame for the composer to be laid out before it can take focus.
+        kotlinx.coroutines.delay(250)
+        runCatching { composerFocus.requestFocus() }
+        keyboard?.show()
+        onComposerFocused()
+    }
 
     /**
      * A message written while the last one was still being answered.

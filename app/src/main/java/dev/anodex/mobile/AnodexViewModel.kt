@@ -2018,6 +2018,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 refreshPersonalities()
                 refreshModels()
                 resumeAfterReconnect()
+                pendingQuickAction?.let {
+                    pendingQuickAction = null
+                    applyQuickAction(it)
+                }
                 pendingShare?.let { (text, uris) ->
                     pendingShare = null
                     applyShare(text, uris)
@@ -2835,6 +2839,39 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun consumeChatOpenRequest() {
         _chatOpenRequest.value = null
+    }
+
+    /** What the home screen widget asked for: a new chat, or a photo for one. */
+    enum class QuickAction { NEW_CHAT, CAMERA }
+
+    private val _quickAction = MutableStateFlow<QuickAction?>(null)
+
+    /** A widget tap waiting for the chat screen. The screen consumes it. */
+    val quickAction: StateFlow<QuickAction?> = _quickAction.asStateFlow()
+
+    private var pendingQuickAction: QuickAction? = null
+
+    /**
+     * Start a new chat for a widget tap, and hand the screen what else was asked for.
+     *
+     * Waits for the connection when the tap is what opened the app, like a share does.
+     */
+    fun receiveQuickAction(action: QuickAction) {
+        if (socket == null) {
+            pendingQuickAction = action
+            return
+        }
+        applyQuickAction(action)
+    }
+
+    private fun applyQuickAction(action: QuickAction) {
+        newConversation()
+        _chat.value?.let { _chatOpenRequest.value = it.conversationId }
+        _quickAction.value = action
+    }
+
+    fun consumeQuickAction() {
+        _quickAction.value = null
     }
 
     /** The conversation that was open when the connection dropped. */
