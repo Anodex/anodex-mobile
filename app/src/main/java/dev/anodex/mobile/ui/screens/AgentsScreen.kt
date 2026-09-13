@@ -1,29 +1,19 @@
 package dev.anodex.mobile.ui.screens
 
-import androidx.compose.runtime.State
-import kotlinx.coroutines.delay
-import dev.anodex.mobile.ui.theme.LocalReducedMotion
-import dev.anodex.mobile.agents.providerVendor
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.Canvas
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,13 +25,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
@@ -51,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Plan
 import dev.anodex.mobile.agents.PlanStep
+import dev.anodex.mobile.agents.providerVendor
+import dev.anodex.mobile.chat.withoutMarkdown
 import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
@@ -58,15 +57,17 @@ import dev.anodex.mobile.ui.components.EmptyState
 import dev.anodex.mobile.ui.components.EmptyTone
 import dev.anodex.mobile.ui.components.InlineProblem
 import dev.anodex.mobile.ui.components.ListSkeleton
+import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
-import dev.anodex.mobile.ui.components.PrimaryButton
-import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import kotlinx.coroutines.delay
 
 /**
  * Agent runs, and the plans waiting on a human.
@@ -692,7 +693,7 @@ private fun RunOutcome(run: AgentRun) {
     }
 
     Text(
-        text = if (run.status == AgentRun.Status.ERROR) "Failed: $text" else text,
+        text = oneLine(if (run.status == AgentRun.Status.ERROR) "Failed: $text" else text),
         style = type.meta,
         color = ink,
         maxLines = 3,
@@ -768,8 +769,18 @@ private fun PlanView(plan: Plan) {
     }
 }
 
-/** A pasted prompt as one line, so a title cannot arrive already broken. */
-private fun oneLine(text: String): String = text.replace(Regex("\\s+"), " ").trim()
+/**
+ * A pasted prompt or a summary as one plain line.
+ *
+ * Flattened so a title cannot arrive already broken, and without its markdown marks,
+ * because the card draws text rather than rendering it: a goal pasted from another
+ * assistant showed its `**bold**` as asterisks, and a summary opened on a literal
+ * `---` rule.
+ */
+private fun oneLine(text: String): String = text.lineSequence()
+    .map(::withoutMarkdown)
+    .filter { it.isNotBlank() }
+    .joinToString(" ")
 
 
 @Preview(name = "Agents - dark", showBackground = true, heightDp = 760)
