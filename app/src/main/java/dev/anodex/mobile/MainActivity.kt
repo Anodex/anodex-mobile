@@ -1600,6 +1600,8 @@ private fun ChatPane(
     }
 
     val messages by chat.messages.collectAsStateWithLifecycle()
+    val agentRuns by viewModel.agentRuns.collectAsStateWithLifecycle()
+    val runGoal = agentRuns.firstOrNull { it.conversationId == chat.conversationId }?.goal
     val sending by chat.sending.collectAsStateWithLifecycle()
     val error by chat.error.collectAsStateWithLifecycle()
     val waitingForComputer by chat.waitingForComputer.collectAsStateWithLifecycle()
@@ -1628,6 +1630,7 @@ private fun ChatPane(
     ChatScreen(
         openers = openers,
         topInset = topInset,
+        runGoal = runGoal,
         messages = messages,
         sending = sending,
         error = error,
