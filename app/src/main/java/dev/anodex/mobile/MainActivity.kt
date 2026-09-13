@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -1605,6 +1606,40 @@ private fun ChatPane(
     val pickFile = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> uris.forEach(viewModel::attach) }
+
+    // Photos, through the system photo picker: the phone's own gallery, no storage
+    // permission, and on Android versions before the picker the document browser
+    // narrowed to images.
+    val pickPhotos = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(),
+    ) { uris -> uris.forEach(viewModel::attach) }
+
+    // Camera: the phone's own camera app writes a full photo into a file only this app
+    // exports, and it is attached from there. The camera permission is asked for first
+    // because this app declares it for pairing codes, and Android then refuses the
+    // camera app to anything that has not been granted it.
+    val cameraContext = LocalContext.current
+    var pendingPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val photo = pendingPhoto
+        pendingPhoto = null
+        if (saved && photo != null) viewModel.attach(photo)
+    }
+    fun launchCamera() {
+        val dir = java.io.File(cameraContext.cacheDir, "camera").apply { mkdirs() }
+        val file = java.io.File(dir, "photo-${System.currentTimeMillis()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            cameraContext,
+            "${cameraContext.packageName}.updates",
+            file,
+        )
+        pendingPhoto = uri
+        runCatching { takePhoto.launch(uri) }.onFailure { pendingPhoto = null }
+    }
+    val cameraPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) launchCamera() }
+
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
@@ -1699,6 +1734,16 @@ private fun ChatPane(
         onRetryMessage = chat::retry,
         pendingAttachments = attachments,
         onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
+        onPickPhoto = {
+            pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        },
+        onTakePhoto = {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                cameraContext,
+                android.Manifest.permission.CAMERA,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (granted) launchCamera() else cameraPermission.launch(android.Manifest.permission.CAMERA)
+        },
         onRemoveAttachment = viewModel::removeAttachment,
     )
 }
