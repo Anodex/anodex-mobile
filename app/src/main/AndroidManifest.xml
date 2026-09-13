@@ -134,6 +134,10 @@
           What it actually does is hold a long-lived connection to a computer the user
           owns, which is what specialUse is for.
         -->
+        <receiver
+            android:name=".notify.RunActionReceiver"
+            android:exported="false" />
+
         <service
             android:name=".connection.ConnectionService"
             android:exported="false"
