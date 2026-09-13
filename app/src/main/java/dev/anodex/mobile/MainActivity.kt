@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -153,7 +154,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) openNotificationTarget(intent)
+        if (savedInstanceState == null) {
+            openNotificationTarget(intent)
+            receiveShare(intent)
+        }
         // Installed before anything else runs, so a crash during start-up is caught
         // too. Start-up is exactly when the crashes that matter happen: a phone that
         // closes itself the moment it is opened cannot be debugged any other way.
@@ -203,6 +207,23 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         openNotificationTarget(intent)
+        receiveShare(intent)
+    }
+
+    /**
+     * Text and files from Android's share menu, by way of [ShareActivity].
+     *
+     * Removed from the intent once read, for the same reason as a notification's
+     * target: a rotation must not share the same thing twice.
+     */
+    private fun receiveShare(intent: Intent?) {
+        intent ?: return
+        val text = intent.getStringExtra(ShareActivity.EXTRA_SHARED_TEXT)
+        val uris = IntentCompat.getParcelableArrayListExtra(intent, ShareActivity.EXTRA_SHARED_URIS, Uri::class.java).orEmpty()
+        if (text == null && uris.isEmpty()) return
+        intent.removeExtra(ShareActivity.EXTRA_SHARED_TEXT)
+        intent.removeExtra(ShareActivity.EXTRA_SHARED_URIS)
+        viewModel.receiveShare(text, uris)
     }
 
     /**
@@ -1627,7 +1648,10 @@ private fun ChatPane(
         }
     }
 
+    val sharedDraft by viewModel.sharedDraft.collectAsStateWithLifecycle()
     ChatScreen(
+        sharedDraft = sharedDraft,
+        onSharedDraftTaken = viewModel::consumeSharedDraft,
         openers = openers,
         topInset = topInset,
         runGoal = runGoal,
