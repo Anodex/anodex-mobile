@@ -229,6 +229,19 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
      * One control for attaching, not two — a plus and a clip side by side is two
      * buttons for one job, and neither of them says which.
      */
+    CAMERA(
+        listOf(
+            "M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z",
+            "M12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+        ),
+    ),
+    IMAGE(
+        listOf(
+            "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+            "M9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+            "M21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21",
+        ),
+    ),
     PAPERCLIP(
         listOf(
             "M21 11.5l-8.8 8.8a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9 9a1.8 1.8 0 0 1-2.6-2.6l8.3-8.3",

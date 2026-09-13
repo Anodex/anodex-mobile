@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One directory, inside the app's own cache, holding one downloaded APK.
+  Two directories inside the app's own cache: one holding a downloaded APK for the
+  installer, one holding a photo the camera app writes for the chat.
 
   Narrow on purpose: a FileProvider that exports the whole cache exports every other
   thing that happens to be in it.
 -->
 <paths>
     <cache-path name="updates" path="updates/" />
+    <cache-path name="camera" path="camera/" />
 </paths>

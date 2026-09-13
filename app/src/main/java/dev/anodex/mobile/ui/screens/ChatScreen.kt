@@ -137,6 +137,10 @@ fun ChatScreen(
     pendingAttachments: List<UploadState> = emptyList(),
     /** Null where attaching is not possible — previews, and no socket. */
     onAttach: (() -> Unit)? = null,
+    /** Take a photo now and attach it. Null hides the choice. */
+    onTakePhoto: (() -> Unit)? = null,
+    /** Choose from the phone's photos. Null hides the choice. */
+    onPickPhoto: (() -> Unit)? = null,
     onRemoveAttachment: (UploadState) -> Unit = {},
     /**
      * Things worth asking, drawn from what is actually true on the computer now.
@@ -575,6 +579,8 @@ fun ChatScreen(
                 onStop = onStop,
                 attachments = pendingAttachments,
                 onAttach = onAttach,
+                onTakePhoto = onTakePhoto,
+                onPickPhoto = onPickPhoto,
                 onRemoveAttachment = onRemoveAttachment,
                 onDictate = dictate,
                 focusRequester = composerFocus,
@@ -1535,6 +1541,8 @@ private fun Composer(
     onClearDraft: () -> Unit = {},
     attachments: List<UploadState> = emptyList(),
     onAttach: (() -> Unit)? = null,
+    onTakePhoto: (() -> Unit)? = null,
+    onPickPhoto: (() -> Unit)? = null,
     onRemoveAttachment: (UploadState) -> Unit = {},
     /** Null on a phone with no speech screen to hand off to, which hides the mic. */
     onDictate: (() -> Unit)? = null,
@@ -1543,6 +1551,7 @@ private fun Composer(
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    var attachMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1585,6 +1594,26 @@ private fun Composer(
         // here too, instead of being a line drawn for the look of it.
         val hasSomethingToSend = draft.isNotBlank() || attachments.isNotEmpty()
 
+        // Camera, Photos, Files — the three places a picture comes from, one tap from
+        // the paperclip. It only ever opened the file browser, which on a phone is the
+        // slowest way to a photo and no way at all to take one.
+        if (attachMenu) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.x2),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                onTakePhoto?.let { take ->
+                    AttachChoice(AnodexIcon.CAMERA, "Camera", Modifier.weight(1f)) { attachMenu = false; take() }
+                }
+                onPickPhoto?.let { pick ->
+                    AttachChoice(AnodexIcon.IMAGE, "Photos", Modifier.weight(1f)) { attachMenu = false; pick() }
+                }
+                onAttach?.let { files ->
+                    AttachChoice(AnodexIcon.PAPERCLIP, "Files", Modifier.weight(1f)) { attachMenu = false; files() }
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1610,7 +1639,10 @@ private fun Composer(
                     modifier = Modifier
                         .size(Touch.minTarget)
                         .clip(CircleShape)
-                        .clickable(role = Role.Button, onClick = onAttach),
+                        .clickable(role = Role.Button) {
+                            // Straight to files when there is nothing else to offer.
+                            if (onTakePhoto == null && onPickPhoto == null) onAttach() else attachMenu = !attachMenu
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     AnodexIcon(
@@ -1826,3 +1858,23 @@ private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp")
  * beat for the same reason.
  */
 private const val TURN_SETTLE_MS = 900L
+
+/** One of Camera, Photos or Files above the composer. */
+@Composable
+private fun AttachChoice(icon: AnodexIcon, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    Column(
+        modifier = modifier
+            .clip(Radii.lg)
+            .background(colors.bgElevated)
+            .border(1.dp, colors.border, Radii.lg)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = Spacing.x3),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.x1),
+    ) {
+        AnodexIcon(icon, size = 22.dp, tint = colors.text)
+        Text(label, style = type.label, color = colors.textMuted)
+    }
+}
