@@ -2829,6 +2829,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         if (_offlineChat.value == null) _offlineChat.value = OfflineChat(conversationId = "", messages = emptyList())
     }
 
+    /** Whether the connection has taken the open chat away, as opposed to the user leaving it. */
+    fun chatIsGone(): Boolean = _chat.value == null
+
     fun unqueue(index: Int) {
         _queuedMessages.value = _queuedMessages.value.filterIndexed { i, _ -> i != index }
     }

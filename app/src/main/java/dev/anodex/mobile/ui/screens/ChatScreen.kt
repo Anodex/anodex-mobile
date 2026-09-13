@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -169,6 +170,15 @@ fun ChatScreen(
     /** Text shared from another app, for the composer. See `AnodexViewModel.receiveShare`. */
     sharedDraft: String? = null,
     onSharedDraftTaken: () -> Unit = {},
+    /**
+     * A message waiting for the turn to end, when this screen goes before the turn does.
+     *
+     * A connection that dies is not noticed at once, so a message written in those
+     * seconds waits for a turn that will never end, and the screen is then replaced
+     * by the offline one along with the message. Handed out here so it can wait for
+     * the computer instead.
+     */
+    onDraftStranded: (String) -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -206,6 +216,12 @@ fun ChatScreen(
             onSend(draft)
             draft = ""
         }
+    }
+
+    val strandedDraft by rememberUpdatedState(draft.takeIf { sending && it.isNotBlank() })
+    val latestOnDraftStranded by rememberUpdatedState(onDraftStranded)
+    DisposableEffect(Unit) {
+        onDispose { strandedDraft?.let { latestOnDraftStranded(it) } }
     }
 
     /**
