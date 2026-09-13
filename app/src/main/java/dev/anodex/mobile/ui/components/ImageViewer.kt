@@ -92,6 +92,11 @@ fun ImageViewer(localUri: String, onDismiss: () -> Unit) {
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
+                    // The whole surface is the control and it has no visible edge, so
+                    // this is the only thing that can say what tapping does. Without
+                    // it a screen reader announces a full-screen button that does not
+                    // say what it is for.
+                    onClickLabel = "Close",
                     onClick = onDismiss,
                 ),
             contentAlignment = Alignment.Center,
@@ -100,7 +105,11 @@ fun ImageViewer(localUri: String, onDismiss: () -> Unit) {
             if (image != null) {
                 Image(
                     bitmap = image,
-                    contentDescription = null,
+                    // An image with no description is skipped entirely by a screen
+                    // reader, which for the only thing on this screen is worse than a
+                    // generic name. This component is only handed attachments, so it
+                    // can say that much truthfully without knowing what is in them.
+                    contentDescription = "Attached image",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxSize()
