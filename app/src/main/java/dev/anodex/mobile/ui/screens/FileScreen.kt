@@ -1,23 +1,30 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.EmptyState
 import dev.anodex.mobile.ui.components.EmptyTone
 import dev.anodex.mobile.ui.components.ScreenScaffold
-import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
+import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.workspace.FileContent
 
 /**
@@ -54,7 +61,17 @@ fun FileScreen(
         subtitle = directory.takeIf { it.isNotEmpty() },
         // A filename set in the body face stops looking like a filename.
         titleStyle = type.mono,
-        leading = { SecondaryButton(label = "Back", onClick = onClose) },
+        leading = {
+            Box(
+                modifier = Modifier
+                    .size(Touch.minTarget)
+                    .clip(Radii.md)
+                    .clickable(role = Role.Button, onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                AnodexIcon(AnodexIcon.CHEVRON_LEFT, size = 20.dp, tint = colors.textMuted, contentDescription = "Back")
+            }
+        },
     ) { topInset ->
         when {
             loading || content == null -> EmptyState(
