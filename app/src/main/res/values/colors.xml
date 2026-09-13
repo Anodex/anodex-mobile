@@ -9,6 +9,7 @@
          mark was drawn for it, and launchers composite icons against their own backgrounds. -->
     <color name="ic_launcher_background">#080808</color>
 
-    <!-- The `bg-app` token. Painted behind the first frame so launch doesn't flash white. -->
-    <color name="window_background">#F9F8F5</color>
+    <!-- The dark `bg-app` token from themes/midnight.css. Painted behind the first frame; dark to
+         match the default theme. -->
+    <color name="window_background">#0C0C0C</color>
 </resources>
