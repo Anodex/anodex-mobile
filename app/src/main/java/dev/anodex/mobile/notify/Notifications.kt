@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -14,6 +15,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import dev.anodex.mobile.MainActivity
 import dev.anodex.mobile.R
 
 /**
@@ -101,7 +103,14 @@ class Notifications(private val context: Context) {
      *   treat that as information rather than an error: notifications are a
      *   convenience, and the app works without them.
      */
-    fun show(id: Int, kind: NotificationKind, title: String, body: String): Boolean {
+    fun show(
+        id: Int,
+        kind: NotificationKind,
+        title: String,
+        body: String,
+        /** The conversation a tap should open. Null opens the app where it was. */
+        conversationId: String? = null,
+    ): Boolean {
         if (!canNotify()) return false
 
         val notification = NotificationCompat.Builder(context, channelFor(kind))
@@ -120,6 +129,11 @@ class Notifications(private val context: Context) {
                 },
             )
             .setAutoCancel(true)
+            // A notification that opens nothing. Every one of these used to be built
+            // without a tap action, so tapping "a plan needs your approval" or a run
+            // finishing left the phone exactly where it was — the one moment the app
+            // should come forward, it did not.
+            .setContentIntent(openIntent(id, conversationId))
             .build()
 
         return try {
@@ -129,6 +143,20 @@ class Notifications(private val context: Context) {
             // Permission revoked between the check and the call.
             false
         }
+    }
+
+    private fun openIntent(id: Int, conversationId: String?): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .apply { conversationId?.let { putExtra(EXTRA_CONVERSATION_ID, it) } }
+        // One request code per notification, so two notifications for two
+        // conversations do not share one intent and open the same chat.
+        return PendingIntent.getActivity(
+            context,
+            id,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     /** Take a notification down — the approval was answered somewhere else. */
@@ -236,5 +264,16 @@ class Notifications(private val context: Context) {
          * rather than leaving a dead notification the user taps into nothing.
          */
         const val ID_APPROVAL = 1
+
+        /** The conversation a notification tap should open, on the launch intent. */
+        const val EXTRA_CONVERSATION_ID = "dev.anodex.mobile.conversationId"
+
+        /**
+         * One id per conversation for "reply ready", so a second answer in the same
+         * chat replaces the first notification rather than stacking under it.
+         * Offset well clear of the approval id and the run counter that starts at 100.
+         */
+        fun replyNotificationId(conversationId: String): Int =
+            10_000 + (conversationId.hashCode() and 0x3FFF)
     }
 }

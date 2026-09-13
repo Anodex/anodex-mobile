@@ -156,6 +156,14 @@ class ChatSession(
      * the user ever typed.
      */
     existingTitle: String? = null,
+    /**
+     * A turn this session sent has been answered, after its save.
+     *
+     * Called from the session's own scope, so it still fires for a turn whose screen
+     * has moved on to another conversation — which is exactly when somebody needs to
+     * be told.
+     */
+    private val onAnswered: (session: ChatSession, reply: ChatMessage) -> Unit = { _, _ -> },
 ) {
     private val _title = MutableStateFlow(existingTitle?.takeIf { it.isNotBlank() })
 
@@ -359,7 +367,12 @@ class ChatSession(
             // After the save, and outside `NonCancellable`: the turn is safe on the
             // computer by now, and a title is worth a model call only while somebody
             // is still here to read it.
-            if (answered) nameAfterFirstReply(messageId)
+            if (answered) {
+                _messages.value.firstOrNull { it.id == assistantIdFor(messageId) }
+                    ?.takeIf { it.text.isNotBlank() }
+                    ?.let { onAnswered(this@ChatSession, it) }
+                nameAfterFirstReply(messageId)
+            }
         }
     }
 
@@ -854,6 +867,27 @@ internal fun workingPhase(
         else -> WorkingPhase.WORKING
     }
 }
+
+/**
+ * The start of a reply, plain, for a notification.
+ *
+ * A lock screen shows a line or two, and a reply is markdown — a code fence or a
+ * table as its first line reads as noise there. Marks are dropped, lines joined, and
+ * the result cut on a word near [REPLY_PREVIEW_CHARS].
+ */
+internal fun replyPreview(text: String): String {
+    val plain = text.lineSequence()
+        .filterNot { it.trimStart().startsWith("```") }
+        .map(::withoutMarkdown)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    if (plain.length <= REPLY_PREVIEW_CHARS) return plain
+    val cut = plain.take(REPLY_PREVIEW_CHARS)
+    val lastSpace = cut.lastIndexOf(' ').takeIf { it > REPLY_PREVIEW_CHARS / 2 } ?: cut.length
+    return cut.take(lastSpace).trimEnd() + "…"
+}
+
+internal const val REPLY_PREVIEW_CHARS = 160
 
 /** What `chat:title` is asked, in the shape of the desktop's `ChatTitleRequest`. */
 internal fun titleRequest(question: ChatMessage, reply: ChatMessage): JsonObject = buildJsonObject {
