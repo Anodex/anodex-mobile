@@ -305,8 +305,13 @@ class Notifications(private val context: Context) {
          * One at a time, on purpose: only one prompt can be outstanding, and a
          * stable id means answering it on the desktop replaces or clears this one
          * rather than leaving a dead notification the user taps into nothing.
+         *
+         * Not 1. That is the connection service's ongoing notification, and sharing it
+         * made every approval take that slot: posted as the foreground service's own
+         * notification it could not be swiped away or cancelled — answering the plan
+         * left it in the shade for good — and "Connected to" vanished while it stood.
          */
-        const val ID_APPROVAL = 1
+        const val ID_APPROVAL = 2
 
         /** The conversation a notification tap should open, on the launch intent. */
         const val EXTRA_CONVERSATION_ID = "dev.anodex.mobile.conversationId"
