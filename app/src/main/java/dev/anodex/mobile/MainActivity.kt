@@ -64,6 +64,8 @@ import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.scheduler.dueToday
+import dev.anodex.mobile.scheduler.dueTodayLine
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.SCRIM_ALPHA
@@ -1103,6 +1105,10 @@ private fun ConnectedScaffold(
                         // the one thing no other assistant can put there.
                         hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
                         userName = profile?.displayName,
+                        // Only the next one, and only today. The scheduler screen is
+                        // one tap away for the rest of the week.
+                        dueLine = dueTodayLine(dueToday(tasks, System.currentTimeMillis())),
+                        onOpenScheduler = { destination = AppDestination.SCHEDULER },
                         openers = openersFor(
                             projectName = projects.active?.name,
                             unreadEmail = unreadEmail,
@@ -1425,6 +1431,9 @@ private fun ChatPane(
     hostLine: String?,
     /** The name on the computer, for the greeting on an empty chat. */
     userName: String? = null,
+    /** What the computer is doing later today, if anything. */
+    dueLine: String? = null,
+    onOpenScheduler: () -> Unit = {},
     openers: List<String> = emptyList(),
     /** How much floating chrome hangs over the top of the conversation. */
     topInset: Dp = 0.dp,
@@ -1499,6 +1508,8 @@ private fun ChatPane(
         onOpenFile = viewModel::openWorkspaceFile,
         hostLine = hostLine,
         userName = userName,
+        dueLine = dueLine,
+        onOpenScheduler = onOpenScheduler,
         onRetryMessage = chat::retry,
         pendingAttachments = attachments,
         onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
