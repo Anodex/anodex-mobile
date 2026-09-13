@@ -608,6 +608,7 @@ private fun ConnectedScaffold(
         // a resumed app shows, so it is read again here rather than trusted from
         // whenever the connection last came up.
         viewModel.refreshUnreadEmail()
+        viewModel.refreshPersonalities()
         onPauseOrDispose {}
     }
 
@@ -794,6 +795,10 @@ private fun ConnectedScaffold(
         )
         return
     }
+
+    // Settings is where personalities are chosen, so the list is read fresh on the
+    // way in rather than trusted from whenever the connection came up.
+    LaunchedEffect(showingSettings) { if (showingSettings) viewModel.refreshPersonalities() }
 
     if (showingSettings) {
         val memories by viewModel.memories.collectAsStateWithLifecycle()
