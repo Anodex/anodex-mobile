@@ -384,48 +384,19 @@ class ChatSession(
         }
     }
 
-    /**
-     * A ChatRequest, shaped from `protocol/anodex-protocol.json` rather than from memory.
-     *
-     * The first version of this sent `content` and no `history`, which the desktop
-     * rejected outright: the required fields are `prompt` and `history`. Reading
-     * the generated contract is the entire reason it exists, and hand-writing the
-     * shape is exactly the mistake it is there to prevent.
-     *
-     * History is sent because the desktop is stateless per call — it holds the
-     * conversation on disk, but this request is what a turn is generated from, so
-     * omitting it means every message arrives with no memory of the last one.
-     */
+    /** This session's turn, as [chatRequest] shapes it. */
     private fun request(
         messageId: String,
         text: String,
         attachments: List<UploadedFile>,
-    ): JsonObject = buildJsonObject {
-        put("conversationId", conversationId)
-        put("messageId", messageId)
-        put("prompt", text)
-        put("history", historyForRequest())
-        projectId?.let { put("projectId", it) }
-
-        // Paths on the *computer*, where the bytes already are. The desktop turns an
-        // image among these back into something the model can look at, so the file
-        // does not travel a second time as base64 inside this request.
-        if (attachments.isNotEmpty()) {
-            put(
-                "userFiles",
-                buildJsonArray {
-                    for (file in attachments) {
-                        add(
-                            buildJsonObject {
-                                put("path", file.path)
-                                put("name", file.name)
-                            },
-                        )
-                    }
-                },
-            )
-        }
-    }
+    ): JsonObject = chatRequest(
+        conversationId = conversationId,
+        messageId = messageId,
+        prompt = text,
+        history = historyForRequest(),
+        projectId = projectId,
+        attachments = attachments,
+    )
 
     /**
      * The turns so far, as the desktop's ChatHistoryTurn.
@@ -740,3 +711,60 @@ internal fun titleFromFirstTurn(turns: List<ChatMessage>): String {
 
 /** Long enough to identify a conversation, short enough for a phone-width row. */
 internal const val MAX_TITLE_LENGTH = 60
+
+/**
+ * A ChatRequest, shaped from `protocol/anodex-protocol.json` rather than from memory.
+ *
+ * The first version of this sent `content` and no `history`, which the desktop
+ * rejected outright: the required fields are `prompt` and `history`. Reading the
+ * generated contract is the entire reason it exists, and hand-writing the shape is
+ * exactly the mistake it is there to prevent.
+ *
+ * History is sent because the desktop is stateless per call — it holds the
+ * conversation on disk, but this request is what a turn is generated from, so
+ * omitting it means every message arrives with no memory of the last one.
+ *
+ * Free of the session so the shape can be asserted without a socket. Every defect
+ * this request has had was a defect in its *shape*, and a shape that can only be
+ * observed by connecting to a computer is one nobody checks.
+ */
+internal fun chatRequest(
+    conversationId: String,
+    messageId: String,
+    prompt: String,
+    history: JsonArray,
+    projectId: String?,
+    attachments: List<UploadedFile> = emptyList(),
+): JsonObject = buildJsonObject {
+    put("conversationId", conversationId)
+    put("messageId", messageId)
+    put("prompt", prompt)
+    put("history", history)
+
+    // Explicitly, even when there is no project. The desktop distinguishes an absent
+    // key from a null one: absent means "whatever project is open at the computer",
+    // null means "none". Omitting it sent every plain chat started on the phone into
+    // whichever project the desk happened to be sitting in — the conversation filed
+    // itself under Chats correctly, and then answered as though it were inside that
+    // project's workspace.
+    put("projectId", projectId?.let(::JsonPrimitive) ?: JsonNull)
+
+    // Paths on the *computer*, where the bytes already are. The desktop turns an
+    // image among these back into something the model can look at, so the file does
+    // not travel a second time as base64 inside this request.
+    if (attachments.isNotEmpty()) {
+        put(
+            "userFiles",
+            buildJsonArray {
+                for (file in attachments) {
+                    add(
+                        buildJsonObject {
+                            put("path", file.path)
+                            put("name", file.name)
+                        },
+                    )
+                }
+            },
+        )
+    }
+}
