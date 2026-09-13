@@ -119,6 +119,17 @@ class Conversations(private val socket: AnodexSocket) {
     }
 
     /**
+     * Conversations whose messages match [query], best first, each with the passage
+     * that matched.
+     *
+     * Asked of the computer because the phone holds no transcripts to search. A
+     * computer too old to have the channel refuses it, which is the caller's to treat
+     * as "titles only".
+     */
+    suspend fun search(query: String): List<MessageMatch> =
+        parseMessageMatches(socket.invoke(CHANNEL_SEARCH, listOf(JsonPrimitive(query))))
+
+    /**
      * Archive one conversation.
      *
      * The desktop calls this `delete` and means archive: the record is kept, flagged,
@@ -231,6 +242,7 @@ class Conversations(private val socket: AnodexSocket) {
     private companion object {
         const val CHANNEL_SUMMARIES = "conversations:list-summaries"
         const val CHANNEL_GET = "conversations:get"
+        const val CHANNEL_SEARCH = "conversations:search"
 
         /** Archive, in the desktop's own words. See [archive]. */
         const val CHANNEL_ARCHIVE = "conversations:delete"
@@ -283,4 +295,19 @@ internal fun parseOpenedConversation(
         storedTitle = text("title"),
         createdAtEpochMs = text("createdAt")?.toDoubleOrNull()?.toLong()?.takeIf { it > 0 },
     )
+}
+
+/** A conversation found by something said in it. */
+data class MessageMatch(val conversationId: String, val excerpt: String)
+
+/** `conversations:search`'s answer, read leniently: a malformed row is skipped, not fatal. */
+internal fun parseMessageMatches(element: kotlinx.serialization.json.JsonElement?): List<MessageMatch> {
+    val rows = (element as? JsonArray)
+        ?: ((element as? JsonObject)?.get("value") as? JsonArray)
+        ?: return emptyList()
+    return rows.filterIsInstance<JsonObject>().mapNotNull { row ->
+        val id = (row["conversationId"] as? JsonPrimitive)?.contentOrNull() ?: return@mapNotNull null
+        val excerpt = (row["excerpt"] as? JsonPrimitive)?.contentOrNull().orEmpty()
+        MessageMatch(id, excerpt.replace(Regex("\\s+"), " ").trim())
+    }
 }
