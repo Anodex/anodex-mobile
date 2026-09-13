@@ -1,7 +1,5 @@
 package dev.anodex.mobile.ui.screens
 
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -22,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
@@ -38,18 +37,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.RunTurnsState
 import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Plan
 import dev.anodex.mobile.agents.PlanStep
+import dev.anodex.mobile.agents.RunTurn
 import dev.anodex.mobile.agents.providerVendor
 import dev.anodex.mobile.chat.withoutMarkdown
 import dev.anodex.mobile.scheduler.relativeTime
@@ -59,6 +64,7 @@ import dev.anodex.mobile.ui.components.EmptyState
 import dev.anodex.mobile.ui.components.EmptyTone
 import dev.anodex.mobile.ui.components.InlineProblem
 import dev.anodex.mobile.ui.components.ListSkeleton
+import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.ScreenScaffold
 import dev.anodex.mobile.ui.components.SecondaryButton
@@ -97,6 +103,8 @@ fun AgentsScreen(
     onStop: (String) -> Unit,
     onOpenConversation: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Follow a run on its own page. Defaults to opening its conversation, as before. */
+    onOpenRun: (String) -> Unit = { id -> runs.firstOrNull { it.id == id }?.let { onOpenConversation(it.conversationId) } },
     /**
      * Dismiss, when this is shown over something rather than as its own screen.
      *
@@ -174,7 +182,7 @@ fun AgentsScreen(
                                 onApprove = { onApprove(run.id) },
                                 onReject = { onReject(run.id) },
                                 onStop = { onStop(run.id) },
-                                onOpen = { onOpenConversation(run.conversationId) },
+                                onOpen = { onOpenRun(run.id) },
                                 projectName = run.projectId?.let { projectNames[it] },
                             )
                         }
@@ -919,3 +927,296 @@ private fun PreviewAgents() {
         )
     }
 }
+
+/**
+ * One agent run, followed as it works — the desktop's run page, on a phone.
+ *
+ * The list card says how a run is doing; this says what it is doing. The goal in
+ * full, the budgets, the plan with each step's state, and every turn: what it said,
+ * which tools it ran and whether they worked, how long it took. It updates on its own
+ * — the computer pushes each change — so leaving it open on a long run is watching it.
+ *
+ * The newest turn is at the bottom and starts open, as on the desktop: that is the one
+ * somebody following a run is waiting for. Earlier ones fold to a line each.
+ */
+@Composable
+fun RunDetailScreen(
+    run: AgentRun,
+    turns: RunTurnsState,
+    busy: Boolean,
+    projectName: String?,
+    onBack: () -> Unit,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    onStop: () -> Unit,
+    onOpenChat: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val waiting = run.status == AgentRun.Status.NEEDS_REVIEW
+    val running = run.status == AgentRun.Status.RUNNING
+
+    ScreenScaffold(
+        title = "Agent run",
+        modifier = modifier,
+        subtitle = projectName?.let { "Working in $it" },
+        leading = {
+            Box(
+                modifier = Modifier
+                    .size(Touch.minTarget)
+                    .clip(Radii.md)
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .semantics { contentDescription = "Back to runs" },
+                contentAlignment = Alignment.Center,
+            ) {
+                AnodexIcon(AnodexIcon.CHEVRON_LEFT, size = 20.dp, tint = colors.textMuted)
+            }
+        },
+        trailing = { SecondaryButton(label = "Open as chat", onClick = onOpenChat) },
+    ) { topInset ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .fadingEdges(topInset, 0.dp),
+            contentPadding = listPadding(topInset),
+            verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+        ) {
+            item(key = "summary") {
+                Box {
+                    AnodexCard(
+                        padding = PaddingValues(
+                            start = Spacing.x4 + RUN_EDGE_WIDTH,
+                            end = Spacing.x4,
+                            top = Spacing.x3,
+                            bottom = Spacing.x3,
+                        ),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                        ) {
+                            StatusBadge(run)
+                            Box(Modifier.weight(1f))
+                            relativeTime(run.updatedAtEpochMs.takeIf { it > 0 })?.let {
+                                Text(it, style = type.meta, color = colors.textFaint)
+                            }
+                        }
+
+                        GoalText(run.goal)
+
+                        providerLine(run)?.let { Text(it, style = type.meta, color = colors.textFaint) }
+
+                        if (running) BudgetMeters(run)
+
+                        RunOutcome(run)
+
+                        when {
+                            busy -> Text("Working…", style = type.meta, color = colors.textFaint)
+                            waiting -> Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+                                SecondaryButton(label = "Reject", onClick = onReject)
+                                PrimaryButton(label = "Approve", onClick = onApprove)
+                            }
+                            running -> SecondaryButton(label = "Stop", onClick = onStop)
+                        }
+                    }
+                    RunEdge(run.status, Modifier.matchParentSize())
+                }
+            }
+
+            run.plan?.let { plan ->
+                item(key = "plan") { PlanProgress(plan) }
+            }
+
+            item(key = "turns-label") {
+                Text(
+                    text = when {
+                        turns.turns.isEmpty() && turns.loading -> "Reading turns…"
+                        turns.turns.isEmpty() -> "No turns yet"
+                        turns.turns.size == 1 -> "1 turn"
+                        else -> "${turns.turns.size} turns"
+                    },
+                    style = type.label,
+                    color = colors.textFaint,
+                    modifier = Modifier.padding(top = Spacing.x2),
+                )
+            }
+
+            turns.error?.let { item(key = "turns-error") { InlineProblem(it) } }
+
+            items(turns.turns, key = { it.messageId }) { turn ->
+                TurnRow(turn, startOpen = turn == turns.turns.last())
+            }
+        }
+    }
+}
+
+/** A goal in full as markdown, folded past a few paragraphs so the turns stay reachable. */
+@Composable
+private fun GoalText(goal: String) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val long = goal.length > LONG_GOAL_CHARS || goal.lines().size > LONG_GOAL_LINES
+    var open by rememberSaveable(goal) { mutableStateOf(!long) }
+
+    if (open) {
+        MarkdownText(goal)
+    } else {
+        Text(
+            text = oneLine(goal),
+            style = type.body,
+            color = colors.text,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    if (long) {
+        Text(
+            text = if (open) "Show less" else "Show the full goal",
+            style = type.label,
+            color = colors.accentInk,
+            modifier = Modifier
+                .clip(Radii.md)
+                .clickable(role = Role.Button) { open = !open }
+                .padding(vertical = Spacing.x1),
+        )
+    }
+}
+
+/** The plan with each step's state: done, under way, or still to come. */
+@Composable
+private fun PlanProgress(plan: Plan) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val done = plan.steps.count { it.status == "completed" }
+
+    AnodexCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(plan.title, style = type.label, color = colors.text, modifier = Modifier.weight(1f))
+            Text("$done of ${plan.steps.size}", style = type.meta, color = colors.textFaint)
+        }
+        for ((index, step) in plan.steps.withIndex()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                when (step.status) {
+                    "completed" -> AnodexIcon(AnodexIcon.CHECK, size = 14.dp, tint = colors.successInk, contentDescription = "Done")
+                    "in_progress" -> AnodexIcon(AnodexIcon.ACTIVITY, size = 14.dp, tint = colors.accentInk, contentDescription = "Under way")
+                    else -> Text("${index + 1}.", style = type.meta, color = colors.textFaint, modifier = Modifier.width(14.dp))
+                }
+                Text(
+                    text = step.title,
+                    style = type.meta,
+                    color = if (step.status == "completed") colors.textFaint else colors.textMuted,
+                )
+            }
+        }
+        if (plan.steps.isEmpty()) Text("No steps listed.", style = type.meta, color = colors.textFaint)
+    }
+}
+
+/**
+ * One turn: a line when folded, the reply and its tools when open.
+ *
+ * The dot is the desktop's health colour for the turn — green, amber when a tool
+ * failed or the turn hit a limit, red when it failed outright.
+ */
+@Composable
+private fun TurnRow(turn: RunTurn, startOpen: Boolean) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    var open by rememberSaveable(turn.messageId) { mutableStateOf(startOpen) }
+    val dot = when (turn.health) {
+        RunTurn.Health.OK -> colors.success
+        RunTurn.Health.WARN -> colors.warn
+        RunTurn.Health.ERROR -> colors.danger
+    }
+
+    AnodexCard(onClick = { open = !open }, onClickLabel = if (open) "Fold turn" else "Open turn") {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            Box(Modifier.size(8.dp).clip(Radii.pill).background(dot))
+            Text("Turn ${turn.number}", style = type.label, color = colors.text)
+            Text(
+                text = turnMeta(turn),
+                style = type.meta,
+                color = colors.textFaint,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        if (!open) {
+            Text(
+                text = turnGist(turn),
+                style = type.meta,
+                color = colors.textMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            return@AnodexCard
+        }
+
+        turn.error?.let { Text(it, style = type.meta, color = colors.dangerInk) }
+
+        for (tool in turn.tools) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                AnodexIcon(
+                    if (tool.failed) AnodexIcon.ALERT else AnodexIcon.CHECK,
+                    size = 12.dp,
+                    tint = if (tool.failed) colors.warnInk else colors.textFaint,
+                    contentDescription = if (tool.failed) "Failed" else "Succeeded",
+                )
+                Text(
+                    text = tool.title,
+                    style = type.meta,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (turn.moreTools > 0) {
+            Text("and ${turn.moreTools} more", style = type.meta, color = colors.textFaint)
+        }
+
+        if (turn.text.isNotBlank()) {
+            MarkdownText(turn.text)
+        } else if (turn.tools.isEmpty()) {
+            Text("No output this turn.", style = type.meta, color = colors.textFaint)
+        }
+    }
+}
+
+/** "3 tools · 1.6k · 51.8s", the desktop's `turnMeta`. */
+internal fun turnMeta(turn: RunTurn): String = buildList {
+    val tools = turn.tools.size + turn.moreTools
+    if (tools > 0) add(if (tools == 1) "1 tool" else "$tools tools")
+    turn.tokens?.let { add(compactTokens(it)) }
+    turn.durationMs?.let { add(formatDuration(it)) }
+}.joinToString(" · ")
+
+/** The folded line: the reply, or what the turn did when it said nothing. */
+internal fun turnGist(turn: RunTurn): String {
+    val text = oneLine(turn.text)
+    if (text.isNotBlank()) return text
+    val tools = turn.tools.size + turn.moreTools
+    return if (tools > 0) "$tools tool call${if (tools == 1) "" else "s"}" else "No output this turn"
+}
+
+/** "0.8s", "18.6s", "2m 04s" — the desktop's `formatDuration`. */
+internal fun formatDuration(ms: Long): String = when {
+    ms < 1_000 -> "${ms.coerceAtLeast(0)}ms"
+    ms < 60_000 -> String.format(java.util.Locale.US, "%.1fs", ms / 1000.0)
+    else -> "${ms / 60_000}m ${String.format(java.util.Locale.US, "%02d", (ms % 60_000 + 500) / 1000)}s"
+}
+
+private const val LONG_GOAL_CHARS = 900
+private const val LONG_GOAL_LINES = 14
