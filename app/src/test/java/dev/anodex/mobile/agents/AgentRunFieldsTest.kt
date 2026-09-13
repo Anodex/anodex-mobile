@@ -1,6 +1,7 @@
 package dev.anodex.mobile.agents
 
 import dev.anodex.mobile.ui.screens.compactTokens
+import dev.anodex.mobile.ui.screens.withoutOutcomeHeading
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -73,5 +74,19 @@ class AgentRunFieldsTest {
         assertEquals("950", compactTokens(950))
         assertEquals("12.4k", compactTokens(12_400))
         assertEquals("200.0k", compactTokens(200_000))
+    }
+}
+
+class OutcomeHeadingTest {
+    @Test
+    fun `the desktop's outcome heading is dropped, the account kept`() {
+        val summary = "---\n**What this reply did**\nChanged src/post/PostFX.ts (3 edits)."
+        assertEquals("---\n\nChanged src/post/PostFX.ts (3 edits).", summary.withoutOutcomeHeading())
+    }
+
+    @Test
+    fun `the words inside a sentence are left alone`() {
+        val summary = "I checked **What this reply did** in the log."
+        assertEquals(summary, summary.withoutOutcomeHeading())
     }
 }
