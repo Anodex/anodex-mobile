@@ -78,6 +78,8 @@ fun OfflineScreen(
      * a menu that only exists once you are connected.
      */
     onOpenSettings: (() -> Unit)? = null,
+    /** Messages written before the connection went, waiting to be sent. */
+    queuedCount: Int = 0,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -178,6 +180,20 @@ fun OfflineScreen(
                 modifier = Modifier.padding(top = Spacing.x5),
             )
 
+        }
+
+        if (queuedCount > 0) {
+            Text(
+                text = if (queuedCount == 1) {
+                    "1 message will send when your computer is back."
+                } else {
+                    "$queuedCount messages will send when your computer is back."
+                },
+                style = type.meta,
+                color = colors.textMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = Spacing.x5),
+            )
         }
 
         Row(

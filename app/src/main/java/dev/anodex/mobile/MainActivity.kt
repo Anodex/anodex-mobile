@@ -440,7 +440,9 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
         )
 
         is ConnectionState.Offline -> {
+            val waiting by viewModel.queuedMessages.collectAsStateWithLifecycle()
             OfflineScreen(
+                queuedCount = waiting.size,
                 state = current,
                 onRetry = viewModel::retry,
                 onReplacePairing = { replacingPairing = true },
@@ -1584,6 +1586,27 @@ private fun ChatPane(
     ) { uris -> uris.forEach(viewModel::attach) }
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+
+    val offlineChat by viewModel.offlineChat.collectAsStateWithLifecycle()
+    val queuedMessages by viewModel.queuedMessages.collectAsStateWithLifecycle()
+
+    if (chat == null && offlineChat != null) {
+        // Reconnecting with a conversation open: it stays on screen, and anything
+        // written now waits and goes out when the computer is back.
+        val shown = offlineChat!!.messages + queuedMessages.mapIndexed { index, text ->
+            ChatMessage(id = "queued-$index", role = ChatMessage.Role.USER, text = text, queued = true)
+        }
+        ChatScreen(
+            topInset = topInset,
+            messages = shown,
+            sending = false,
+            error = null,
+            onSend = viewModel::queueWhileOffline,
+            hostLine = hostLine,
+            userName = userName,
+        )
+        return
+    }
 
     if (chat == null) {
         // Reconnecting: the host bar already says so, and replacing the transcript
