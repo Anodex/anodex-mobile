@@ -1,6 +1,14 @@
 package dev.anodex.mobile.chat
 
+import dev.anodex.mobile.workspace.ChangedFile
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -87,5 +95,66 @@ class ConversationTitleTest {
     fun `an empty conversation falls back rather than crashing`() {
         assertEquals("New chat", titleToSave(null, emptyList()))
         assertEquals("New chat", titleToSave(null, listOf(user("   "))))
+    }
+
+    @Test
+    fun `markdown in a pasted prompt does not reach the title`() {
+        // Seen in the drawer as "Yes. Here is the **single combined master pr…" — a
+        // prompt pasted from another assistant, bold marks and all.
+        val pasted = "Yes. Here is the **single combined master prompt**, with `refs`"
+
+        assertEquals(
+            "Yes. Here is the single combined master prompt, with refs",
+            titleToSave(null, listOf(user(pasted))),
+        )
+    }
+
+    @Test
+    fun `a heading or bullet prefix is dropped, and a line of only marks is skipped`() {
+        assertEquals("Plan the release", titleToSave(null, listOf(user("## Plan the release"))))
+        assertEquals("Plan the release", titleToSave(null, listOf(user("- Plan the release"))))
+        assertEquals("Plan the release", titleToSave(null, listOf(user("****\nPlan the release"))))
+    }
+
+    @Test
+    fun `asterisks that are not emphasis are left alone`() {
+        assertEquals("2 * 3 * 4 is 24", titleToSave(null, listOf(user("2 * 3 * 4 is 24"))))
+        assertEquals("glob src/**/*.ts", titleToSave(null, listOf(user("glob src/**/*.ts"))))
+        assertEquals("Why does __init__.py run", titleToSave(null, listOf(user("Why does __init__.py run"))))
+    }
+
+    @Test
+    fun `the title the computer generates is read from a bare string or an envelope`() {
+        val bare = JsonPrimitive("Write Nebula Prompt")
+        val wrapped = buildJsonObject { put("ok", true); put("value", "Write Nebula Prompt") }
+
+        assertEquals("Write Nebula Prompt", titleFromReply(bare))
+        assertEquals("Write Nebula Prompt", titleFromReply(wrapped))
+    }
+
+    @Test
+    fun `no generated title leaves the first-line title in place`() {
+        // `chat:title` answers null with no model loaded, or when the model's output
+        // was unusable. That must not become a title of "null".
+        assertNull(titleFromReply(JsonNull))
+        assertNull(titleFromReply(null))
+        assertNull(titleFromReply(JsonPrimitive("   ")))
+    }
+
+    @Test
+    fun `the title request carries the files the reply changed`() {
+        val question = user("Fix the jitter")
+        val reply = ChatMessage(
+            "1:reply",
+            ChatMessage.Role.ASSISTANT,
+            "Done.",
+            changedFiles = listOf(ChangedFile("src/orbit.ts", "modified", 10, 12, false)),
+        )
+
+        val request = titleRequest(question, reply)
+
+        assertEquals("Fix the jitter", request["userPrompt"]?.jsonPrimitive?.content)
+        assertEquals("Done.", request["assistantReply"]?.jsonPrimitive?.content)
+        assertEquals("src/orbit.ts", request["editedFiles"]?.jsonArray?.single()?.jsonPrimitive?.content)
     }
 }
