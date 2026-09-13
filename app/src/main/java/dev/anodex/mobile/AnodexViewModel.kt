@@ -1695,7 +1695,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Said out loud, too. Leaving it closed and silent is safe and looks
             // exactly like a broken app: the drawer shuts, nothing opens, and there is
             // nothing on screen to suggest the tap was even received.
-            val history = runCatching { reader.messagesOf(conversationId) }
+            val opened = runCatching {
+                reader.open(conversationId) ?: error("It is not on your computer any more.")
+            }
                 .getOrElse { failure ->
                     _notice.value = failure.message?.takeIf { it.isNotBlank() }
                         ?.let { "Could not open that conversation: $it" }
@@ -1705,7 +1707,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Carry the real creation time through, so re-saving does not rewrite it
             // to now on a conversation that was started days ago at the computer.
             val summary = _conversations.value.firstOrNull { it.id == conversationId }
-            val createdAt = summary?.createdAtEpochMs?.takeIf { it > 0 }
+            val createdAt = opened.createdAtEpochMs
+                ?: summary?.createdAtEpochMs?.takeIf { it > 0 }
                 ?: System.currentTimeMillis()
 
             _chat.value = ChatSession(
@@ -1713,15 +1716,22 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 scope = viewModelScope,
                 activePersona = ::currentPersona,
                 conversationId = conversationId,
-                initialMessages = history,
+                initialMessages = opened.messages,
                 createdAt = createdAt,
                 // The conversation's own project, not whichever one happens to be
                 // active. Saving with the active one refiles a conversation the user
                 // merely opened — the turn would run in a workspace they did not
                 // choose, and the conversation would move out of the group they
                 // found it in.
-                projectId = summary?.projectId ?: _projects.value.activeProjectId,
-                existingTitle = summary?.storedTitle,
+                //
+                // Read from the conversation itself, and never defaulted. This was
+                // `summary?.projectId ?: activeProjectId`, and a plain chat's project
+                // is null — so opening one on the phone filed it into whatever project
+                // the computer had open, and its next turn ran with that project's
+                // files. Seen on the test phone: a plain chat, opened from search and
+                // renamed, moved into Nebula2.
+                projectId = opened.projectId,
+                existingTitle = opened.storedTitle ?: summary?.storedTitle,
             )
         }
     }

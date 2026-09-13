@@ -94,16 +94,28 @@ class Conversations(private val socket: AnodexSocket) {
      * Capped at [RECENT_MESSAGES] because the end of a transcript is what a reader
      * wants and a single conversation can itself be tens of megabytes.
      */
-    suspend fun messagesOf(conversationId: String): List<ChatMessage> {
+    suspend fun messagesOf(conversationId: String): List<ChatMessage> =
+        open(conversationId)?.messages.orEmpty()
+
+    /**
+     * Load one conversation: its recent turns, and where it is filed.
+     *
+     * The filing matters as much as the turns. Opening a plain chat used to take its
+     * project from the drawer's summary *or else whichever project the computer had
+     * open* — and a plain chat's project is null, so the "or else" always won. The
+     * next message ran inside that project's files, and its save moved the chat into
+     * that project's folder on the computer. `conversations:get` already said where the
+     * conversation lives; it was being thrown away.
+     *
+     * Null when the computer has no such conversation.
+     */
+    suspend fun open(conversationId: String): OpenedConversation? {
         val conversation = socket.invoke(
             CHANNEL_GET,
             listOf(JsonPrimitive(conversationId), JsonPrimitive(RECENT_MESSAGES)),
-        ) as? JsonObject ?: return emptyList()
+        ) as? JsonObject ?: return null
 
-        return (conversation["messages"] as? JsonArray)
-            ?.filterIsInstance<JsonObject>()
-            ?.mapNotNull { it.asMessage() }
-            .orEmpty()
+        return parseOpenedConversation(conversation) { it.asMessage() }
     }
 
     /**
@@ -240,3 +252,35 @@ class Conversations(private val socket: AnodexSocket) {
 /** `content` on a JSON null is the string "null", which is never what a caller wants. */
 private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? =
     if (this is kotlinx.serialization.json.JsonNull) null else content
+
+/** One conversation as `conversations:get` returns it to the phone. */
+data class OpenedConversation(
+    val messages: List<ChatMessage>,
+    /** Null for a plain chat — which is an answer, not a gap to fill with a guess. */
+    val projectId: String?,
+    val storedTitle: String?,
+    val createdAtEpochMs: Long?,
+)
+
+/**
+ * The fields of an opened conversation, with messages read by [message].
+ *
+ * Separate from the socket so the one decision that went wrong — reading a null
+ * project as "not known" — can be tested on its own.
+ */
+internal fun parseOpenedConversation(
+    conversation: JsonObject,
+    message: (JsonObject) -> ChatMessage?,
+): OpenedConversation {
+    fun text(key: String) = (conversation[key] as? JsonPrimitive)?.contentOrNull()?.takeIf { it.isNotBlank() }
+
+    return OpenedConversation(
+        messages = (conversation["messages"] as? JsonArray)
+            ?.filterIsInstance<JsonObject>()
+            ?.mapNotNull(message)
+            .orEmpty(),
+        projectId = text("projectId"),
+        storedTitle = text("title"),
+        createdAtEpochMs = text("createdAt")?.toDoubleOrNull()?.toLong()?.takeIf { it > 0 },
+    )
+}
