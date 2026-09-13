@@ -1720,6 +1720,8 @@ private fun ChatPane(
             // Only when the connection is what took the screen away. Leaving a chat on
             // purpose mid-turn is not a reason to send what was left in the box later.
             onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
+            temporary = chat.temporary,
+            onToggleTemporary = if (messages.isEmpty()) viewModel::setTemporary else null,
             sharedDraft = sharedDraft,
             onSharedDraftTaken = viewModel::consumeSharedDraft,
             openers = openers,
