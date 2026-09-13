@@ -1,5 +1,7 @@
 package dev.anodex.mobile
 
+import dev.anodex.mobile.chat.LocalPersonalityPictures
+import androidx.compose.runtime.CompositionLocalProvider
 import android.net.Uri
 import android.content.Intent
 import android.Manifest
@@ -271,6 +273,16 @@ private fun KeepScreenOn(enabled: Boolean) {
  */
 @Composable
 fun AnodexApp(viewModel: AnodexViewModel = viewModel(factory = AnodexViewModel.Factory)) {
+    // Provided above everything, because a personality's face is drawn in the
+    // transcript and in settings alike, and both sit several screens below here.
+    val pictures by viewModel.personalityPictures.collectAsStateWithLifecycle()
+    CompositionLocalProvider(LocalPersonalityPictures provides pictures) {
+        AnodexAppContent(viewModel)
+    }
+}
+
+@Composable
+private fun AnodexAppContent(viewModel: AnodexViewModel) {
     val keepAwake by viewModel.keepAwake.collectAsStateWithLifecycle()
     val replyArriving by viewModel.replyArriving.collectAsStateWithLifecycle()
     KeepScreenOn(enabled = keepAwake && replyArriving)
