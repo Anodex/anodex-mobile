@@ -68,6 +68,21 @@
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+      Dictation, without a microphone permission of our own.
+
+      The composer's mic hands off to the phone's own speech screen - the same one the
+      keyboard's mic key opens - and gets text back. Anodex never records audio. This
+      block only lets the app see whether such a screen exists (package visibility,
+      Android 11+), so the button is not shown on a phone where tapping it would do
+      nothing.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

@@ -235,6 +235,22 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
         )
     ),
 
+    /**
+     * A microphone, for dictating into the composer.
+     *
+     * Not in `Icon.tsx` — the desktop has no voice input — so drawn here on the same
+     * 24-unit grid with the same round-capped stroke: a capsule, the cradle under it,
+     * and a stem. Plain rather than faceted, for the reason SEARCH gives: it is a
+     * common control, not something Anodex owns.
+     */
+    MIC(
+        listOf(
+            "M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0z",
+            "M5 11a7 7 0 0 0 14 0",
+            "M12 18v3",
+        )
+    ),
+
     /** Back. `Icon.tsx` `chevron-left`. */
     CHEVRON_LEFT(listOf("m15 18-6-6 6-6")),
 
