@@ -28,11 +28,13 @@ private val Context.appearanceDataStore: DataStore<Preferences> by preferencesDa
 class AppearanceStore(private val context: Context) {
 
     val themeMode: Flow<ThemeMode> = context.appearanceDataStore.data.map { prefs ->
-        // An unreadable or unknown value falls back to following the system, which is
-        // what an app that has never been told anything should do.
+        // Nothing stored, or a value this version doesn't know, reads as dark. Anodex
+        // is a dark app first — the desktop is, and a phone on a light system setting
+        // opened into a pale version that looked like a different product. Anyone
+        // who picked a theme, System included, keeps it: that choice is stored.
         prefs[KEY_THEME]
             ?.let { stored -> ThemeMode.entries.firstOrNull { it.name == stored } }
-            ?: ThemeMode.SYSTEM
+            ?: DEFAULT_THEME_MODE
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
@@ -143,3 +145,6 @@ class AppearanceStore(private val context: Context) {
         val KEY_HAPTICS = booleanPreferencesKey("haptics")
     }
 }
+
+/** The theme before anybody has chosen one. */
+val DEFAULT_THEME_MODE = ThemeMode.DARK

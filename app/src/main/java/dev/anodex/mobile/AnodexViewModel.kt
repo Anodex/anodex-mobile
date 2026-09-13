@@ -76,6 +76,7 @@ import dev.anodex.mobile.ui.screens.Archived
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.theme.AppearanceStore
+import dev.anodex.mobile.ui.theme.DEFAULT_THEME_MODE
 import dev.anodex.mobile.ui.theme.FontScale
 import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.UiFont
@@ -1033,7 +1034,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * about the screen in your hand at midnight.
      */
     val themeMode: StateFlow<ThemeMode> = appearance.themeMode
-        .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.SYSTEM)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, DEFAULT_THEME_MODE)
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { appearance.setThemeMode(mode) }

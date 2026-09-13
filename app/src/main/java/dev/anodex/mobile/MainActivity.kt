@@ -111,6 +111,7 @@ import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.screens.WorkspaceScreen
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.AppearanceStore
+import dev.anodex.mobile.ui.theme.DEFAULT_THEME_MODE
 import dev.anodex.mobile.ui.theme.FontScale
 import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.Radii
@@ -165,7 +166,7 @@ class MainActivity : ComponentActivity() {
             // Read here rather than inside the app, because the theme wraps
             // everything including the crash screen. SYSTEM until the store has
             // answered, which is one frame and is also the right default.
-            val mode by appearance.themeMode.collectAsStateWithLifecycle(ThemeMode.SYSTEM)
+            val mode by appearance.themeMode.collectAsStateWithLifecycle(DEFAULT_THEME_MODE)
             val fontScale by appearance.fontScale.collectAsStateWithLifecycle(FontScale.MEDIUM)
             val uiFont by appearance.uiFont.collectAsStateWithLifecycle(UiFont.SYSTEM)
             val motion by appearance.motion.collectAsStateWithLifecycle(MotionPreference.SYSTEM)

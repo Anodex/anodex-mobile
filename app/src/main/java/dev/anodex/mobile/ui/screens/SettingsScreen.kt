@@ -126,7 +126,7 @@ fun SettingsScreen(
     loadingModelPath: String? = null,
     onLoadModel: (String) -> Unit = {},
     /** How this app picks its palette \u2014 the one phone-local setting here. */
-    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    themeMode: ThemeMode = ThemeMode.DARK,
     onSelectTheme: (ThemeMode) -> Unit = {},
     /** How large the interface is set. Phone-local, like the theme. */
     fontScale: FontScale = FontScale.MEDIUM,
