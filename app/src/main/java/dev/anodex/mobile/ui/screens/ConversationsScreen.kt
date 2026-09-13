@@ -1,5 +1,7 @@
 package dev.anodex.mobile.ui.screens
 
+import kotlinx.coroutines.delay
+import dev.anodex.mobile.chat.MessageMatch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.background
@@ -72,6 +74,11 @@ fun ConversationsScreen(
      * conversations there are, and has the keyboard.
      */
     startSearching: Boolean = false,
+    /**
+     * Search what was said, on the computer. Null where there is no computer to ask,
+     * which leaves search matching titles and projects only.
+     */
+    searchMessages: (suspend (String) -> List<MessageMatch>)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -80,13 +87,37 @@ fun ConversationsScreen(
     // Matched against the project name too, so "sandbox" finds everything filed
     // there — the way somebody actually remembers a conversation is often by where
     // the work was, not by what the title ended up saying.
-    val shown = remember(conversations, query, projectNames) {
+    // What was said, as well as what it is called. Titles are short and usually
+    // generated; what somebody remembers is a sentence from the middle of a chat, and
+    // only the computer holds the transcripts to look for it in. Asked after a pause in
+    // typing, so a word being typed is not searched letter by letter.
+    var messageMatches by remember { mutableStateOf<List<MessageMatch>>(emptyList()) }
+    LaunchedEffect(query, searchMessages) {
+        val search = searchMessages
+        if (search == null || query.trim().length < MESSAGE_SEARCH_MIN_CHARS) {
+            messageMatches = emptyList()
+            return@LaunchedEffect
+        }
+        delay(MESSAGE_SEARCH_DEBOUNCE_MS)
+        messageMatches = search(query.trim())
+    }
+
+    val excerpts = remember(messageMatches) { messageMatches.associate { it.conversationId to it.excerpt } }
+
+    val shown = remember(conversations, query, projectNames, messageMatches) {
         if (query.isBlank()) {
             conversations
         } else {
-            conversations.filter { conversation ->
+            val byTitle = conversations.filter { conversation ->
                 val project = conversation.projectId?.let { projectNames[it] }.orEmpty()
                 matchesQuery("${conversation.title} $project", query)
+            }
+            // Title matches first — the name was the most direct thing typed at —
+            // then conversations found only by what was said in them, best first.
+            val byId = conversations.associateBy { it.id }
+            val titleIds = byTitle.map { it.id }.toSet()
+            byTitle + messageMatches.mapNotNull { match ->
+                byId[match.conversationId]?.takeIf { it.id !in titleIds }
             }
         }
     }
@@ -230,6 +261,7 @@ fun ConversationsScreen(
                                 conversation.projectId?.let { projectNames[it] }
                             },
                             onClick = { onOpen(conversation.id) },
+                            excerpt = if (query.isBlank()) null else excerpts[conversation.id],
                         )
                     }
                 }
@@ -245,6 +277,8 @@ private fun ConversationRow(
     nowEpochMs: Long,
     onClick: () -> Unit,
     projectTag: String? = null,
+    /** Why a search found this row, when the title alone does not say. */
+    excerpt: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -285,8 +319,24 @@ private fun ConversationRow(
             style = type.meta,
             color = colors.textFaint,
         )
+
+        if (!excerpt.isNullOrBlank()) {
+            Text(
+                text = excerpt,
+                style = type.meta,
+                color = colors.textMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
+
+/** Below this a query matches nearly every message, and the computer answers nothing. */
+private const val MESSAGE_SEARCH_MIN_CHARS = 3
+
+/** How long typing has to pause before the computer is asked. */
+private const val MESSAGE_SEARCH_DEBOUNCE_MS = 350L
 
 /**
  * One heading in the list.

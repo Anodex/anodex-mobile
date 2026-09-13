@@ -65,6 +65,7 @@ import dev.anodex.mobile.scheduler.Scheduler
 import dev.anodex.mobile.scheduler.parseTasks
 import dev.anodex.mobile.chat.PersonalityPictures
 import androidx.compose.ui.graphics.ImageBitmap
+import dev.anodex.mobile.chat.MessageMatch
 import dev.anodex.mobile.transport.AnodexSocket
 import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.transport.ServerFrame
@@ -1682,6 +1683,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * so this is a network call, and it is empty rather than stale when the desktop
      * cannot be reached.
      */
+    /**
+     * Search what was said in conversations, on the computer.
+     *
+     * Empty on failure, and deliberately so here: this adds matches to a title search
+     * the screen has already answered locally. A computer that cannot search bodies —
+     * an older build, or a dropped connection — leaves that answer standing rather
+     * than replacing it with an error about a feature the person did not ask for.
+     */
+    suspend fun searchMessages(query: String): List<MessageMatch> {
+        val reader = conversationReader ?: return emptyList()
+        return runCatching { reader.search(query) }.getOrDefault(emptyList())
+    }
+
     fun openConversation(conversationId: String) {
         val reader = conversationReader ?: return
         val open = socket ?: return

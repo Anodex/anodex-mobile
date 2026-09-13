@@ -789,6 +789,7 @@ private fun ConnectedScaffold(
             },
             projectNames = remember(projects) { projects.projects.associate { it.id to it.name } },
             startSearching = searchingConversations,
+            searchMessages = viewModel::searchMessages,
             modifier = Modifier.safeDrawingPadding(),
         )
         return
