@@ -1673,6 +1673,9 @@ private fun ChatPane(
 
     val sharedDraft by viewModel.sharedDraft.collectAsStateWithLifecycle()
     ChatScreen(
+        // Only when the connection is what took the screen away. Leaving a chat on
+        // purpose mid-turn is not a reason to send what was left in the box later.
+        onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
         sharedDraft = sharedDraft,
         onSharedDraftTaken = viewModel::consumeSharedDraft,
         openers = openers,
