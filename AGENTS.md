@@ -23,22 +23,42 @@ UI brief. Read it before changing user-facing language about networks, models,
 or what data lives where — several of its corrections exist because the app
 previously made claims that were not true.
 
-## There is no local Android toolchain
+## Building it here, and what that does not prove
 
-**CI is the only verification.** There is no Android SDK on the development
-machine, so nothing here compiles locally — not the app, not the unit tests.
-
-That has a direct consequence: **do not claim a change builds.** Push it and let
-`.github/workflows/build.yml` answer. Before pushing, what you *can* check by
-hand is worth checking — brace balance, that every callback is in scope, that
-each theme token you referenced actually exists — but say plainly that a
-compiler has not seen it.
-
-CI runs on every push to `main` and every pull request:
+There **is** an Android SDK on the development machine now, at
+`%LOCALAPPDATA%\Android\Sdk`, wired up through a gitignored `local.properties`.
+So this does compile locally:
 
 ```
 ./gradlew assembleRelease        # the APK
 ./gradlew testDebugUnitTest      # unit tests
+```
+
+Roughly two minutes cold, under two seconds warm. Use it. A type error found in
+a second is worth more than the same error found four minutes later in CI, and
+hand-checking brace balance was never a substitute for a compiler.
+
+**But a local build is not the verification.** It runs against this machine's
+caches, this machine's JDK — 21 here against 17 in CI — and without the release
+signing key, so the APK it produces says `app-release-unsigned` and could never
+install over a real one. That is correct: a build from here is not a build
+anybody should be able to ship.
+
+So the rule that replaced "do not claim a change builds" is narrower, not gone:
+
+- **Say what you actually ran.** "Compiles and the unit tests pass locally" is a
+  real statement. "This works" is not, and neither is "CI will pass".
+- **CI still answers.** It builds from a clean checkout with the real key, on
+  the JDK releases are made with. It is the thing that can be wrong when the
+  local build was right, which is exactly why it exists.
+- **Nothing on a phone is proven by either.** Compilation is not behaviour.
+  There is one test device; a change to anything visual or interactive is
+  unverified until it has been looked at.
+
+CI runs on every push to `main` and every pull request, and adds one thing the
+local build does not:
+
+```
 python3 tools/summarize_tests.py # says what the tests actually covered
 ```
 
