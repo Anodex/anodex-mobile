@@ -34,6 +34,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -328,7 +331,12 @@ private fun RoundButton(
             .clip(CircleShape)
             .background(AnodexTheme.colors.bgElevated)
             .border(1.dp, AnodexTheme.colors.borderStrong, CircleShape)
-            .clickable(onClick = onClick, onClickLabel = contentDescription)
+            .clickable(role = Role.Button, onClick = onClick)
+            // A name, not an action label. `onClickLabel` is what a screen reader says
+            // after "double-tap to…"; with no content description as well, all three
+            // of these buttons were announced as nothing at all — "button, button,
+            // button" across the top of every conversation.
+            .semantics { this.contentDescription = contentDescription }
             .then(if (fill != null) Modifier.contextRing(fill) else Modifier),
         contentAlignment = Alignment.Center,
     ) {

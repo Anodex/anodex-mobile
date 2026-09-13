@@ -1,7 +1,5 @@
 package dev.anodex.mobile.ui.components
 
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,10 +15,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -77,7 +78,10 @@ fun SearchField(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
+                    .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                    // The placeholder is drawn beside the field, not in it, so without
+                    // this the field itself has no name for a screen reader.
+                    .semantics { contentDescription = placeholder },
             )
         }
 
