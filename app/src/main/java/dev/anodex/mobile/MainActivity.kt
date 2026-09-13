@@ -503,6 +503,8 @@ private fun ConnectedScaffold(
      *  while it is open shows the new run rather than the one from when it opened. */
     var openTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showingAllConversations by rememberSaveable { mutableStateOf(false) }
+    // Whether the index was opened to search, which puts the field up and focused.
+    var searchingConversations by rememberSaveable { mutableStateOf(false) }
 
     /**
      * Whether Workspace is showing the list of projects rather than a project's files.
@@ -764,6 +766,7 @@ private fun ConnectedScaffold(
                 destination = AppDestination.CHAT
             },
             projectNames = remember(projects) { projects.projects.associate { it.id to it.name } },
+            startSearching = searchingConversations,
             modifier = Modifier.safeDrawingPadding(),
         )
         return
@@ -923,7 +926,10 @@ private fun ConnectedScaffold(
                 // became a dead end.
                 drawerOpen = false
                 when (chosen) {
-                    AppDestination.CHAT -> showingAllConversations = true
+                    AppDestination.CHAT -> {
+                        searchingConversations = false
+                        showingAllConversations = true
+                    }
                     AppDestination.WORKSPACE -> {
                         destination = AppDestination.WORKSPACE
                         browsingProjects = true
@@ -952,6 +958,12 @@ private fun ConnectedScaffold(
             },
             onOpenAllConversations = {
                 drawerOpen = false
+                searchingConversations = false
+                showingAllConversations = true
+            },
+            onSearch = {
+                drawerOpen = false
+                searchingConversations = true
                 showingAllConversations = true
             },
             onClose = { drawerOpen = false },

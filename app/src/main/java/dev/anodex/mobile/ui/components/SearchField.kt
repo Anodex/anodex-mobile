@@ -1,5 +1,7 @@
 package dev.anodex.mobile.ui.components
 
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +47,8 @@ fun SearchField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier,
+    /** Given when a screen opens straight into searching, so the keyboard comes up with it. */
+    focusRequester: FocusRequester? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -71,7 +75,9 @@ fun SearchField(
                 textStyle = type.body.copy(color = colors.text),
                 cursorBrush = SolidColor(colors.accentInk),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
             )
         }
 
