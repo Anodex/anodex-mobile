@@ -284,4 +284,17 @@ fun relativeTime(epochMs: Long?, now: Long = System.currentTimeMillis()): String
     return if (ahead) "in $amount" else "$amount ago"
 }
 
+/**
+ * [relativeTime] for something that has already happened.
+ *
+ * The time comes from the computer, whose clock is rarely the phone's to the second. A
+ * run that finished a moment ago read "any moment" when the computer ran a few
+ * seconds ahead — a promise about something already done. A past event is never in
+ * the future, so it is held at now.
+ */
+fun timeAgo(epochMs: Long?, now: Long = System.currentTimeMillis()): String? {
+    val at = epochMs?.takeIf { it > 0 } ?: return null
+    return if (now - at < 60_000) "just now" else relativeTime(at, now)
+}
+
 private fun plural(count: Long, word: String) = if (count == 1L) word else word + "s"

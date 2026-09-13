@@ -20,13 +20,14 @@ import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.TaskRun
 import dev.anodex.mobile.scheduler.formatDuration
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.scheduler.timeAgo
 import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.InlineProblem
 import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
-import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
@@ -167,7 +168,7 @@ private fun RunRow(run: TaskRun) {
             Text(
                 text = listOfNotNull(
                     formatDuration(run.durationMs),
-                    relativeTime(run.startedAtEpochMs),
+                    timeAgo(run.startedAtEpochMs),
                 ).joinToString(" · "),
                 style = type.meta,
                 color = colors.textFaint,

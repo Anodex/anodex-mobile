@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.scheduler.timeAgo
 import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.EmptyState
@@ -412,7 +413,7 @@ private fun isDueSoon(nextRunAt: Long?): Boolean {
  * timezone, if they are away from home.
  */
 private fun timingLine(task: ScheduledTask): String {
-    val last = relativeTime(task.lastRunAt)?.let { "Ran $it" }
+    val last = timeAgo(task.lastRunAt)?.let { "Ran $it" }
     val next = relativeTime(task.nextRunAt)?.let { "next $it" }
 
     return listOfNotNull(last, next)

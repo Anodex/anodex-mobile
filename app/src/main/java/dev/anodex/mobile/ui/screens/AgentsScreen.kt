@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,7 +58,7 @@ import dev.anodex.mobile.agents.PlanStep
 import dev.anodex.mobile.agents.RunTurn
 import dev.anodex.mobile.agents.providerVendor
 import dev.anodex.mobile.chat.withoutMarkdown
-import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.scheduler.timeAgo
 import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.EmptyState
@@ -133,6 +134,32 @@ fun AgentsScreen(
     var composing by rememberSaveable { mutableStateOf(false) }
     val composerOpen = composing || goal.isNotEmpty() || runs.isEmpty()
 
+    // A run started from here lands at the top, above wherever the list had been
+    // scrolled — so starting one looked like nothing had happened. Finishing a start
+    // brings the list back up to it. Only then: runs re-sort by recency on every turn,
+    // and following the newest one around would pull the list out from under a reader.
+    //
+    // The run can arrive a moment after the start returns, and a lazy list keeps its
+    // first visible card in place when one is inserted above it — so for a few seconds
+    // after a start, a new run at the top is scrolled to as well.
+    val listState = rememberLazyListState()
+    var wasStarting by remember { mutableStateOf(starting) }
+    var revealing by remember { mutableStateOf(false) }
+    LaunchedEffect(starting) {
+        val finished = wasStarting && !starting
+        wasStarting = starting
+        if (finished) {
+            revealing = true
+            listState.animateScrollToItem(0)
+            delay(REVEAL_WINDOW_MS)
+            revealing = false
+        }
+    }
+    val newest = runs.firstOrNull()?.id
+    LaunchedEffect(newest) {
+        if (revealing && newest != null) listState.animateScrollToItem(0)
+    }
+
     ScreenScaffold(
         title = "Agent runs",
         modifier = modifier,
@@ -160,6 +187,7 @@ fun AgentsScreen(
                     )
 
                     else -> LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
                             .fadingEdges(topInset, 0.dp),
@@ -424,7 +452,7 @@ private fun RunCard(
 
                 Box(Modifier.weight(1f))
 
-                relativeTime(run.updatedAtEpochMs.takeIf { it > 0 })?.let { ago ->
+                timeAgo(run.updatedAtEpochMs)?.let { ago ->
                     Text(ago, style = type.meta, color = colors.textFaint)
                 }
             }
@@ -737,7 +765,7 @@ private fun MeterView(meter: Meter, modifier: Modifier = Modifier) {
  * failure says so in words too, so the colour is never the only thing carrying it.
  */
 @Composable
-private fun RunOutcome(run: AgentRun) {
+private fun RunOutcome(run: AgentRun, maxLines: Int = 3) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val text = (runOutcomeText(run) ?: return).withoutOutcomeHeading()
@@ -752,7 +780,7 @@ private fun RunOutcome(run: AgentRun) {
         text = oneLine(if (run.status == AgentRun.Status.ERROR) "Failed: $text" else text),
         style = type.meta,
         color = ink,
-        maxLines = 3,
+        maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .fillMaxWidth()
@@ -960,7 +988,6 @@ fun RunDetailScreen(
     ScreenScaffold(
         title = "Agent run",
         modifier = modifier,
-        subtitle = projectName?.let { "Working in $it" },
         leading = {
             Box(
                 modifier = Modifier
@@ -997,8 +1024,22 @@ fun RunDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
                         ) {
                             StatusBadge(run)
+                            projectName?.let {
+                                Text(
+                                    text = it,
+                                    style = type.badge,
+                                    color = colors.textFaint,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .clip(Radii.pill)
+                                        .background(colors.bgElevated)
+                                        .padding(horizontal = Spacing.x2, vertical = 1.dp),
+                                )
+                            }
                             Box(Modifier.weight(1f))
-                            relativeTime(run.updatedAtEpochMs.takeIf { it > 0 })?.let {
+                            timeAgo(run.updatedAtEpochMs)?.let {
                                 Text(it, style = type.meta, color = colors.textFaint)
                             }
                         }
@@ -1009,7 +1050,7 @@ fun RunDetailScreen(
 
                         if (running) BudgetMeters(run)
 
-                        RunOutcome(run)
+                        RunOutcome(run, maxLines = Int.MAX_VALUE)
 
                         when {
                             busy -> Text("Working…", style = type.meta, color = colors.textFaint)
@@ -1126,7 +1167,9 @@ private fun PlanProgress(plan: Plan) {
 private fun TurnRow(turn: RunTurn, startOpen: Boolean) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
-    var open by rememberSaveable(turn.messageId) { mutableStateOf(startOpen) }
+    // Keyed on being the newest too: when the next turn lands, this one folds and that
+    // one opens, which is what somebody watching a run is looking for.
+    var open by rememberSaveable(turn.messageId, startOpen) { mutableStateOf(startOpen) }
     val dot = when (turn.health) {
         RunTurn.Health.OK -> colors.success
         RunTurn.Health.WARN -> colors.warn
@@ -1220,3 +1263,6 @@ internal fun formatDuration(ms: Long): String = when {
 
 private const val LONG_GOAL_CHARS = 900
 private const val LONG_GOAL_LINES = 14
+
+/** How long after starting a run the list keeps scrolling up to a newly arrived one. */
+private const val REVEAL_WINDOW_MS = 5_000L
