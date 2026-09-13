@@ -1,18 +1,18 @@
 package dev.anodex.mobile
 
-import dev.anodex.mobile.chat.LocalPersonalityPictures
-import androidx.compose.runtime.CompositionLocalProvider
-import android.net.Uri
-import android.content.Intent
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -33,10 +33,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.ui.platform.LocalView
-import android.view.WindowManager
-import dev.anodex.mobile.ui.theme.MotionPreference
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,13 +43,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,34 +62,36 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.LocalPersonalityPictures
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.notify.Notifications
+import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.dueToday
 import dev.anodex.mobile.scheduler.dueTodayLine
-import dev.anodex.mobile.scheduler.ScheduledTask
-import dev.anodex.mobile.ui.components.TextInputDialog
-import dev.anodex.mobile.ui.components.Hairline
-import dev.anodex.mobile.ui.components.SCRIM_ALPHA
-import dev.anodex.mobile.ui.components.SCRIM_FADE
-import dev.anodex.mobile.ui.components.SCRIM_HOLD
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AppDestination
 import dev.anodex.mobile.ui.components.AppDrawer
-import dev.anodex.mobile.ui.components.UndoBar
 import dev.anodex.mobile.ui.components.ChatHeader
-import dev.anodex.mobile.ui.components.HostStatus
-import dev.anodex.mobile.ui.components.PanelSide
-import dev.anodex.mobile.ui.components.SlidingPanel
-import dev.anodex.mobile.ui.components.panelEdgeGrab
-import dev.anodex.mobile.ui.components.rememberPanelSwipe
 import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.ConnectionHeader
+import dev.anodex.mobile.ui.components.Hairline
+import dev.anodex.mobile.ui.components.HostStatus
+import dev.anodex.mobile.ui.components.PanelSide
 import dev.anodex.mobile.ui.components.PrimaryButton
+import dev.anodex.mobile.ui.components.SCRIM_ALPHA
+import dev.anodex.mobile.ui.components.SCRIM_FADE
+import dev.anodex.mobile.ui.components.SCRIM_HOLD
 import dev.anodex.mobile.ui.components.SecondaryButton
+import dev.anodex.mobile.ui.components.SlidingPanel
 import dev.anodex.mobile.ui.components.StatusDot
+import dev.anodex.mobile.ui.components.TextInputDialog
+import dev.anodex.mobile.ui.components.UndoBar
 import dev.anodex.mobile.ui.components.UpdateBanner
+import dev.anodex.mobile.ui.components.panelEdgeGrab
+import dev.anodex.mobile.ui.components.rememberPanelSwipe
 import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.ConversationsScreen
@@ -107,13 +108,14 @@ import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.screens.TaskScreen
 import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.screens.WorkspaceScreen
-import dev.anodex.mobile.ui.theme.FontScale
-import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.AppearanceStore
+import dev.anodex.mobile.ui.theme.FontScale
+import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import dev.anodex.mobile.ui.theme.UiFont
 import kotlinx.coroutines.delay
 
 /**
@@ -144,8 +146,11 @@ private val ATTACHABLE_TYPES = arrayOf(
 )
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: AnodexViewModel by viewModels { AnodexViewModel.Factory }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) openNotificationTarget(intent)
         // Installed before anything else runs, so a crash during start-up is caught
         // too. Start-up is exactly when the crashes that matter happen: a phone that
         // closes itself the moment it is opened cannot be debugged any other way.
@@ -187,6 +192,24 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openNotificationTarget(intent)
+    }
+
+    /**
+     * A tap on a notification about a conversation opens that conversation.
+     *
+     * Read once and removed from the intent, so rotating the screen afterwards does
+     * not open it again over whatever somebody has moved on to.
+     */
+    private fun openNotificationTarget(intent: Intent?) {
+        val conversationId = intent?.getStringExtra(Notifications.EXTRA_CONVERSATION_ID) ?: return
+        intent.removeExtra(Notifications.EXTRA_CONVERSATION_ID)
+        viewModel.openFromNotification(conversationId)
     }
 }
 
@@ -517,6 +540,7 @@ private fun ConnectedScaffold(
     var openTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showingAllConversations by rememberSaveable { mutableStateOf(false) }
     var renamingChat by rememberSaveable { mutableStateOf(false) }
+
     // Whether the index was opened to search, which puts the field up and focused.
     var searchingConversations by rememberSaveable { mutableStateOf(false) }
 
@@ -539,6 +563,18 @@ private fun ConnectedScaffold(
      */
     var filesOpen by rememberSaveable { mutableStateOf(false) }
     var showingSettings by rememberSaveable { mutableStateOf(false) }
+
+    // A notification tap asked for a conversation: show the chat, over whatever
+    // screen the app was left on.
+    val chatOpenRequest by viewModel.chatOpenRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(chatOpenRequest) {
+        if (chatOpenRequest == null) return@LaunchedEffect
+        destination = AppDestination.CHAT
+        drawerOpen = false
+        showingAllConversations = false
+        showingSettings = false
+        viewModel.consumeChatOpenRequest()
+    }
 
     val agentRuns by viewModel.agentRuns.collectAsStateWithLifecycle()
     val agentsLoading by viewModel.agentsLoading.collectAsStateWithLifecycle()
@@ -609,7 +645,8 @@ private fun ConnectedScaffold(
         // whenever the connection last came up.
         viewModel.refreshUnreadEmail()
         viewModel.refreshPersonalities()
-        onPauseOrDispose {}
+        viewModel.onAppVisible(true)
+        onPauseOrDispose { viewModel.onAppVisible(false) }
     }
 
     /**

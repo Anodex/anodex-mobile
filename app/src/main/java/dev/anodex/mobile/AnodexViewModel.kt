@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.os.Build
 import android.util.Base64
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -11,46 +12,47 @@ import androidx.lifecycle.viewModelScope
 import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Agents
 import dev.anodex.mobile.agents.parseAgentRuns
+import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
 import dev.anodex.mobile.chat.ContextUsage
 import dev.anodex.mobile.chat.ConversationSummary
-import dev.anodex.mobile.chat.contextUsageFrom
 import dev.anodex.mobile.chat.Conversations
 import dev.anodex.mobile.chat.LocalModel
+import dev.anodex.mobile.chat.MessageMatch
 import dev.anodex.mobile.chat.MessagePersona
 import dev.anodex.mobile.chat.Models
 import dev.anodex.mobile.chat.Personalities
+import dev.anodex.mobile.chat.PersonalityPictures
 import dev.anodex.mobile.chat.PersonalityState
 import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.chat.Projects
 import dev.anodex.mobile.chat.ProjectsState
 import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.Uploads
+import dev.anodex.mobile.chat.contextUsageFrom
 import dev.anodex.mobile.chat.parseProjectsState
+import dev.anodex.mobile.chat.replyPreview
+import dev.anodex.mobile.chat.titleFromFirstTurn
+import dev.anodex.mobile.connection.AttemptFailure
 import dev.anodex.mobile.connection.ConnectionController
 import dev.anodex.mobile.connection.ConnectionService
-import dev.anodex.mobile.connection.connectionDetail
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.connection.PairedHostRef
 import dev.anodex.mobile.connection.Reachability
-import dev.anodex.mobile.connection.AttemptFailure
+import dev.anodex.mobile.connection.connectionDetail
 import dev.anodex.mobile.connection.diagnoseConnectionFailure
-import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.isUpdateAvailable
 import dev.anodex.mobile.connection.localIPv4Addresses
+import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
-import dev.anodex.mobile.ui.screens.Archived
 import dev.anodex.mobile.memory.MemoryEntry
-import dev.anodex.mobile.profile.UserProfile
-import dev.anodex.mobile.profile.UsageProfile
-import dev.anodex.mobile.profile.ProfileReader
 import dev.anodex.mobile.notify.NotificationAccess
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
@@ -59,22 +61,23 @@ import dev.anodex.mobile.pairing.PairedHost
 import dev.anodex.mobile.pairing.PairedHostStore
 import dev.anodex.mobile.pairing.PairingPayload
 import dev.anodex.mobile.pairing.humanFingerprintOf
+import dev.anodex.mobile.profile.ProfileReader
+import dev.anodex.mobile.profile.UsageProfile
+import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
 import dev.anodex.mobile.scheduler.parseTasks
-import dev.anodex.mobile.chat.PersonalityPictures
-import androidx.compose.ui.graphics.ImageBitmap
-import dev.anodex.mobile.chat.MessageMatch
 import dev.anodex.mobile.transport.AnodexSocket
-import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.transport.ServerFrame
+import dev.anodex.mobile.transport.unwrap
+import dev.anodex.mobile.ui.screens.Archived
 import dev.anodex.mobile.ui.screens.ManualPairState
 import dev.anodex.mobile.ui.screens.ThemeMode
-import dev.anodex.mobile.ui.theme.MotionPreference
-import dev.anodex.mobile.ui.theme.FontScale
-import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.ui.theme.AppearanceStore
+import dev.anodex.mobile.ui.theme.FontScale
+import dev.anodex.mobile.ui.theme.MotionPreference
+import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.update.UpdateCheck
 import dev.anodex.mobile.update.UpdateState
 import dev.anodex.mobile.update.Updater
@@ -83,14 +86,14 @@ import dev.anodex.mobile.workspace.Workspace
 import dev.anodex.mobile.workspace.WorkspaceFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -101,9 +104,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 
 /**
  * Holds the app together: the stored pairing, the connection controller, and the network monitor.
@@ -1706,6 +1709,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun openConversation(conversationId: String) {
+        notifications.cancel(Notifications.replyNotificationId(conversationId))
         val reader = conversationReader ?: return
         val open = socket ?: return
         viewModelScope.launch {
@@ -1738,6 +1742,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 socket = open,
                 scope = viewModelScope,
                 activePersona = ::currentPersona,
+                onAnswered = ::replyReady,
                 conversationId = conversationId,
                 initialMessages = opened.messages,
                 createdAt = createdAt,
@@ -1779,6 +1784,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             socket = open,
             scope = viewModelScope,
             activePersona = ::currentPersona,
+            onAnswered = ::replyReady,
             projectId = projectId,
         )
     }
@@ -1891,6 +1897,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     // Read per turn, so a personality changed mid-conversation labels
                     // what follows rather than rewriting what came before.
                     activePersona = ::currentPersona,
+                onAnswered = ::replyReady,
                 )
                 // Adopt whatever the computer calls itself, every connection rather
                 // than only at pairing. A phone paired by typing an address had the
@@ -1912,6 +1919,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 refreshUnreadEmail()
                 refreshPersonalities()
                 refreshModels()
+                pendingNotificationOpen?.let {
+                    pendingNotificationOpen = null
+                    openConversation(it)
+                }
 
                 // Refreshed every time, so a desktop that gains a VPN — or has its
                 // port forwarded — after pairing becomes reachable from away without
@@ -2577,6 +2588,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val kind = NotificationKind.parse((fields["kind"] as? JsonPrimitive)?.content)
         val title = (fields["title"] as? JsonPrimitive)?.content ?: return
         val body = (fields["body"] as? JsonPrimitive)?.content.orEmpty()
+        val conversationId = (fields["conversationId"] as? JsonPrimitive)?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
 
         val id = if (kind == NotificationKind.NEEDS_APPROVAL) {
             Notifications.ID_APPROVAL
@@ -2584,7 +2597,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             nextNotificationId++
         }
 
-        if (!notifications.show(id, kind, title, body)) {
+        if (!notifications.show(id, kind, title, body, conversationId)) {
             // Could not be shown — almost always an ungranted permission, or the app
             // switched off in system settings. Feeds the same sequence the first
             // connection uses rather than a second, separate flag: there is one
@@ -2599,6 +2612,65 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private var nextNotificationId = 100
+
+    /** Whether the app is on screen. Set from the activity's resume and pause. */
+    @Volatile private var appVisible = false
+
+    fun onAppVisible(visible: Boolean) {
+        appVisible = visible
+        // Back in front with an answer notification still up for the chat on screen:
+        // it has been seen now.
+        if (visible) _chat.value?.let { notifications.cancel(Notifications.replyNotificationId(it.conversationId)) }
+    }
+
+    /**
+     * Tell somebody who left that their answer is ready.
+     *
+     * Found on the test phone: a question sent and the app left answered in about
+     * fifteen seconds, and nothing said so — the computer notifies the phone about
+     * runs, scheduled tasks and approvals, never a chat reply, and the phone did not
+     * either. The only way to find out was to keep opening the app.
+     *
+     * Only when the app is not on screen. Somebody watching the reply arrive does
+     * not need a notification about it.
+     */
+    private fun replyReady(session: ChatSession, reply: ChatMessage) {
+        if (appVisible) return
+        val title = session.title.value ?: titleFromFirstTurn(session.messages.value)
+        notifications.show(
+            id = Notifications.replyNotificationId(session.conversationId),
+            kind = NotificationKind.FINISHED,
+            title = title,
+            body = replyPreview(reply.text),
+            conversationId = session.conversationId,
+        )
+    }
+
+    private val _chatOpenRequest = MutableStateFlow<String?>(null)
+
+    /** A conversation a notification tap asked to open. The screen consumes it. */
+    val chatOpenRequest: StateFlow<String?> = _chatOpenRequest.asStateFlow()
+
+    private var pendingNotificationOpen: String? = null
+
+    /**
+     * Open the conversation a notification was about.
+     *
+     * The phone may not be connected yet — a tap after the process was reclaimed starts
+     * it cold — so the request waits for the connection rather than being dropped.
+     */
+    fun openFromNotification(conversationId: String) {
+        _chatOpenRequest.value = conversationId
+        if (socket != null && conversationReader != null) {
+            openConversation(conversationId)
+        } else {
+            pendingNotificationOpen = conversationId
+        }
+    }
+
+    fun consumeChatOpenRequest() {
+        _chatOpenRequest.value = null
+    }
 
     /** Take the approval notification down once the prompt is gone. */
     fun clearApprovalNotification() {
