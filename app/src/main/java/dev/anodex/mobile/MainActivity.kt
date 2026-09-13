@@ -81,6 +81,7 @@ import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.HostStatus
+import dev.anodex.mobile.ui.components.LocalRemotePictures
 import dev.anodex.mobile.ui.components.PanelSide
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SCRIM_ALPHA
@@ -1672,35 +1673,44 @@ private fun ChatPane(
     }
 
     val sharedDraft by viewModel.sharedDraft.collectAsStateWithLifecycle()
-    ChatScreen(
-        // Only when the connection is what took the screen away. Leaving a chat on
-        // purpose mid-turn is not a reason to send what was left in the box later.
-        onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
-        sharedDraft = sharedDraft,
-        onSharedDraftTaken = viewModel::consumeSharedDraft,
-        openers = openers,
-        topInset = topInset,
-        runGoal = runGoal,
-        messages = messages,
-        sending = sending,
-        error = error,
-        waitingForComputer = waitingForComputer,
-        onSend = viewModel::sendMessage,
-        onStop = chat::stop,
-        approval = approval,
-        approvalSecondsRemaining = secondsLeft,
-        onApprove = { chat.respondToApproval(approved = true) },
-        onDeny = { chat.respondToApproval(approved = false) },
-        onOpenFile = viewModel::openWorkspaceFile,
-        hostLine = hostLine,
-        userName = userName,
-        dueLine = dueLine,
-        onOpenScheduler = onOpenScheduler,
-        onRetryMessage = chat::retry,
-        pendingAttachments = attachments,
-        onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
-        onRemoveAttachment = viewModel::removeAttachment,
-    )
+    // Pictures on messages read back from the computer are asked for by position on
+    // this conversation's messages, and kept once read.
+    val pictureConversation = chat.conversationId
+    CompositionLocalProvider(
+        LocalRemotePictures provides { messageId, index ->
+            viewModel.attachmentPreview(pictureConversation, messageId, index)
+        },
+    ) {
+        ChatScreen(
+            // Only when the connection is what took the screen away. Leaving a chat on
+            // purpose mid-turn is not a reason to send what was left in the box later.
+            onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
+            sharedDraft = sharedDraft,
+            onSharedDraftTaken = viewModel::consumeSharedDraft,
+            openers = openers,
+            topInset = topInset,
+            runGoal = runGoal,
+            messages = messages,
+            sending = sending,
+            error = error,
+            waitingForComputer = waitingForComputer,
+            onSend = viewModel::sendMessage,
+            onStop = chat::stop,
+            approval = approval,
+            approvalSecondsRemaining = secondsLeft,
+            onApprove = { chat.respondToApproval(approved = true) },
+            onDeny = { chat.respondToApproval(approved = false) },
+            onOpenFile = viewModel::openWorkspaceFile,
+            hostLine = hostLine,
+            userName = userName,
+            dueLine = dueLine,
+            onOpenScheduler = onOpenScheduler,
+            onRetryMessage = chat::retry,
+            pendingAttachments = attachments,
+            onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
+            onRemoveAttachment = viewModel::removeAttachment,
+        )
+    }
 }
 
 /**

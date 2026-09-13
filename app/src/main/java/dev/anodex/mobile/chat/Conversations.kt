@@ -109,6 +109,19 @@ class Conversations(private val socket: AnodexSocket) {
      *
      * Null when the computer has no such conversation.
      */
+    /**
+     * A picture on a message, sized for a phone, as JPEG bytes.
+     *
+     * Null when the computer has no such picture any more, or is too old to send one.
+     */
+    suspend fun attachmentPreview(conversationId: String, messageId: String, index: Int): ByteArray? {
+        val answer = socket.invoke(
+            CHANNEL_ATTACHMENT_PREVIEW,
+            listOf(JsonPrimitive(conversationId), JsonPrimitive(messageId), JsonPrimitive(index)),
+        )
+        return parseAttachmentPreview(answer)
+    }
+
     suspend fun open(conversationId: String): OpenedConversation? {
         val conversation = socket.invoke(
             CHANNEL_GET,
@@ -227,6 +240,7 @@ class Conversations(private val socket: AnodexSocket) {
             // with no character selected. Both render as no byline rather than as a
             // guess taken from whatever is selected now.
             persona = (this["persona"] as? JsonObject)?.asPersona(),
+            attachments = parseRemoteAttachments(this["attachments"]),
         )
     }
 
@@ -242,6 +256,7 @@ class Conversations(private val socket: AnodexSocket) {
     private companion object {
         const val CHANNEL_SUMMARIES = "conversations:list-summaries"
         const val CHANNEL_GET = "conversations:get"
+        const val CHANNEL_ATTACHMENT_PREVIEW = "conversations:attachment-preview"
         const val CHANNEL_SEARCH = "conversations:search"
 
         /** Archive, in the desktop's own words. See [archive]. */
@@ -315,4 +330,27 @@ internal fun parseMessageMatches(element: kotlinx.serialization.json.JsonElement
             excerpt.lineSequence().map(::withoutMarkdown).filter { it.isNotBlank() }.joinToString(" "),
         )
     }
+}
+
+/** A message's attachments as the computer describes them: name, kind and size, in order. */
+internal fun parseRemoteAttachments(element: kotlinx.serialization.json.JsonElement?): List<UploadedFile> =
+    (element as? kotlinx.serialization.json.JsonArray).orEmpty()
+        .filterIsInstance<JsonObject>()
+        .map { item ->
+            UploadedFile(
+                path = "",
+                name = item["name"]?.jsonPrimitive?.contentOrNull() ?: "Attachment",
+                sizeBytes = item["sizeBytes"]?.jsonPrimitive?.contentOrNull()?.toDoubleOrNull()?.toLong() ?: 0L,
+                isImage = item["kind"]?.jsonPrimitive?.contentOrNull() == "image",
+                fromComputer = true,
+            )
+        }
+
+/** `conversations:attachment-preview`, tolerant of the `{ok, value}` envelope. */
+internal fun parseAttachmentPreview(element: kotlinx.serialization.json.JsonElement?): ByteArray? {
+    val fields = (element as? JsonObject)?.let { obj ->
+        (obj["value"] as? JsonObject) ?: obj.takeIf { it.containsKey("base64") }
+    } ?: return null
+    val base64 = fields["base64"]?.jsonPrimitive?.contentOrNull() ?: return null
+    return runCatching { java.util.Base64.getDecoder().decode(base64) }.getOrNull()?.takeIf { it.isNotEmpty() }
 }
