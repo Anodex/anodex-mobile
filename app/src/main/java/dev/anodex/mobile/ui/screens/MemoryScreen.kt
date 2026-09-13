@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import dev.anodex.mobile.memory.MemoryEntry
-import dev.anodex.mobile.scheduler.relativeTime
+import dev.anodex.mobile.scheduler.timeAgo
 import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.EmptyState
@@ -178,7 +178,7 @@ private fun EntryCard(entry: MemoryEntry, onForget: ((MemoryEntry) -> Unit)?) {
 private fun provenance(entry: MemoryEntry): String {
     val where = if (entry.isGlobal) "Everywhere" else "This project"
     val pinned = if (entry.pinned) "pinned" else null
-    val learned = relativeTime(entry.createdAtEpochMs)?.let { "learned $it" }
+    val learned = timeAgo(entry.createdAtEpochMs)?.let { "learned $it" }
     return listOfNotNull(where, pinned, learned).joinToString(" · ")
 }
 
