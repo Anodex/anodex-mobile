@@ -732,7 +732,7 @@ private fun MeterView(meter: Meter, modifier: Modifier = Modifier) {
 private fun RunOutcome(run: AgentRun) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
-    val text = (run.summary ?: run.lastError ?: return).withoutOutcomeHeading()
+    val text = (runOutcomeText(run) ?: return).withoutOutcomeHeading()
 
     val (ink, ground) = when {
         run.status == AgentRun.Status.ERROR -> colors.dangerInk to colors.dangerSoft
@@ -752,6 +752,20 @@ private fun RunOutcome(run: AgentRun) {
             .background(ground)
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
     )
+}
+
+/**
+ * What a run's result box says: why it stopped when it stopped for a reason, its
+ * summary otherwise. The desktop's `runOutcomeText`.
+ *
+ * It was always the summary when there was one. A run stopped at its turn limit still
+ * has a summary — its last reply — so the card was amber around "all 2 steps
+ * complete", and the reason it stopped was nowhere on the phone.
+ */
+internal fun runOutcomeText(run: AgentRun): String? {
+    val reasonFirst = (run.status == AgentRun.Status.ERROR || run.status == AgentRun.Status.STOPPED) &&
+        run.lastError != null
+    return if (reasonFirst) run.lastError else run.summary ?: run.lastError
 }
 
 /**

@@ -1,6 +1,7 @@
 package dev.anodex.mobile.agents
 
 import dev.anodex.mobile.ui.screens.compactTokens
+import dev.anodex.mobile.ui.screens.runOutcomeText
 import dev.anodex.mobile.ui.screens.withoutOutcomeHeading
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -88,5 +89,24 @@ class OutcomeHeadingTest {
     fun `the words inside a sentence are left alone`() {
         val summary = "I checked **What this reply did** in the log."
         assertEquals(summary, summary.withoutOutcomeHeading())
+    }
+}
+
+class RunOutcomeTextTest {
+    private fun run(status: AgentRun.Status, summary: String?, lastError: String?) = AgentRun(
+        id = "r1", goal = "g", status = status, conversationId = "c", turnsUsed = 8, maxTurns = 8,
+        limitsEnabled = true, summary = summary, lastError = lastError, plan = null, updatedAtEpochMs = 0,
+    )
+
+    @Test
+    fun `a stopped run shows why it stopped, not its last reply`() {
+        val stopped = run(AgentRun.Status.STOPPED, "all 2 steps complete", "Stopped after 8 turns without finishing.")
+        assertEquals("Stopped after 8 turns without finishing.", runOutcomeText(stopped))
+    }
+
+    @Test
+    fun `a finished run shows its summary`() {
+        assertEquals("Listed the folders.", runOutcomeText(run(AgentRun.Status.DONE, "Listed the folders.", null)))
+        assertEquals(null, runOutcomeText(run(AgentRun.Status.DONE, null, null)))
     }
 }
