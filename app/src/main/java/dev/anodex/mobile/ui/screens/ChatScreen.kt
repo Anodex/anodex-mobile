@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -119,6 +120,8 @@ fun ChatScreen(
     onOpenFile: ((String) -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
     hostLine: String? = null,
+    /** The name on the computer, for the greeting. Null until it answers. */
+    userName: String? = null,
     /** Ask the same question again. Null where there is no socket to ask down. */
     onRetryMessage: ((String) -> Unit)? = null,
     /** What is attached to the message being written, and how it is getting on. */
@@ -284,18 +287,32 @@ fun ChatScreen(
                     modifier = Modifier.padding(Spacing.x6),
                 ) {
                     AnodexMark(size = 54.dp)
+
+                    // `display` rather than `title`. Set against the other assistants
+                    // on the same phone, this line was the one carrying the screen and
+                    // was sized like a section header — the mark above it had more
+                    // presence than the sentence, which is the wrong way round.
                     Text(
-                        text = greeting(),
-                        style = type.title,
+                        text = greeting(userName),
+                        style = type.display,
                         color = colors.text,
                         textAlign = TextAlign.Center,
                     )
-                    Text(
-                        text = hostLine ?: "Ask your computer something.",
-                        style = type.meta,
-                        color = colors.textFaint,
-                        textAlign = TextAlign.Center,
-                    )
+
+                    // Only when it says something the header does not. The pill at the
+                    // top already reads "Gort ●", so "Gort is awake and listening"
+                    // underneath was the same fact twice, and it was the line
+                    // competing with the greeting for the middle of the screen.
+                    if (hostLine == null) {
+                        Text(
+                            text = "Ask your computer something.",
+                            style = type.meta,
+                            color = colors.textFaint,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+
+                    Spacer(Modifier.height(Spacing.x6))
 
                     // Filled into the composer rather than sent. The wording is a
                     // starting point and the person tapping it usually has a version
@@ -1007,18 +1024,34 @@ private fun JumpToBottom(onClick: () -> Unit, modifier: Modifier = Modifier) {
 private const val STICK_SLOP_PX = 24
 
 /**
- * "Good afternoon" — by the clock, and nothing else.
+ * "Good afternoon, Merlin" — by the clock, and by the name on the computer.
  *
- * No name. Every other assistant greets you by yours, and it is the one thing this
- * app cannot know: there is no Anodex account, and the desktop never asked. Guessing
- * from the Android profile would be a stranger using your first name.
+ * This used to refuse the name on the grounds that the app could not know it: there
+ * was no Anodex account and the desktop never asked, so anything it used would have
+ * been lifted from the Android profile — a stranger using your first name.
+ *
+ * That objection was about the *source*, and the source changed. `settings:get-profile`
+ * returns the display name you set on your own computer, which is not a guess and is
+ * not scraped from anywhere. Using it is the difference between being greeted and
+ * being addressed.
+ *
+ * [DEFAULT_NAME] is skipped. It is what the desktop ships with, so greeting somebody
+ * by it means greeting them by the word "user" — worse than not greeting them at all.
  */
-private fun greeting(): String = when (LocalTime.now().hour) {
-    in 0..4 -> "Still up"
-    in 5..11 -> "Good morning"
-    in 12..17 -> "Good afternoon"
-    else -> "Good evening"
+internal fun greeting(name: String?): String {
+    val time = when (LocalTime.now().hour) {
+        in 0..4 -> "Still up"
+        in 5..11 -> "Good morning"
+        in 12..17 -> "Good afternoon"
+        else -> "Good evening"
+    }
+
+    val known = name?.trim()?.takeIf { it.isNotEmpty() && !it.equals(DEFAULT_NAME, true) }
+    return if (known == null) time else "$time, $known"
 }
+
+/** What the desktop's profile starts as. Not a name anybody chose. */
+internal const val DEFAULT_NAME = "Anodex User"
 
 /**
  * What the turn did, folded into a line.
