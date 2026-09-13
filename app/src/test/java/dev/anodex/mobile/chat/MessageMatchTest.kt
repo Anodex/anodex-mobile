@@ -38,6 +38,18 @@ class MessageMatchTest {
     }
 
     @Test
+    fun `an excerpt cut from a reply loses its markdown`() {
+        // Seen on the phone: "...with no reply to them: 1. **Inst…"
+        val matches = parseMessageMatches(
+            Json.parseToJsonElement(
+                "[{\"conversationId\":\"c1\",\"excerpt\":\"no reply to them: 1. **Instagram** and\n**Inst\"}]",
+            ),
+        )
+
+        assertEquals("no reply to them: 1. Instagram and Inst", matches.single().excerpt)
+    }
+
+    @Test
     fun `nothing readable is no matches`() {
         assertEquals(emptyList<MessageMatch>(), parseMessageMatches(JsonNull))
         assertEquals(emptyList<MessageMatch>(), parseMessageMatches(null))

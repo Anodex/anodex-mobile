@@ -308,6 +308,11 @@ internal fun parseMessageMatches(element: kotlinx.serialization.json.JsonElement
     return rows.filterIsInstance<JsonObject>().mapNotNull { row ->
         val id = (row["conversationId"] as? JsonPrimitive)?.contentOrNull() ?: return@mapNotNull null
         val excerpt = (row["excerpt"] as? JsonPrimitive)?.contentOrNull().orEmpty()
-        MessageMatch(id, excerpt.replace(Regex("\\s+"), " ").trim())
+        // Plain, like a title: an excerpt is cut from a reply mid-markdown, and on a
+        // result row "1. **Inst…" is asterisks rather than emphasis.
+        MessageMatch(
+            id,
+            excerpt.lineSequence().map(::withoutMarkdown).filter { it.isNotBlank() }.joinToString(" "),
+        )
     }
 }
