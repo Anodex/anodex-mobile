@@ -120,6 +120,9 @@ fun ChatScreen(
     onOpenFile: ((String) -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
     hostLine: String? = null,
+    /** What the computer is doing later today, if anything. Null on a quiet day. */
+    dueLine: String? = null,
+    onOpenScheduler: () -> Unit = {},
     /** The name on the computer, for the greeting. Null until it answers. */
     userName: String? = null,
     /** Ask the same question again. Null where there is no socket to ask down. */
@@ -268,6 +271,17 @@ fun ChatScreen(
     val density = LocalDensity.current
 
     Box(modifier = modifier.fillMaxSize().background(colors.bgApp).imePadding()) {
+        // Behind everything, including the composer.
+        //
+        // It used to be drawn inside the box that holds the greeting, which is padded
+        // clear of the composer — so the light stopped in a flat line exactly where
+        // the composer began, and the composer sat in a black band on a lit screen.
+        // The band was never drawn; it was the absence of this.
+        //
+        // The composer floats now, the way it does in every other assistant on the
+        // phone: the light passes behind it and out to the bottom edge.
+        if (messages.isEmpty()) FacetField(Modifier.matchParentSize())
+
         if (messages.isEmpty()) {
             Box(
                 Modifier
@@ -275,11 +289,6 @@ fun ChatScreen(
                     .padding(top = topInset, bottom = bottomInset),
                 contentAlignment = Alignment.Center,
             ) {
-                // Not a void. Two flat planes in the mark's own violet and cyan, then
-                // the mark, then a greeting that names the *computer* — because that
-                // is the thing you came back to, and it is the one fact none of the
-                // other assistants can put on their home screen.
-                FacetField(Modifier.matchParentSize())
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -314,22 +323,56 @@ fun ChatScreen(
 
                     Spacer(Modifier.height(Spacing.x6))
 
+                    // What the computer is going to do today, when it is going to do
+                    // something. Absent on the days it is not: a home screen that says
+                    // "nothing scheduled" has spent a row to report that nothing
+                    // happened.
+                    dueLine?.let { line ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                            modifier = Modifier
+                                .clip(Radii.pill)
+                                .clickable(
+                                    onClickLabel = "Open the scheduler",
+                                    onClick = onOpenScheduler,
+                                )
+                                .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+                        ) {
+                            AnodexIcon(AnodexIcon.CLOCK, size = 14.dp, tint = colors.accentInk)
+                            Text(
+                                text = line,
+                                style = type.meta,
+                                color = colors.accentInk,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+
                     // Filled into the composer rather than sent. The wording is a
                     // starting point and the person tapping it usually has a version
                     // of their own in mind — sending outright takes that away, and
                     // the edit is the cheap half of asking.
+                    //
+                    // Drawn as buttons rather than as quiet suggestions. They were
+                    // `bgSurface` with `textMuted` on top, which on a dark screen is
+                    // barely a shape at all — they read as captions somebody had
+                    // centred, and the most useful thing on this screen looked like
+                    // the least. An edge and full-strength text is the difference
+                    // between something offered and something mentioned.
                     for (opener in openers) {
                         Text(
                             text = opener,
                             style = type.body,
-                            color = colors.textMuted,
+                            color = colors.text,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .heightIn(min = Touch.minTarget)
                                 .clip(Radii.pill)
-                                .background(colors.bgSurface)
+                                .background(colors.bgElevated)
+                                .border(1.dp, colors.border, Radii.pill)
                                 .clickable { draft = opener }
-                                .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+                                .padding(horizontal = Spacing.x5, vertical = Spacing.x3),
                         )
                     }
                 }
