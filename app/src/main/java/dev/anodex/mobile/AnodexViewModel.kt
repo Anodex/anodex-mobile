@@ -1811,6 +1811,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 // The desktop forgets this when the socket goes, so it is said again
                 // on every new one rather than only when the user changes it.
                 tellComputerAboutTokens()
+                // The greeting on the home screen wants the name, and that screen is
+                // the first thing anybody sees. Reading it only when Settings opens
+                // meant it was never there when it was needed.
+                refreshProfile()
                 modelClient = Models(candidate)
                 _chat.value = ChatSession(
                     socket = candidate,
