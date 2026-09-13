@@ -202,7 +202,7 @@ private fun JsonObject.toRun(): AgentRun? {
         summary = str("summary")?.takeIf { it.isNotBlank() },
         lastError = str("lastError")?.takeIf { it.isNotBlank() },
         plan = (this["plan"] as? JsonObject)?.toPlan(),
-        updatedAtEpochMs = num("updatedAt").toLong(),
+        updatedAtEpochMs = long("updatedAt"),
     )
 }
 
@@ -233,3 +233,14 @@ private fun JsonObject.str(key: String): String? =
 
 private fun JsonObject.num(key: String): Int =
     (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: 0
+
+/**
+ * A number too big for [num] — which means every timestamp.
+ *
+ * `updatedAt` used to be read through `num` and widened afterwards, but the
+ * narrowing had already happened: `Double.toInt()` clamps rather than wraps, so
+ * every epoch-millisecond value in this century came out as `Int.MAX_VALUE`.
+ * That is 24.8 days after 1970, and every run on the screen read "20684 days ago".
+ */
+private fun JsonObject.long(key: String): Long =
+    (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toLong() ?: 0L
