@@ -247,7 +247,6 @@ fun SettingsScreen(
             SettingsSection.REMOTE -> RemoteSection(hostName, hostStatus, onOpenHost)
 
             SettingsSection.ARCHIVE -> SectionBody(spacing = Spacing.x4) {
-                SectionLabel("Archive")
                 ArchiveScreen(
                     chats = archivedChats,
                     projects = archivedProjects,
@@ -260,7 +259,6 @@ fun SettingsScreen(
             }
 
             SettingsSection.DIAGNOSTICS -> SectionBody(spacing = Spacing.x4) {
-                SectionLabel("Diagnostics")
                 DiagnosticsScreen(
                     hostName = hostName,
                     connectionStatus = hostStatus,
@@ -683,7 +681,6 @@ private fun AboutSection(
     }
 
     SectionBody {
-        SectionLabel("About")
 
         Group {
             SettingsRow(icon = AnodexIcon.INFO, label = "Version", trailing = installedVersion)
