@@ -486,6 +486,9 @@ private fun ConnectedScaffold(
     viewModel: AnodexViewModel,
 ) {
     val colors = AnodexTheme.colors
+    // Read here rather than inside Settings, because the greeting on an empty chat
+    // wants it and that is the first screen anybody sees.
+    val profile by viewModel.user.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(AppDestination.CHAT) }
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -1099,6 +1102,7 @@ private fun ConnectedScaffold(
                         // Named on the empty screen, because which computer is awake is
                         // the one thing no other assistant can put there.
                         hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
+                        userName = profile?.displayName,
                         openers = openersFor(
                             projectName = projects.active?.name,
                             unreadEmail = unreadEmail,
@@ -1419,6 +1423,8 @@ private fun ChatPane(
     chat: ChatSession?,
     viewModel: AnodexViewModel,
     hostLine: String?,
+    /** The name on the computer, for the greeting on an empty chat. */
+    userName: String? = null,
     openers: List<String> = emptyList(),
     /** How much floating chrome hangs over the top of the conversation. */
     topInset: Dp = 0.dp,
@@ -1492,6 +1498,7 @@ private fun ChatPane(
         onDeny = { chat.respondToApproval(approved = false) },
         onOpenFile = viewModel::openWorkspaceFile,
         hostLine = hostLine,
+        userName = userName,
         onRetryMessage = chat::retry,
         pendingAttachments = attachments,
         onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
