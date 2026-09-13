@@ -1970,6 +1970,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 refreshUnreadEmail()
                 refreshPersonalities()
                 refreshModels()
+                pendingShare?.let { (text, uris) ->
+                    pendingShare = null
+                    applyShare(text, uris)
+                }
                 pendingNotificationOpen?.let {
                     pendingNotificationOpen = null
                     openConversation(it)
@@ -2728,6 +2732,39 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun consumeChatOpenRequest() {
         _chatOpenRequest.value = null
+    }
+
+    private val _sharedDraft = MutableStateFlow<String?>(null)
+
+    /** Text shared into the app, waiting to be put in the composer. */
+    val sharedDraft: StateFlow<String?> = _sharedDraft.asStateFlow()
+
+    fun consumeSharedDraft() {
+        _sharedDraft.value = null
+    }
+
+    private var pendingShare: Pair<String?, List<android.net.Uri>>? = null
+
+    /**
+     * Something shared from another app: a new chat, the text in its composer and the
+     * files attached, ready to send — never sent on its own, because what to ask about
+     * a shared screenshot is still the user's to say.
+     *
+     * Held until connected when it arrives first; a share is often what opened the app.
+     */
+    fun receiveShare(text: String?, uris: List<android.net.Uri>) {
+        if (socket == null || uploads == null) {
+            pendingShare = text to uris
+            return
+        }
+        applyShare(text, uris)
+    }
+
+    private fun applyShare(text: String?, uris: List<android.net.Uri>) {
+        newConversation()
+        uris.forEach(::attach)
+        _sharedDraft.value = text
+        _chat.value?.let { _chatOpenRequest.value = it.conversationId }
     }
 
     /** Take the approval notification down once the prompt is gone. */
