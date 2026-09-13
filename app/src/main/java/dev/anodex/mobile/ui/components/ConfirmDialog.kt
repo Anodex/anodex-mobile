@@ -1,5 +1,15 @@
 package dev.anodex.mobile.ui.components
 
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +78,64 @@ fun ConfirmDialog(
             ) {
                 SecondaryButton(label = cancelLabel, onClick = onDismiss)
                 DangerButton(label = confirmLabel, onClick = onConfirm)
+            }
+        }
+    }
+}
+
+/**
+ * One line of text, asked for in the same frame as [ConfirmDialog].
+ *
+ * For renaming, where the answer is a word rather than a yes. Opens with the current
+ * value selected-in-place, so a small correction is a small edit, and refuses to
+ * confirm a blank — a conversation called nothing is not one anybody can find again.
+ */
+@Composable
+fun TextInputDialog(
+    title: String,
+    initial: String,
+    confirmLabel: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+    placeholder: String? = null,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    var value by remember { mutableStateOf(initial) }
+    val focus = remember { FocusRequester() }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.border, Radii.lg)
+                .background(colors.bgSurface, Radii.lg)
+                .padding(Spacing.x5),
+            verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+        ) {
+            Text(title, style = type.bodyEmphasis, color = colors.text)
+
+            AnodexTextField(
+                value = value,
+                onValueChange = { value = it },
+                placeholder = placeholder,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = { if (value.isNotBlank()) onConfirm(value.trim()) },
+                ),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.x2),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x3, Alignment.End),
+            ) {
+                SecondaryButton(label = "Cancel", onClick = onDismiss)
+                PrimaryButton(
+                    label = confirmLabel,
+                    onClick = { if (value.isNotBlank()) onConfirm(value.trim()) },
+                )
             }
         }
     }

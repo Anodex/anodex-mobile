@@ -376,6 +376,21 @@ class ChatSession(
      * and it answers null when no model is loaded or the model produced nothing
      * usable. Null leaves the first-line title in place, which is what it was before.
      */
+    /**
+     * Call this conversation something else, here and on the computer.
+     *
+     * Saved through the same write as a turn, which the computer merges rather than
+     * overwrites, so a rename can never cost a message. A conversation with nothing
+     * in it yet keeps the name and writes it with its first turn — and is not then
+     * renamed from under the person who chose it, because [nameAfterFirstReply] only
+     * names a conversation that has no title.
+     */
+    fun rename(newTitle: String) {
+        val trimmed = newTitle.trim().takeIf { it.isNotEmpty() } ?: return
+        _title.value = trimmed.take(MAX_TITLE_LENGTH)
+        scope.launch { withContext(NonCancellable) { persist() } }
+    }
+
     private suspend fun nameAfterFirstReply(messageId: String) {
         if (_title.value != null) return
 
