@@ -46,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -174,6 +176,7 @@ fun ChatScreen(
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val composerFocus = remember { FocusRequester() }
 
     /**
      * A message written while the last one was still being answered.
@@ -440,6 +443,10 @@ fun ChatScreen(
                             // Nothing to copy or retry while the answer is still
                             // arriving, and a retry mid-turn would be refused anyway.
                             actionsEnabled = !sending,
+                            onEdit = { text ->
+                                draft = text
+                                runCatching { composerFocus.requestFocus() }
+                            },
                             waitingForComputer = waitingForComputer,
                         )
                     }
@@ -540,6 +547,7 @@ fun ChatScreen(
                 onAttach = onAttach,
                 onRemoveAttachment = onRemoveAttachment,
                 onDictate = dictate,
+                focusRequester = composerFocus,
             )
         }
     }
@@ -552,10 +560,21 @@ private fun MessageRow(
     onRetry: ((String) -> Unit)? = null,
     actionsEnabled: Boolean = true,
     waitingForComputer: Boolean = false,
+    /**
+     * Put a sent message back in the composer to change and send again.
+     *
+     * Sent as a new turn, the original left where it is — the same as Retry, and the
+     * only thing the computer's conversations support. A way to fix a typo or add the
+     * detail that was forgotten without typing the whole question out again.
+     */
+    onEdit: ((String) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val isUser = message.role == ChatMessage.Role.USER
+    // Your own message's Copy and Edit, shown on a tap. Hidden otherwise: a row of
+    // controls under every question would double the length of a conversation.
+    var userActions by remember(message.id) { mutableStateOf(false) }
 
     /** The attachment being looked at full-screen, if any. */
     var viewing by remember(message.id) { mutableStateOf<String?>(null) }
@@ -649,9 +668,25 @@ private fun MessageRow(
                             // near-black values #161616 on #0C0C0C is barely a shape,
                             // and the border is most of what makes it one.
                             .border(1.dp, colors.border, UserBubble)
+                            .clickable(
+                                onClickLabel = if (userActions) "Hide message actions" else "Show message actions",
+                            ) { userActions = !userActions }
                             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
                     ) {
                         Text(message.text, style = type.chatBody, color = colors.text)
+                    }
+                    if (userActions) {
+                        MessageActions(
+                            text = message.text,
+                            enabled = actionsEnabled,
+                            onRetry = null,
+                            onEdit = onEdit?.let { edit ->
+                                {
+                                    edit(message.text)
+                                    userActions = false
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -820,6 +855,7 @@ private fun MessageActions(
     text: String,
     enabled: Boolean,
     onRetry: (() -> Unit)?,
+    onEdit: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -851,6 +887,9 @@ private fun MessageActions(
 
         if (onRetry != null) {
             ActionButton(label = "Retry", tint = colors.textFaint, enabled = enabled, onClick = onRetry)
+        }
+        if (onEdit != null) {
+            ActionButton(label = "Edit", tint = colors.textFaint, enabled = enabled, onClick = onEdit)
         }
     }
 }
@@ -1460,6 +1499,8 @@ private fun Composer(
     onRemoveAttachment: (UploadState) -> Unit = {},
     /** Null on a phone with no speech screen to hand off to, which hides the mic. */
     onDictate: (() -> Unit)? = null,
+    /** Lets "Edit" on a sent message put the cursor here. */
+    focusRequester: FocusRequester? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -1581,6 +1622,7 @@ private fun Composer(
                     // behind the field, so the field alone announced as "edit box".
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
                         .semantics { contentDescription = "Message" },
                 )
             }
