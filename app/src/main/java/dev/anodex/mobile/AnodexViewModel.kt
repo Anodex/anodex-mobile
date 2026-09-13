@@ -99,12 +99,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -1907,6 +1909,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 // for the user to discover it by typing into a dead socket.
                 candidate.onDropped = { farewell ->
                     if (socket === candidate) {
+                        _chat.value?.let { rememberForReconnect(it) }
                         _chat.value = null
 
                         // The computer's own account of why it went, when it gave
@@ -1980,6 +1983,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 refreshUnreadEmail()
                 refreshPersonalities()
                 refreshModels()
+                resumeAfterReconnect()
                 pendingShare?.let { (text, uris) ->
                     pendingShare = null
                     applyShare(text, uris)
@@ -2735,6 +2739,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     private var nextNotificationId = 100
 
+    /** How long to wait for a dropped conversation to reopen before sending into what is open. */
+    private val QUEUE_REOPEN_TIMEOUT_MS = 15_000L
+
     /** Whether the app is on screen. Set from the activity's resume and pause. */
     @Volatile private var appVisible = false
 
@@ -2792,6 +2799,84 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun consumeChatOpenRequest() {
         _chatOpenRequest.value = null
+    }
+
+    /** The conversation that was open when the connection dropped. */
+    data class OfflineChat(val conversationId: String, val messages: List<ChatMessage>)
+
+    private val _offlineChat = MutableStateFlow<OfflineChat?>(null)
+
+    /**
+     * What was on screen when the connection went, kept on screen while it comes back.
+     *
+     * A drop used to replace the conversation with "Reconnecting…" and then, once
+     * connected, a blank new chat — somebody mid-conversation on a train lost their
+     * place every time the signal dipped.
+     */
+    val offlineChat: StateFlow<OfflineChat?> = _offlineChat.asStateFlow()
+
+    private val _queuedMessages = MutableStateFlow<List<String>>(emptyList())
+
+    /** Messages written while the computer was unreachable, sent in order once it is back. */
+    val queuedMessages: StateFlow<List<String>> = _queuedMessages.asStateFlow()
+
+    fun queueWhileOffline(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        _queuedMessages.value = _queuedMessages.value + trimmed
+        // A message written into a chat that had no conversation yet still needs
+        // somewhere to be shown while it waits.
+        if (_offlineChat.value == null) _offlineChat.value = OfflineChat(conversationId = "", messages = emptyList())
+    }
+
+    fun unqueue(index: Int) {
+        _queuedMessages.value = _queuedMessages.value.filterIndexed { i, _ -> i != index }
+    }
+
+    private fun rememberForReconnect(session: ChatSession) {
+        val messages = session.messages.value
+            // An answer cut off by the drop is shown as far as it got, not as still arriving.
+            .map { if (it.streaming) it.copy(streaming = false) else it }
+            .filter { it.role == ChatMessage.Role.USER || it.text.isNotBlank() || it.tools.isNotEmpty() }
+        _offlineChat.value = OfflineChat(
+            conversationId = if (messages.isEmpty()) "" else session.conversationId,
+            messages = messages,
+        )
+    }
+
+    /**
+     * Back where the connection dropped: the same conversation, then anything written
+     * while it was away, sent one after another.
+     *
+     * A notification tap or a share waiting on this connection is somewhere the user
+     * asked to go, so it wins and the old conversation is not reopened over it.
+     */
+    private fun resumeAfterReconnect() {
+        val offline = _offlineChat.value ?: return
+        val queued = _queuedMessages.value
+        val goingElsewhere = pendingNotificationOpen != null || pendingShare != null
+
+        if (offline.conversationId.isNotEmpty() && !goingElsewhere) {
+            openConversation(offline.conversationId)
+        }
+        _offlineChat.value = null
+        if (queued.isEmpty()) return
+
+        viewModelScope.launch {
+            val session = if (offline.conversationId.isNotEmpty() && !goingElsewhere) {
+                withTimeoutOrNull(QUEUE_REOPEN_TIMEOUT_MS) {
+                    _chat.filterNotNull().first { it.conversationId == offline.conversationId }
+                }
+            } else {
+                _chat.value
+            } ?: _chat.value ?: return@launch
+
+            for (text in queued) {
+                session.sending.first { !it }
+                session.send(text)
+                _queuedMessages.value = _queuedMessages.value.drop(1)
+            }
+        }
     }
 
     private val _sharedDraft = MutableStateFlow<String?>(null)

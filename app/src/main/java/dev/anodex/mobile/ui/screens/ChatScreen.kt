@@ -684,7 +684,15 @@ private fun MessageRow(
                     ) {
                         Text(message.text, style = type.chatBody, color = colors.text)
                     }
-                    if (userActions) {
+                    if (message.queued) {
+                        Text(
+                            text = "Waiting to send",
+                            style = type.meta,
+                            color = colors.textFaint,
+                            modifier = Modifier.padding(top = Spacing.x1, end = Spacing.x2),
+                        )
+                    }
+                    if (userActions && !message.queued) {
                         MessageActions(
                             text = message.text,
                             enabled = actionsEnabled,

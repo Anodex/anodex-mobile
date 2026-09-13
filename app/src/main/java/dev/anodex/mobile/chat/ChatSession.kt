@@ -85,6 +85,8 @@ data class ChatMessage(
      * one. Blank is the honest rendering of that; a confident wrong name is not.
      */
     val persona: MessagePersona? = null,
+    /** Written while the computer was unreachable, and not sent yet. */
+    val queued: Boolean = false,
 ) {
     enum class Role { USER, ASSISTANT }
 }
