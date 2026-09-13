@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
@@ -164,8 +165,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             // Read here rather than inside the app, because the theme wraps
-            // everything including the crash screen. SYSTEM until the store has
-            // answered, which is one frame and is also the right default.
+            // everything including the crash screen. Dark until the store has
+            // answered, which is one frame and is also the default.
             val mode by appearance.themeMode.collectAsStateWithLifecycle(DEFAULT_THEME_MODE)
             val fontScale by appearance.fontScale.collectAsStateWithLifecycle(FontScale.MEDIUM)
             val uiFont by appearance.uiFont.collectAsStateWithLifecycle(UiFont.SYSTEM)
@@ -181,6 +182,8 @@ class MainActivity : ComponentActivity() {
                 uiFont = uiFont,
                 motion = motion,
             ) {
+                InitialFocusSink()
+
                 if (crash != null) {
                     CrashReportScreen(
                         report = crash,
@@ -1731,3 +1734,25 @@ private fun DesignStateHarness(onExit: () -> Unit) {
  */
 private const val CRASH_REPORT_URL =
     "https://github.com/Anodex/anodex-mobile/issues/new?template=bug_report.yml"
+
+/**
+ * Somewhere for Android 8 to put focus that nobody asked for.
+ *
+ * Before Android 9, a window in touch mode hands focus to its first focusable view
+ * whenever the focused one goes away — a screen changing, a sent message clearing
+ * the composer. For Compose that view is the whole app, which passes the focus on to
+ * the first thing that can hold it: on the conversation list, the search box. A text
+ * field that gains focus opens the keyboard, so on a Galaxy S7 simply opening the
+ * list, or a chat from a notification, covered the bottom half of the screen with a
+ * keyboard nobody had asked for.
+ *
+ * This is the first focusable node in the tree, so that reassignment lands here and
+ * nothing opens. It draws nothing, says nothing to accessibility, and a tap on a real
+ * text field still focuses that field. On Android 9 and later the platform no longer
+ * reassigns focus at all, so it isn't composed there.
+ */
+@Composable
+private fun InitialFocusSink() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return
+    Box(Modifier.size(1.dp).focusTarget())
+}
