@@ -622,7 +622,7 @@ private fun MessageRow(
                 // What was sent with it, above the words. Stored on the message since
                 // attachments landed and never drawn until now, so a picture went to
                 // the computer and left no trace in the conversation it belonged to.
-                for (file in message.attachments) {
+                for ((attachmentIndex, file) in message.attachments.withIndex()) {
                     if (file.isImage) {
                         // The picture on its own. A filename beside it is a caption
                         // nobody wrote — for a screenshot the image *is* the message,
@@ -637,6 +637,7 @@ private fun MessageRow(
                             isImage = true,
                             size = 220.dp,
                             whole = true,
+                            remote = if (file.fromComputer) message.id to attachmentIndex else null,
                             modifier = Modifier
                                 .padding(bottom = Spacing.x2)
                                 .then(

@@ -39,6 +39,13 @@ data class UploadedFile(
      * that was sent rather than a paperclip and a filename.
      */
     val localUri: String? = null,
+    /**
+     * Read back from a conversation on the computer rather than sent from here.
+     *
+     * Such a file has no path the phone knows and no local copy; its picture is asked
+     * for by its position on the message (`conversations:attachment-preview`).
+     */
+    val fromComputer: Boolean = false,
 )
 
 /** Where an upload has got to. */
