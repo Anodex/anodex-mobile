@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -81,6 +82,7 @@ import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.ConnectionHeader
 import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.HostStatus
+import dev.anodex.mobile.ui.components.LocalRemotePictures
 import dev.anodex.mobile.ui.components.PanelSide
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SCRIM_ALPHA
@@ -1605,6 +1607,40 @@ private fun ChatPane(
     val pickFile = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> uris.forEach(viewModel::attach) }
+
+    // Photos, through the system photo picker: the phone's own gallery, no storage
+    // permission, and on Android versions before the picker the document browser
+    // narrowed to images.
+    val pickPhotos = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(),
+    ) { uris -> uris.forEach(viewModel::attach) }
+
+    // Camera: the phone's own camera app writes a full photo into a file only this app
+    // exports, and it is attached from there. The camera permission is asked for first
+    // because this app declares it for pairing codes, and Android then refuses the
+    // camera app to anything that has not been granted it.
+    val cameraContext = LocalContext.current
+    var pendingPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val photo = pendingPhoto
+        pendingPhoto = null
+        if (saved && photo != null) viewModel.attach(photo)
+    }
+    fun launchCamera() {
+        val dir = java.io.File(cameraContext.cacheDir, "camera").apply { mkdirs() }
+        val file = java.io.File(dir, "photo-${System.currentTimeMillis()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            cameraContext,
+            "${cameraContext.packageName}.updates",
+            file,
+        )
+        pendingPhoto = uri
+        runCatching { takePhoto.launch(uri) }.onFailure { pendingPhoto = null }
+    }
+    val cameraPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) launchCamera() }
+
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
@@ -1672,37 +1708,56 @@ private fun ChatPane(
     }
 
     val sharedDraft by viewModel.sharedDraft.collectAsStateWithLifecycle()
-    ChatScreen(
-        // Only when the connection is what took the screen away. Leaving a chat on
-        // purpose mid-turn is not a reason to send what was left in the box later.
-        onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
-        temporary = chat.temporary,
-        onToggleTemporary = if (messages.isEmpty()) viewModel::setTemporary else null,
-        sharedDraft = sharedDraft,
-        onSharedDraftTaken = viewModel::consumeSharedDraft,
-        openers = openers,
-        topInset = topInset,
-        runGoal = runGoal,
-        messages = messages,
-        sending = sending,
-        error = error,
-        waitingForComputer = waitingForComputer,
-        onSend = viewModel::sendMessage,
-        onStop = chat::stop,
-        approval = approval,
-        approvalSecondsRemaining = secondsLeft,
-        onApprove = { chat.respondToApproval(approved = true) },
-        onDeny = { chat.respondToApproval(approved = false) },
-        onOpenFile = viewModel::openWorkspaceFile,
-        hostLine = hostLine,
-        userName = userName,
-        dueLine = dueLine,
-        onOpenScheduler = onOpenScheduler,
-        onRetryMessage = chat::retry,
-        pendingAttachments = attachments,
-        onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
-        onRemoveAttachment = viewModel::removeAttachment,
-    )
+    // Pictures on messages read back from the computer are asked for by position on
+    // this conversation's messages, and kept once read.
+    val pictureConversation = chat.conversationId
+    CompositionLocalProvider(
+        LocalRemotePictures provides { messageId, index ->
+            viewModel.attachmentPreview(pictureConversation, messageId, index)
+        },
+    ) {
+        ChatScreen(
+            // Only when the connection is what took the screen away. Leaving a chat on
+            // purpose mid-turn is not a reason to send what was left in the box later.
+            onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
+            temporary = chat.temporary,
+            onToggleTemporary = if (messages.isEmpty()) viewModel::setTemporary else null,
+            sharedDraft = sharedDraft,
+            onSharedDraftTaken = viewModel::consumeSharedDraft,
+            openers = openers,
+            topInset = topInset,
+            runGoal = runGoal,
+            messages = messages,
+            sending = sending,
+            error = error,
+            waitingForComputer = waitingForComputer,
+            onSend = viewModel::sendMessage,
+            onStop = chat::stop,
+            approval = approval,
+            approvalSecondsRemaining = secondsLeft,
+            onApprove = { chat.respondToApproval(approved = true) },
+            onDeny = { chat.respondToApproval(approved = false) },
+            onOpenFile = viewModel::openWorkspaceFile,
+            hostLine = hostLine,
+            userName = userName,
+            dueLine = dueLine,
+            onOpenScheduler = onOpenScheduler,
+            onRetryMessage = chat::retry,
+            pendingAttachments = attachments,
+            onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
+            onPickPhoto = {
+                pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onTakePhoto = {
+                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    cameraContext,
+                    android.Manifest.permission.CAMERA,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) launchCamera() else cameraPermission.launch(android.Manifest.permission.CAMERA)
+            },
+            onRemoveAttachment = viewModel::removeAttachment,
+        )
+    }
 }
 
 /**

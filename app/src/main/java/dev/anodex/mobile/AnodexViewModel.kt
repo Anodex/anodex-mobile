@@ -272,6 +272,26 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** Reads the desktop's conversation store. Null until a socket is open. */
     private var conversationReader: Conversations? = null
 
+    /** Pictures read back from the computer, by conversation, message and position. */
+    private val pictureCache = object : android.util.LruCache<String, ByteArray>(PICTURE_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: ByteArray) = value.size
+    }
+
+    /**
+     * The picture attached to a message on the computer, for the transcript.
+     *
+     * Kept once read, so scrolling a chat back and forth does not fetch the same
+     * picture over the connection every time it comes into view.
+     */
+    suspend fun attachmentPreview(conversationId: String, messageId: String, index: Int): ByteArray? {
+        val key = "$conversationId/$messageId/$index"
+        pictureCache.get(key)?.let { return it }
+        val reader = conversationReader ?: return null
+        val bytes = runCatching { reader.attachmentPreview(conversationId, messageId, index) }.getOrNull() ?: return null
+        pictureCache.put(key, bytes)
+        return bytes
+    }
+
     private var projectClient: Projects? = null
     private var agentClient: Agents? = null
 
@@ -3014,3 +3034,6 @@ data class RunTurnsState(
     val loading: Boolean = false,
     val error: String? = null,
 )
+
+/** About a hundred phone-sized pictures, read back from the computer. */
+private const val PICTURE_CACHE_BYTES = 16 * 1024 * 1024

@@ -696,11 +696,14 @@ class ChatSession(
                                 // Bytes are deliberately not included: the desktop
                                 // re-reads the file from this path, which is where its
                                 // own upload handler already put it.
-                                if (turn.attachments.isNotEmpty()) {
+                                // Only what this phone sent. An attachment read back from the
+                                // computer has no path here, and the computer already has it.
+                                val sentHere = turn.attachments.filterNot { it.fromComputer }
+                                if (sentHere.isNotEmpty()) {
                                     put(
                                         "attachments",
                                         buildJsonArray {
-                                            for (file in turn.attachments) {
+                                            for (file in sentHere) {
                                                 add(
                                                     buildJsonObject {
                                                         put("path", file.path)
