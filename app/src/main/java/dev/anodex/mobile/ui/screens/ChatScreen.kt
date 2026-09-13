@@ -154,6 +154,11 @@ fun ChatScreen(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     var draft by remember { mutableStateOf("") }
+
+    // Dictation. Spoken words are added to whatever is already written rather than
+    // replacing it, so a message can be half typed and half said.
+    val dictate = rememberDictation { spoken -> draft = withDictated(draft, spoken) }
+
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -508,6 +513,7 @@ fun ChatScreen(
                 attachments = pendingAttachments,
                 onAttach = onAttach,
                 onRemoveAttachment = onRemoveAttachment,
+                onDictate = dictate,
             )
         }
     }
@@ -1373,6 +1379,8 @@ private fun Composer(
     attachments: List<UploadState> = emptyList(),
     onAttach: (() -> Unit)? = null,
     onRemoveAttachment: (UploadState) -> Unit = {},
+    /** Null on a phone with no speech screen to hand off to, which hides the mic. */
+    onDictate: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -1492,6 +1500,27 @@ private fun Composer(
                     maxLines = COMPOSER_MAX_LINES,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+
+            // Beside Send rather than in place of it, so it never moves the control a
+            // thumb is already on its way to. What is spoken lands in the field to be
+            // read and corrected — it is never sent on its own, because speech
+            // recognition is wrong often enough that a message should be seen first.
+            if (onDictate != null) {
+                Box(
+                    modifier = Modifier
+                        .size(Touch.minTarget)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onDictate),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnodexIcon(
+                        AnodexIcon.MIC,
+                        size = 20.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Dictate a message",
+                    )
+                }
             }
 
             // While a turn is running this becomes Stop. A generation on the phone is
