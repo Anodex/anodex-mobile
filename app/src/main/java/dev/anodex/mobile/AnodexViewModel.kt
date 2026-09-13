@@ -914,7 +914,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         return MessagePersona(active.id, active.name, active.tint)
     }
 
-    private fun refreshPersonalities() {
+    /**
+     * Re-read the personalities, and fetch any picture the phone lacks.
+     *
+     * On connect, and now also when the app comes back and when Settings opens. The
+     * desktop does not announce a personality edited at the computer, so a phone that
+     * stayed connected kept the list from whenever it connected: a personality made on
+     * the desktop did not appear here until the phone reconnected, and one deleted
+     * there could still be chosen here.
+     */
+    fun refreshPersonalities() {
         val client = personalityClient ?: return
         viewModelScope.launch {
             // Never a reason to fail a connection — but "the list is empty" and
