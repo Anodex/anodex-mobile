@@ -141,6 +141,15 @@ class Agents(private val socket: AnodexSocket) {
     private fun toolsFor(lookOnly: Boolean): List<String> =
         if (lookOnly) LOOK_ONLY_TOOLS else emptyList()
 
+    /**
+     * One run's turns, as the computer's run page shows them. See [RunTurn].
+     *
+     * A computer too old to have the channel refuses it; the caller shows the run
+     * without its turns.
+     */
+    suspend fun turns(runId: String): List<RunTurn> =
+        parseRunTurns(socket.invoke(CHANNEL_TURNS, listOf(JsonPrimitive(runId))))
+
     suspend fun stop(runId: String) {
         socket.invoke(CHANNEL_STOP, listOf(JsonPrimitive(runId)))
     }
@@ -179,6 +188,7 @@ class Agents(private val socket: AnodexSocket) {
         )
         const val CHANNEL_REJECT = "agent:reject-plan"
         const val CHANNEL_STOP = "agent:stop"
+        const val CHANNEL_TURNS = "agent:turns"
     }
 }
 
@@ -296,4 +306,56 @@ fun providerVendor(id: String?): String? = when (id) {
     "kimi" -> "Kimi"
     "qwen" -> "Qwen"
     else -> id
+}
+
+/**
+ * One turn of a run: what it said, the tools it ran, and how it went.
+ *
+ * The computer's `RemoteRunTurn`. The reply is capped there and tools arrive as a name,
+ * a title and an outcome — arguments, results and diffs stay on the computer.
+ */
+data class RunTurn(
+    val number: Int,
+    val messageId: String,
+    val text: String,
+    val tools: List<RunTurnTool>,
+    val moreTools: Int,
+    val tokens: Long?,
+    val durationMs: Long?,
+    val health: Health,
+    val error: String?,
+) {
+    enum class Health { OK, WARN, ERROR }
+}
+
+data class RunTurnTool(val name: String, val title: String, val status: String) {
+    val failed: Boolean get() = status == "error" || status == "denied"
+}
+
+/** `agent:turns`, read leniently: a malformed turn is skipped rather than failing the page. */
+internal fun parseRunTurns(element: kotlinx.serialization.json.JsonElement?): List<RunTurn> {
+    val rows = (element as? JsonArray)
+        ?: ((element as? JsonObject)?.get("value") as? JsonArray)
+        ?: return emptyList()
+    return rows.filterIsInstance<JsonObject>().mapNotNull { row ->
+        val messageId = row.str("messageId") ?: return@mapNotNull null
+        RunTurn(
+            number = row.num("number"),
+            messageId = messageId,
+            text = row.str("text").orEmpty(),
+            tools = (row["tools"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { tool ->
+                val name = tool.str("name") ?: return@mapNotNull null
+                RunTurnTool(name, tool.str("title") ?: name, tool.str("status") ?: "success")
+            },
+            moreTools = row.num("moreTools"),
+            tokens = row.str("tokens")?.toDoubleOrNull()?.toLong(),
+            durationMs = row.str("durationMs")?.toDoubleOrNull()?.toLong(),
+            health = when (row.str("health")) {
+                "error" -> RunTurn.Health.ERROR
+                "warn" -> RunTurn.Health.WARN
+                else -> RunTurn.Health.OK
+            },
+            error = row.str("error")?.takeIf { it.isNotBlank() },
+        )
+    }
 }

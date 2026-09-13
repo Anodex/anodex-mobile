@@ -102,6 +102,7 @@ import dev.anodex.mobile.ui.screens.ManualPairScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
+import dev.anodex.mobile.ui.screens.RunDetailScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.screens.SchedulerScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
@@ -1215,8 +1216,32 @@ private fun ConnectedScaffold(
                         val startingRun by viewModel.startingRun.collectAsStateWithLifecycle()
                         val agentsError by viewModel.agentsError.collectAsStateWithLifecycle()
 
-                        AgentsScreen(
+                        val openRunId by viewModel.openRunId.collectAsStateWithLifecycle()
+                        val runTurns by viewModel.runTurns.collectAsStateWithLifecycle()
+                        val followed = openRunId?.let { id -> agentRuns.firstOrNull { it.id == id } }
+
+                        if (followed != null) {
+                            BackHandler { viewModel.closeRun() }
+                            RunDetailScreen(
+                                run = followed,
+                                turns = runTurns,
+                                busy = followed.id == busyRunId,
+                                projectName = followed.projectId?.let { id ->
+                                    projects.projects.firstOrNull { it.id == id }?.name
+                                },
+                                onBack = viewModel::closeRun,
+                                onApprove = { viewModel.approvePlan(followed.id) },
+                                onReject = { viewModel.rejectPlan(followed.id) },
+                                onStop = { viewModel.stopAgentRun(followed.id) },
+                                onOpenChat = {
+                                    viewModel.closeRun()
+                                    viewModel.openConversation(followed.conversationId)
+                                    destination = AppDestination.CHAT
+                                },
+                            )
+                        } else AgentsScreen(
                             runs = agentRuns,
+                            onOpenRun = viewModel::openRun,
                             loading = agentsLoading,
                             busyRunId = busyRunId,
                             onApprove = viewModel::approvePlan,

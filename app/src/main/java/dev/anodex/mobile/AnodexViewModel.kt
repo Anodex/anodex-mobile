@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.anodex.mobile.agents.AgentRun
 import dev.anodex.mobile.agents.Agents
+import dev.anodex.mobile.agents.RunTurn
 import dev.anodex.mobile.agents.parseAgentRuns
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
@@ -1506,6 +1507,55 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private val _openRunId = MutableStateFlow<String?>(null)
+
+    /** The run being followed on its own page, or null for the list. */
+    val openRunId: StateFlow<String?> = _openRunId.asStateFlow()
+
+    private val _runTurns = MutableStateFlow(RunTurnsState())
+
+    /** That run's turns, as the computer's run page shows them. */
+    val runTurns: StateFlow<RunTurnsState> = _runTurns.asStateFlow()
+
+    /**
+     * Follow one run: its plan, meters and every turn, updating as it works.
+     *
+     * The run itself comes live already — the computer pushes the whole list on every
+     * change. The turns are read on open and again on each of those pushes, so a new
+     * turn appears on the page within a moment of the computer recording it.
+     */
+    fun openRun(runId: String) {
+        _openRunId.value = runId
+        _runTurns.value = RunTurnsState(loading = true)
+        refreshRunTurns()
+    }
+
+    fun closeRun() {
+        _openRunId.value = null
+        _runTurns.value = RunTurnsState()
+    }
+
+    private fun refreshRunTurns() {
+        val runId = _openRunId.value ?: return
+        val client = agentClient ?: return
+        viewModelScope.launch {
+            runCatching { client.turns(runId) }
+                .onSuccess { turns ->
+                    if (_openRunId.value == runId) _runTurns.value = RunTurnsState(turns = turns)
+                }
+                // Keeps the turns it had. A read that failed mid-run is not a run that
+                // lost its history, and blanking the page would say it was.
+                .onFailure { failure ->
+                    if (_openRunId.value == runId) {
+                        _runTurns.value = _runTurns.value.copy(
+                            loading = false,
+                            error = failure.message ?: "Could not read this run's turns.",
+                        )
+                    }
+                }
+        }
+    }
+
     fun approvePlan(runId: String) = actOnRun(runId) { it.approvePlan(runId) }
 
     fun rejectPlan(runId: String) = actOnRun(runId) { it.rejectPlan(runId) }
@@ -2521,6 +2571,13 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
             CHANNEL_AGENT_RUNS -> {
                 _agentRuns.value = parseAgentRuns(event.payload)
+                // Something about a run changed — a turn, most often — so the page
+                // following one reads its turns again.
+                // A run deleted on the computer closes its page rather than leaving
+                // one that reads turns for nothing.
+                _openRunId.value?.let { id ->
+                    if (_agentRuns.value.any { it.id == id }) refreshRunTurns() else closeRun()
+                }
                 // A push proves the computer is reachable, so any error the last read
                 // left on screen is now stale.
                 _agentsError.value = null
@@ -2726,4 +2783,11 @@ data class ArchiveNotice(
     val title: String,
     /** True when the computer refused, in which case there is nothing to undo. */
     val failed: Boolean = false,
+)
+
+/** A followed run's turns, with whether they are still arriving and why a read failed. */
+data class RunTurnsState(
+    val turns: List<RunTurn> = emptyList(),
+    val loading: Boolean = false,
+    val error: String? = null,
 )
