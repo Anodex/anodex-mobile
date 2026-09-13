@@ -152,6 +152,17 @@ fun ChatScreen(
      * scrolled clear of the bar.
      */
     topInset: Dp = 0.dp,
+    /**
+     * The goal, when this conversation is an agent run's.
+     *
+     * A run talks to its model through this conversation, and every instruction it
+     * sends — the planning brief, "your plan was approved", "continue" — is stored as
+     * a message from the user. Read as a chat, the first thing you apparently said
+     * was three sentences about `write_plan`, and the question pinned at the top was
+     * the run's own nudge. Given the goal, the first of those shows as the goal and
+     * the rest fold to a line each.
+     */
+    runGoal: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -243,9 +254,15 @@ fun ChatScreen(
      * prompt pinned after a follow-up was sent lower down, which is the opposite of
      * "what am I waiting on".
      */
-    val currentRequest = remember(messages) {
-        messages.lastOrNull { it.role == ChatMessage.Role.USER }
+    val currentRequest = remember(messages, runGoal) {
+        if (runGoal != null) {
+            // In a run, what was asked is the goal — never the run's latest nudge.
+            messages.firstOrNull { it.role == ChatMessage.Role.USER }?.copy(text = runGoal)
+        } else {
+            messages.lastOrNull { it.role == ChatMessage.Role.USER }
+        }
     }
+    val firstUserId = remember(messages) { messages.firstOrNull { it.role == ChatMessage.Role.USER }?.id }
 
     /**
      * Held through `rememberUpdatedState`, which is the whole fix.
@@ -410,8 +427,14 @@ fun ChatScreen(
                         // across the conversation.
                         if (index > 0 && message.role == ChatMessage.Role.USER) TurnSeam()
 
+                        val runInstruction = runGoal != null && message.role == ChatMessage.Role.USER
+                        if (runInstruction && message.id != firstUserId) {
+                            RunInstruction(message.text)
+                            return@itemsIndexed
+                        }
+
                         MessageRow(
-                            message = message,
+                            message = if (runInstruction) message.copy(text = runGoal!!) else message,
                             onOpenFile = onOpenFile,
                             onRetry = onRetryMessage,
                             // Nothing to copy or retry while the answer is still
@@ -1022,6 +1045,33 @@ private fun TurnSeam() {
                     1f to Color.Transparent,
                 )
             )
+    )
+}
+
+/**
+ * One of an agent run's own instructions to its model, folded to a line.
+ *
+ * Not the user's words, so not a user bubble: small, muted, centred, and opened on a
+ * tap for anyone who wants to see exactly what the run was told.
+ */
+@Composable
+private fun RunInstruction(text: String) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    var open by rememberSaveable(text) { mutableStateOf(false) }
+
+    Text(
+        text = if (open) text else "Anodex told the run: ${text.lineSequence().first()}",
+        style = type.meta,
+        color = colors.textFaint,
+        textAlign = TextAlign.Center,
+        maxLines = if (open) Int.MAX_VALUE else 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radii.md)
+            .clickable(onClickLabel = if (open) "Fold instruction" else "Show the whole instruction") { open = !open }
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
     )
 }
 

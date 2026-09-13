@@ -32,8 +32,8 @@ android {
         //
         // Derived rather than counted, so it cannot drift from the name it is meant
         // to describe, and monotonic for every ordering of releases after it.
-        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 7501
-        versionName = (project.findProperty("appVersionName") as String?) ?: "0.75.1"
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 7502
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.75.2"
     }
 
     /**
