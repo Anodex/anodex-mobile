@@ -166,6 +166,14 @@ class ChatSession(
      * be told.
      */
     private val onAnswered: (session: ChatSession, reply: ChatMessage) -> Unit = { _, _ -> },
+    /**
+     * A temporary chat: nothing about it is kept on the computer.
+     *
+     * Each turn asks the computer not to record it or remember anything from it, and
+     * this session never saves the conversation or asks for a title. Close it and it
+     * is gone.
+     */
+    val temporary: Boolean = false,
 ) {
     private val _title = MutableStateFlow(existingTitle?.takeIf { it.isNotBlank() })
 
@@ -412,7 +420,7 @@ class ChatSession(
     }
 
     private suspend fun nameAfterFirstReply(messageId: String) {
-        if (_title.value != null) return
+        if (temporary || _title.value != null) return
 
         val turns = _messages.value
         val question = turns.firstOrNull { it.id == messageId } ?: return
@@ -490,6 +498,7 @@ class ChatSession(
         history = historyForRequest(),
         projectId = projectId,
         attachments = attachments,
+        temporary = temporary,
     )
 
     /**
@@ -643,6 +652,7 @@ class ChatSession(
      * away a reply the user is already reading.
      */
     private suspend fun persist() {
+        if (temporary) return
         // A picture sent with no caption is still a turn. Filtering on text alone
         // dropped it from the save entirely, so sending an image and nothing else
         // wrote a conversation that did not contain it.
@@ -942,7 +952,11 @@ internal fun chatRequest(
     history: JsonArray,
     projectId: String?,
     attachments: List<UploadedFile> = emptyList(),
+    temporary: Boolean = false,
 ): JsonObject = buildJsonObject {
+    // Only when set. A computer from before temporary chats ignores the key, and
+    // an absent key is what every ordinary turn has always sent.
+    if (temporary) put("temporary", true)
     put("conversationId", conversationId)
     put("messageId", messageId)
     put("prompt", prompt)

@@ -167,6 +167,10 @@ fun ChatScreen(
      * the rest fold to a line each.
      */
     runGoal: String? = null,
+    /** Whether this chat is temporary: not saved on the computer, nothing remembered. */
+    temporary: Boolean = false,
+    /** Turn temporary on or off, for an empty chat. Null hides the choice. */
+    onToggleTemporary: ((Boolean) -> Unit)? = null,
     /** Text shared from another app, for the composer. See `AnodexViewModel.receiveShare`. */
     sharedDraft: String? = null,
     onSharedDraftTaken: () -> Unit = {},
@@ -366,13 +370,24 @@ fun ChatScreen(
                     // top already reads "Gort ●", so "Gort is awake and listening"
                     // underneath was the same fact twice, and it was the line
                     // competing with the greeting for the middle of the screen.
-                    if (hostLine == null) {
+                    if (temporary) {
+                        Text(
+                            text = "Temporary chat. It won't be saved on your computer, and nothing in it is remembered.",
+                            style = type.meta,
+                            color = colors.textMuted,
+                            textAlign = TextAlign.Center,
+                        )
+                    } else if (hostLine == null) {
                         Text(
                             text = "Ask your computer something.",
                             style = type.meta,
                             color = colors.textFaint,
                             textAlign = TextAlign.Center,
                         )
+                    }
+
+                    onToggleTemporary?.let { toggle ->
+                        TemporaryToggle(on = temporary, onToggle = toggle)
                     }
 
                     Spacer(Modifier.height(Spacing.x6))
@@ -450,6 +465,17 @@ fun ChatScreen(
                         bottom = bottomInset + Spacing.x4,
                     ),
                 ) {
+                    if (temporary) {
+                        item(key = "temporary-note") {
+                            Text(
+                                text = "Temporary chat · not saved",
+                                style = type.meta,
+                                color = colors.textFaint,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                     itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
                         // A seam between exchanges, not between messages: it opens
                         // where a new question starts, so one turn reads as one thing.
@@ -1825,3 +1851,39 @@ private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp")
  * beat for the same reason.
  */
 private const val TURN_SETTLE_MS = 900L
+
+/**
+ * Temporary chat, on or off, under the greeting of an empty chat.
+ *
+ * Here rather than behind a menu: it has to be chosen before the first message, and
+ * that moment is this screen.
+ */
+@Composable
+private fun TemporaryToggle(on: Boolean, onToggle: (Boolean) -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        modifier = Modifier
+            .clip(Radii.pill)
+            .background(if (on) colors.accentSoft else colors.bgElevated)
+            .border(1.dp, if (on) colors.accent else colors.border, Radii.pill)
+            .clickable(
+                role = Role.Switch,
+                onClickLabel = if (on) "Turn temporary chat off" else "Turn temporary chat on",
+            ) { onToggle(!on) }
+            .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
+    ) {
+        AnodexIcon(
+            if (on) AnodexIcon.CHECK else AnodexIcon.CLOCK,
+            size = 16.dp,
+            tint = if (on) colors.accentInk else colors.textMuted,
+        )
+        Text(
+            text = "Temporary chat",
+            style = type.label,
+            color = if (on) colors.accentInk else colors.textMuted,
+        )
+    }
+}

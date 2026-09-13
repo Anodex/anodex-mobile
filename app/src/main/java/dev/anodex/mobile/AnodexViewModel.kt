@@ -1841,7 +1841,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * Workspace screen does — the phone had no way to say it before, which is why
      * there was no way to start work in a project from here at all.
      */
-    fun newConversation(projectId: String? = null) {
+    fun newConversation(projectId: String? = null, temporary: Boolean = false) {
         val open = socket ?: return
         _chat.value = ChatSession(
             socket = open,
@@ -1849,7 +1849,21 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             activePersona = ::currentPersona,
             onAnswered = ::replyReady,
             projectId = projectId,
+            temporary = temporary,
         )
+    }
+
+    /**
+     * Switch the empty chat on screen between ordinary and temporary.
+     *
+     * Only before anything is sent: a conversation that has already been recorded on
+     * the computer cannot be made temporary after the fact, and pretending otherwise
+     * would be the one promise here that isn't kept.
+     */
+    fun setTemporary(temporary: Boolean) {
+        val current = _chat.value ?: return
+        if (current.messages.value.isNotEmpty() || current.temporary == temporary) return
+        newConversation(current.projectId, temporary)
     }
 
     private var socket: AnodexSocket? = null
@@ -2771,7 +2785,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             kind = NotificationKind.FINISHED,
             title = title,
             body = replyPreview(reply.text),
-            conversationId = session.conversationId,
+            // A temporary chat has no conversation on the computer to open again, so
+            // a tap brings the app forward instead, where the chat still is.
+            conversationId = session.conversationId.takeUnless { session.temporary },
         )
     }
 
@@ -2802,7 +2818,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** The conversation that was open when the connection dropped. */
-    data class OfflineChat(val conversationId: String, val messages: List<ChatMessage>)
+    data class OfflineChat(
+        val conversationId: String,
+        val messages: List<ChatMessage>,
+        /** A temporary chat, which has nothing on the computer to reopen. */
+        val temporary: Boolean = false,
+    )
 
     private val _offlineChat = MutableStateFlow<OfflineChat?>(null)
 
@@ -2842,8 +2863,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             .map { if (it.streaming) it.copy(streaming = false) else it }
             .filter { it.role == ChatMessage.Role.USER || it.text.isNotBlank() || it.tools.isNotEmpty() }
         _offlineChat.value = OfflineChat(
-            conversationId = if (messages.isEmpty()) "" else session.conversationId,
+            // A temporary chat was never saved, so there is nothing to reopen by id; it
+            // comes back from what is held here instead.
+            conversationId = if (messages.isEmpty() || session.temporary) "" else session.conversationId,
             messages = messages,
+            temporary = session.temporary,
         )
     }
 
@@ -2861,6 +2885,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         if (offline.conversationId.isNotEmpty() && !goingElsewhere) {
             openConversation(offline.conversationId)
+        } else if (offline.temporary && !goingElsewhere) {
+            // Rebuilt from the phone's own copy, still temporary: the computer never
+            // had it, and reconnecting must not quietly turn it into a saved chat.
+            socket?.let { open ->
+                _chat.value = ChatSession(
+                    socket = open,
+                    scope = viewModelScope,
+                    activePersona = ::currentPersona,
+                    onAnswered = ::replyReady,
+                    initialMessages = offline.messages,
+                    temporary = true,
+                )
+            }
         }
         _offlineChat.value = null
         if (queued.isEmpty()) return
