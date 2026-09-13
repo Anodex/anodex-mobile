@@ -5,7 +5,9 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +21,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -44,41 +47,63 @@ fun AttachmentThumb(
     isImage: Boolean,
     modifier: Modifier = Modifier,
     size: Dp = 44.dp,
+    /**
+     * Show the picture in its own shape, [size] wide, rather than cropped to a square.
+     *
+     * For the image in a sent message, where it *is* the message: a screenshot cut to
+     * the square in its middle showed a strip of text from halfway down and none of
+     * what it was a screenshot of. The composer's small tile stays square.
+     */
+    whole: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val context = LocalContext.current
+    // The tile's longest edge in pixels, which is what the decode aims for.
+    val targetPx = with(LocalDensity.current) { (size * if (whole) MAX_TALL else 1f).roundToPx() }
     var bitmap by remember(localUri) { mutableStateOf<ImageBitmap?>(null) }
 
-    LaunchedEffect(localUri, isImage) {
+    LaunchedEffect(localUri, isImage, targetPx) {
         if (!isImage || localUri == null) return@LaunchedEffect
 
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
-                context.contentResolver.openInputStream(Uri.parse(localUri))?.use { input ->
-                    // Sampled down on the way in. A 12-megapixel photo decoded at full
-                    // size to fill a 44dp tile is tens of megabytes of bitmap for
-                    // something the size of a thumbnail.
-                    val options = BitmapFactory.Options().apply { inSampleSize = THUMB_SAMPLE }
+                val uri = Uri.parse(localUri)
+                // Measured first, then sampled to fit. A fixed eight-to-one made a
+                // 1080x1920 screenshot 135x240 and then stretched it across a tile five
+                // hundred pixels wide; a 12-megapixel photo still wants cutting down.
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                val sample = sampleFor(maxOf(bounds.outWidth, bounds.outHeight), targetPx)
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val options = BitmapFactory.Options().apply { inSampleSize = sample }
                     BitmapFactory.decodeStream(input, null, options)?.asImageBitmap()
                 }
             }.getOrNull()
         }
     }
 
+    val image = bitmap
+    // Wide screenshots and tall ones both kept to something a message can hold; past
+    // these, the picture is trimmed rather than the transcript taken over by it.
+    val ratio = if (whole && image != null) {
+        (image.width.toFloat() / image.height).coerceIn(1f / MAX_TALL, MAX_WIDE)
+    } else {
+        1f
+    }
+
     Box(
         modifier = modifier
-            .size(size)
+            .then(if (whole && image != null) Modifier.width(size).aspectRatio(ratio) else Modifier.size(size))
             .clip(Radii.md)
             .background(colors.bgElevated),
         contentAlignment = Alignment.Center,
     ) {
-        val image = bitmap
         if (image != null) {
             Image(
                 bitmap = image,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size),
+                modifier = if (whole) Modifier.width(size).aspectRatio(ratio) else Modifier.size(size),
             )
         } else {
             AnodexIcon(AnodexIcon.PAPERCLIP, size = size * 0.4f, tint = colors.textFaint)
@@ -87,10 +112,20 @@ fun AttachmentThumb(
 }
 
 /**
- * Eight to one.
+ * The largest power-of-two reduction that still leaves [longEdge] at least [targetPx].
  *
- * A phone photo is around 4000px on its long edge and the tile is under 200px even
- * on the densest screen, so this is still oversampled — and being a power of two it
- * is the cheap path through the decoder.
+ * Powers of two are the decoder's cheap path. Never below the target, so the picture
+ * is only ever scaled down on screen, never blown up.
  */
-private const val THUMB_SAMPLE = 8
+internal fun sampleFor(longEdge: Int, targetPx: Int): Int {
+    if (longEdge <= 0 || targetPx <= 0) return 1
+    var sample = 1
+    while (longEdge / (sample * 2) >= targetPx) sample *= 2
+    return sample
+}
+
+/** How tall, against its width, a whole picture may be before it is trimmed. */
+private const val MAX_TALL = 1.6f
+
+/** How wide, against its height, a whole picture may be before it is trimmed. */
+private const val MAX_WIDE = 2f

@@ -586,7 +586,8 @@ private fun MessageRow(
                         AttachmentThumb(
                             localUri = file.localUri,
                             isImage = true,
-                            size = 200.dp,
+                            size = 220.dp,
+                            whole = true,
                             modifier = Modifier
                                 .padding(bottom = Spacing.x2)
                                 .then(
