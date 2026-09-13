@@ -1310,10 +1310,24 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      */
     val unreadEmail: StateFlow<Int?> = _unreadEmail.asStateFlow()
 
-    private fun refreshUnreadEmail() {
+    /**
+     * Re-read the count. On connect, and whenever the badge is about to be seen.
+     *
+     * Connect alone was not enough. A connection outlives a trip to another app, so
+     * the drawer said 4 for as long as the socket held while the inbox itself said
+     * 2 — the badge only caught up once the Email screen was opened, which is the
+     * one moment it has nothing left to tell you.
+     *
+     * A failed re-read keeps the count it had. Resume is exactly when the socket is
+     * most likely to be mid-reconnect, and a badge that blinks out every time the
+     * app comes back is not more truthful than one that is a minute old.
+     */
+    fun refreshUnreadEmail() {
         val client = emailClient ?: return
         viewModelScope.launch {
-            _unreadEmail.value = runCatching { client.unreadCount() }.getOrNull()
+            _unreadEmail.value = runCatching<Int?> { client.unreadCount() }
+                .orKeep(_unreadEmail.value, whenItFails = "")
+                .value
         }
     }
 
