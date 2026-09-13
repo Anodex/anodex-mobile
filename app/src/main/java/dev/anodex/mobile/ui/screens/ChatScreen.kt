@@ -502,7 +502,10 @@ private fun MessageRow(
                                         // not a square behind its rounded corners.
                                         Modifier
                                             .clip(Radii.lg)
-                                            .clickable { viewing = openable }
+                                            .clickable(
+                                                onClickLabel = "Open image",
+                                                onClick = { viewing = openable },
+                                            )
                                     } else {
                                         Modifier
                                     },
