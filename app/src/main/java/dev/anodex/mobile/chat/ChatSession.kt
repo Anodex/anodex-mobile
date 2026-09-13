@@ -309,7 +309,12 @@ class ChatSession(
             var wentQuiet = false
             var answered = false
 
-            val call = async { socket.awaitResult(callId, TURN_CAP) }
+            // The failure is kept inside the `async` and rethrown at `await` below. An
+            // `async` that throws fails the coroutine around it even when `await` is in
+            // a try block, and from there the whole app: a connection dropping while an
+            // answer was still arriving closed Anodex, because the socket fails every
+            // call still waiting on it with the network error.
+            val call = async { runCatching { socket.awaitResult(callId, TURN_CAP) } }
 
             val watchdog = launch {
                 while (isActive) {
@@ -323,7 +328,7 @@ class ChatSession(
             }
 
             try {
-                call.await()
+                call.await().getOrThrow()
                 answered = true
             } catch (e: CancellationException) {
                 // Only ours is worth reporting. A cancellation from the scope going
