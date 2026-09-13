@@ -39,7 +39,17 @@ class ShareActivity : Activity() {
                 forward.clipData = clip
                 forward.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(forward)
+            try {
+                startActivity(forward)
+            } catch (_: SecurityException) {
+                // Handed files without the permission to read them — a sharing app
+                // that forgot the grant. Passing on a grant this activity does not
+                // hold throws, and uncaught that closed the app. The words still go.
+                forward.clipData = null
+                forward.removeFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                forward.removeExtra(EXTRA_SHARED_URIS)
+                if (text != null) startActivity(forward)
+            }
         }
         finish()
     }
