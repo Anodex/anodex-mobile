@@ -1030,9 +1030,13 @@ private fun PersonalityRow(
         Column(Modifier.weight(1f)) {
             Text(personality.name, style = type.bodyEmphasis, color = colors.text)
 
-            // A personality somebody wrote themselves need not have a one-liner.
+            // A personality somebody wrote themselves need not have a one-liner — but a
+            // row with a name and nothing under it read as one that had failed to
+            // load. Saying where it came from is true and fills the line.
             if (personality.role.isNotBlank()) {
                 Text(personality.role, style = type.meta, color = colors.textMuted)
+            } else if (!personality.id.startsWith("builtin:")) {
+                Text("Your own personality", style = type.meta, color = colors.textFaint)
             }
         }
 

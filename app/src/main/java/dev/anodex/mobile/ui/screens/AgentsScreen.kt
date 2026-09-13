@@ -1,5 +1,7 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -116,6 +118,13 @@ fun AgentsScreen(
     var goal by rememberSaveable { mutableStateOf("") }
     var lookOnly by rememberSaveable { mutableStateOf(false) }
 
+    // The composer folds behind a button once there are runs to read. Open all the
+    // time it took the bottom fifth of the screen on a page people mostly open to
+    // check on something, and put a sample goal in front of every run they came for.
+    // With nothing to read yet it stays open: starting one is the only thing to do.
+    var composing by rememberSaveable { mutableStateOf(false) }
+    val composerOpen = composing || goal.isNotEmpty() || runs.isEmpty()
+
     ScreenScaffold(
         title = "Agent runs",
         modifier = modifier,
@@ -173,7 +182,7 @@ fun AgentsScreen(
                 }
             }
 
-            if (onStart != null) {
+            if (onStart != null && composerOpen) {
                 StartRun(
                     goal = goal,
                     lookOnly = lookOnly,
@@ -184,7 +193,25 @@ fun AgentsScreen(
                     onStart = {
                         onStart(goal, lookOnly)
                         goal = ""
+                        composing = false
                     },
+                    focusOnOpen = composing,
+                    onCancel = if (runs.isNotEmpty()) {
+                        {
+                            goal = ""
+                            composing = false
+                        }
+                    } else {
+                        null
+                    },
+                )
+            } else if (onStart != null) {
+                SecondaryButton(
+                    label = "New agent run",
+                    onClick = { composing = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
                 )
             }
 
@@ -220,10 +247,18 @@ private fun StartRun(
     onGoalChanged: (String) -> Unit,
     onLookOnlyChanged: (Boolean) -> Unit,
     onStart: () -> Unit,
+    /** Opened by tapping "New agent run", so the keyboard should come with it. */
+    focusOnOpen: Boolean = false,
+    /** Fold the composer away again. Null where it is the only thing on the screen. */
+    onCancel: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val ready = goal.isNotBlank() && !starting && projectName != null
+    val focus = remember { FocusRequester() }
+    if (focusOnOpen) {
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    }
 
     Column(
         modifier = Modifier
@@ -239,7 +274,7 @@ private fun StartRun(
             onValueChange = onGoalChanged,
             textStyle = type.body.copy(color = colors.text),
             cursorBrush = SolidColor(colors.accentInk),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus),
             decorationBox = { inner ->
                 if (goal.isEmpty()) {
                     Text(
@@ -261,6 +296,19 @@ private fun StartRun(
             // standing up, and the computer narrows whatever is asked for anyway.
             Chip("Build it", selected = !lookOnly) { onLookOnlyChanged(false) }
             Chip("Look only", selected = lookOnly) { onLookOnlyChanged(true) }
+
+            if (onCancel != null) {
+                Box(Modifier.weight(1f))
+                Text(
+                    text = "Cancel",
+                    style = type.label,
+                    color = colors.textMuted,
+                    modifier = Modifier
+                        .clip(Radii.pill)
+                        .clickable(role = Role.Button, onClick = onCancel)
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+                )
+            }
         }
 
         Row(

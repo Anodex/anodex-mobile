@@ -118,6 +118,13 @@ fun ChatHeader(
     onArchive: () -> Unit,
     /** Null where there is no workspace beside this chat to open. */
     onOpenFiles: (() -> Unit)?,
+    /**
+     * Rename this conversation. Null where there is nothing to rename.
+     *
+     * Reached from the title itself as well as the menu: a long title is cut off in
+     * the pill, and tapping it is the obvious way to see all of it and change it.
+     */
+    onRename: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -161,6 +168,13 @@ fun ChatHeader(
                     .clip(Radii.pill)
                     .background(colors.bgElevated)
                     .border(1.dp, colors.borderStrong, Radii.pill)
+                    .then(
+                        if (onRename != null) {
+                            Modifier.clickable(onClickLabel = "Rename conversation", onClick = onRename)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -266,6 +280,12 @@ fun ChatHeader(
                         MenuItem("Open workspace files", AnodexIcon.FOLDER) {
                             menuOpen = false
                             onOpenFiles()
+                        }
+                    }
+                    if (onRename != null) {
+                        MenuItem("Rename", AnodexIcon.PENCIL) {
+                            menuOpen = false
+                            onRename()
                         }
                     }
                     MenuItem("Copy conversation ID", AnodexIcon.COPY) {

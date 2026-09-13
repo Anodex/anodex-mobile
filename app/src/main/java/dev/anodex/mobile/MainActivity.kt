@@ -69,6 +69,7 @@ import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.scheduler.dueToday
 import dev.anodex.mobile.scheduler.dueTodayLine
 import dev.anodex.mobile.scheduler.ScheduledTask
+import dev.anodex.mobile.ui.components.TextInputDialog
 import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.SCRIM_ALPHA
 import dev.anodex.mobile.ui.components.SCRIM_FADE
@@ -515,6 +516,7 @@ private fun ConnectedScaffold(
      *  while it is open shows the new run rather than the one from when it opened. */
     var openTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showingAllConversations by rememberSaveable { mutableStateOf(false) }
+    var renamingChat by rememberSaveable { mutableStateOf(false) }
     // Whether the index was opened to search, which puts the field up and focused.
     var searchingConversations by rememberSaveable { mutableStateOf(false) }
 
@@ -1084,6 +1086,23 @@ private fun ConnectedScaffold(
      */
     val headerTitle = conversationTitle ?: "New chat"
 
+    if (renamingChat && chat != null) {
+        TextInputDialog(
+            title = "Rename conversation",
+            // Blank rather than "New chat" for one that has no name yet: offering the
+            // placeholder as the text to edit would invite saving it as a real name.
+            initial = conversationTitle.orEmpty(),
+            placeholder = "New chat",
+            confirmLabel = "Rename",
+            onConfirm = { name ->
+                chat.rename(name)
+                renamingChat = false
+                viewModel.refreshConversations()
+            },
+            onDismiss = { renamingChat = false },
+        )
+    }
+
     // How tall that floating chrome turned out to be, so the transcript underneath
     // knows how far to fade and how much room to leave itself. Measured rather than
     // assumed: the update banner comes and goes, and a long title does not wrap but a
@@ -1289,6 +1308,11 @@ private fun ConnectedScaffold(
                     },
                     onArchive = {
                         chat?.conversationId?.let(viewModel::archiveConversation)
+                    },
+                    onRename = if (chat != null) {
+                        { renamingChat = true }
+                    } else {
+                        null
                     },
                     // Only where the panel would show this conversation's own files.
                     // The same rule the right edge follows, so the menu item and the

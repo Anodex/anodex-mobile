@@ -251,6 +251,14 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
         )
     ),
 
+    /** Rename. `Icon.tsx` `pencil`. */
+    PENCIL(
+        listOf(
+            "M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z",
+            "m15 5 4 4",
+        )
+    ),
+
     /** Back. `Icon.tsx` `chevron-left`. */
     CHEVRON_LEFT(listOf("m15 18-6-6 6-6")),
 
