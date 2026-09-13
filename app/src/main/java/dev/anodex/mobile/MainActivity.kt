@@ -1170,6 +1170,9 @@ private fun ConnectedScaffold(
                             starting = startingRun,
                             projectName = projects.active?.name,
                             error = agentsError,
+                            projectNames = remember(projects) {
+                                projects.projects.associate { it.id to it.name }
+                            },
                         )
                     }
 

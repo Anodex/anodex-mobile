@@ -1,5 +1,23 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.compose.runtime.State
+import kotlinx.coroutines.delay
+import dev.anodex.mobile.ui.theme.LocalReducedMotion
+import dev.anodex.mobile.agents.providerVendor
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,7 +63,6 @@ import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
-import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
@@ -90,6 +107,8 @@ fun AgentsScreen(
     /** The project a run would work in, named so nobody starts one in the wrong place. */
     projectName: String? = null,
     error: String? = null,
+    /** Project id to name, so each run is labelled with where it works. */
+    projectNames: Map<String, String> = emptyMap(),
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -146,6 +165,7 @@ fun AgentsScreen(
                                 onReject = { onReject(run.id) },
                                 onStop = { onStop(run.id) },
                                 onOpen = { onOpenConversation(run.conversationId) },
+                                projectName = run.projectId?.let { projectNames[it] },
                             )
                         }
                     }
@@ -302,137 +322,421 @@ private fun RunCard(
     onReject: () -> Unit,
     onStop: () -> Unit,
     onOpen: () -> Unit,
+    projectName: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val waiting = run.status == AgentRun.Status.NEEDS_REVIEW
     val running = run.status == AgentRun.Status.RUNNING
 
-    AnodexCard(
-        // Only the blocked one is outlined. A border on every card is a border
-        // that says nothing; here it means "this one is waiting on you".
-        edge = if (waiting) colors.accent else null,
-        onClick = onOpen,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    // The desktop's card, in the desktop's order: a status edge down the left, the
+    // status as a pill with the project beside it, the goal, what did the work, the
+    // budgets while it works, and the outcome once it has one. The two apps are one
+    // product, and a run should be recognisable on either before a word is read.
+    Box {
+        AnodexCard(
+            onClick = onOpen,
+            // Room for the edge, so text never runs underneath it.
+            padding = PaddingValues(
+                start = Spacing.x4 + RUN_EDGE_WIDTH,
+                end = Spacing.x4,
+                top = Spacing.x3,
+                bottom = Spacing.x3,
+            ),
         ) {
-            // Ripples only while something is happening or about to: a run that is
-            // working, and one holding the whole job up waiting for an answer. A
-            // finished run is a fact, not a state worth watching.
-            StatusDot(colour = statusColour(run.status), running = running || waiting)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                StatusBadge(run)
+
+                projectName?.let {
+                    Text(
+                        text = it,
+                        style = type.badge,
+                        color = colors.textFaint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .clip(Radii.pill)
+                            .background(colors.bgElevated)
+                            .padding(horizontal = Spacing.x2, vertical = 1.dp),
+                    )
+                }
+
+                Box(Modifier.weight(1f))
+
+                relativeTime(run.updatedAtEpochMs.takeIf { it > 0 })?.let { ago ->
+                    Text(ago, style = type.meta, color = colors.textFaint)
+                }
+            }
 
             Text(
-                text = statusLabel(run),
-                style = type.label,
-                color = if (waiting) colors.accentInk else colors.textMuted,
-                modifier = Modifier.weight(1f),
+                // Flattened, because a goal is a pasted prompt and often arrives with
+                // its own line breaks. Left alone, a title followed by a stray "…" on a
+                // line of its own reads as a rendering fault rather than as text.
+                text = oneLine(run.goal),
+                style = type.body,
+                color = colors.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
 
-            relativeTime(run.updatedAtEpochMs.takeIf { it > 0 })?.let { ago ->
-                Text(ago, style = type.meta, color = colors.textFaint)
+            providerLine(run)?.let { line ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
+                ) {
+                    if (run.provider == "local") {
+                        AnodexIcon(AnodexIcon.CPU, size = 12.dp, tint = colors.textFaint)
+                    }
+                    Text(line, style = type.meta, color = colors.textFaint)
+                }
+            }
+
+            if (running) BudgetMeters(run)
+
+            // Only a blocked run shows its plan. Everywhere else it is detail nobody
+            // asked for on a screen that exists to unblock things.
+            if (waiting && run.plan != null) {
+                PlanView(run.plan)
+            }
+
+            RunOutcome(run)
+
+            // Nothing at all for a run that has finished — the card opens it, and a row
+            // holding one button under every card was most of what made this a wall.
+            when {
+                busy -> Text("Working…", style = type.meta, color = colors.textFaint)
+
+                waiting -> Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+                    // Reject sits first and carries the calmer weight: approving lets an
+                    // agent loose on real files, and rejecting only costs a replan.
+                    SecondaryButton(label = "Reject", onClick = onReject)
+                    PrimaryButton(label = "Approve", onClick = onApprove)
+                }
+
+                running -> SecondaryButton(label = "Stop", onClick = onStop)
             }
         }
 
-        Text(
-            // Flattened, because a goal is a pasted prompt and often arrives with
-            // its own line breaks. Left alone, a title followed by a stray "…" on a
-            // line of its own reads as a rendering fault rather than as text.
-            text = oneLine(run.goal),
-            style = type.bodyEmphasis,
-            color = colors.text,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        RunEdge(run.status, Modifier.matchParentSize())
+    }
+}
+
+/**
+ * The card's left edge: which state the run is in, and whether it is moving.
+ *
+ * Every status has a colour, as on the desktop's `runCard-*` border. Two of them move,
+ * each for the reason the desktop gives:
+ *
+ * - **Running** carries the comet — a white-hot core on the edge with a soft halo
+ *   spilling onto the card — travelling down and back up. The reversal is what reads
+ *   as "working", and it is the same signal the desktop rides along a busy chat row.
+ *   It replaced a blinking status glyph there, and it replaces the rippling dot here.
+ * - **Needs review** pulses. The one place an endless loop is honest: the waiting
+ *   genuinely is endless, and it stops the moment somebody answers.
+ *
+ * Under reduce-motion both stand still as a solid edge, which says exactly as much.
+ */
+@Composable
+private fun RunEdge(status: AgentRun.Status, modifier: Modifier = Modifier) {
+    val colors = AnodexTheme.colors
+    val reducedMotion = LocalReducedMotion.current
+
+    val edge = when (status) {
+        AgentRun.Status.RUNNING -> colors.accent
+        AgentRun.Status.NEEDS_REVIEW -> colors.info
+        AgentRun.Status.DONE -> colors.success
+        AgentRun.Status.STOPPED -> colors.warn
+        AgentRun.Status.ERROR -> colors.danger
+    }
+
+    // Only the card that moves runs a clock. An infinite transition ticks every frame
+    // whether or not anything reads it, so one on every finished card in the list
+    // would spend the battery drawing nothing.
+    val comet = if (!reducedMotion && status == AgentRun.Status.RUNNING) cometProgress() else null
+    val pulse = if (!reducedMotion && status == AgentRun.Status.NEEDS_REVIEW) pulseProgress() else null
+
+    val cyan = colors.accentCyan
+    val violet = colors.accentViolet
+    val accent = colors.accent
+
+    Canvas(modifier.clip(Radii.xl)) {
+        val width = RUN_EDGE_WIDTH.toPx()
+
+        if (pulse != null) {
+            val alpha = pulse.value
+            // The glow the desktop throws with a box-shadow, as a soft band beside it.
+            val glow = 16.dp.toPx()
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    listOf(edge.copy(alpha = 0.35f * (1f - alpha)), Color.Transparent),
+                    startX = width,
+                    endX = width + glow,
+                ),
+                topLeft = Offset(width, 0f),
+                size = Size(glow, size.height),
+            )
+            drawRect(edge.copy(alpha = alpha), size = Size(width, size.height))
+            return@Canvas
+        }
+
+        drawRect(edge, size = Size(width, size.height))
+
+        if (comet != null) {
+            val length = size.height * COMET_LENGTH
+            val top = size.height * comet.value
+
+            // The halo first, so the core sits on top of its own light.
+            val haloWidth = 26.dp.toPx()
+            drawOval(
+                brush = Brush.radialGradient(
+                    colorStops = arrayOf(
+                        0f to accent.copy(alpha = 0.5f),
+                        0.38f to accent.copy(alpha = 0.18f),
+                        0.72f to Color.Transparent,
+                    ),
+                    center = Offset(width / 2, top + length / 2),
+                    radius = maxOf(haloWidth, length) / 2,
+                ),
+                topLeft = Offset(width / 2 - haloWidth / 2, top),
+                size = Size(haloWidth, length),
+            )
+
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        0.26f to cyan,
+                        0.5f to COMET_HOT,
+                        0.74f to violet,
+                        1f to Color.Transparent,
+                    ),
+                    startY = top,
+                    endY = top + length,
+                ),
+                topLeft = Offset(0f, top),
+                size = Size(width, length),
+            )
+        }
+    }
+}
+
+/** `cometRun`: from just above the card to its bottom, 2.1s each way, reversing. */
+@Composable
+private fun cometProgress(): State<Float> =
+    rememberInfiniteTransition(label = "comet").animateFloat(
+        initialValue = -COMET_LENGTH,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(COMET_MS, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "comet",
+    )
+
+/** `waitingEdgePulse`: down to 30% and back over 1.8s. */
+@Composable
+private fun pulseProgress(): State<Float> =
+    rememberInfiniteTransition(label = "pulse").animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(
+            tween(PULSE_MS / 2, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse",
+    )
+
+/** The status as the desktop words and colours it, with its glyph. */
+@Composable
+private fun StatusBadge(run: AgentRun) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    val (ink, soft, icon) = when (run.status) {
+        AgentRun.Status.RUNNING -> Triple(colors.accentInk, colors.accentSoft, AnodexIcon.ACTIVITY)
+        // `--info` is the accent's hex on the desktop and has no ink step here; the
+        // accent's is the same colour made legible on both grounds.
+        AgentRun.Status.NEEDS_REVIEW -> Triple(colors.accentInk, colors.infoSoft, AnodexIcon.INFO)
+        AgentRun.Status.DONE -> Triple(colors.successInk, colors.successSoft, AnodexIcon.CHECK)
+        AgentRun.Status.STOPPED -> Triple(colors.warnInk, colors.warnSoft, AnodexIcon.STOP)
+        AgentRun.Status.ERROR -> Triple(colors.dangerInk, colors.dangerSoft, AnodexIcon.ALERT)
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(Radii.pill)
+            .background(soft)
+            .padding(horizontal = Spacing.x2, vertical = 1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
+    ) {
+        AnodexIcon(icon, size = 12.dp, tint = ink)
+        Text(statusLabel(run.status), style = type.badge, color = ink)
+    }
+}
+
+/**
+ * Turns, tokens and time as three hairlines — the desktop's `BudgetMeters`.
+ *
+ * A bar is read without being counted, which is the difference between knowing a run
+ * has room left and having to work it out. Tinted to warn at 80%, while there is
+ * still room to decide something. An unlimited run has no ceiling to fill against, so
+ * it shows the counts over a broken rule rather than a bar at some invented fraction.
+ */
+@Composable
+private fun BudgetMeters(run: AgentRun) {
+    // Time moves on its own while the run works, so it is re-read on the desktop's
+    // cadence rather than only when the computer sends something.
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(run.id) {
+        while (true) {
+            delay(30_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val minutes = run.activeElapsedMs(now) / 60_000
+
+    val meters = if (run.limitsEnabled) {
+        listOf(
+            Meter("Turns", "${run.turnsUsed}/${run.maxTurns}", fraction(run.turnsUsed.toLong(), run.maxTurns.toLong())),
+            Meter("Tokens", "${compactTokens(run.tokensUsed)}/${compactTokens(run.maxTokens)}", fraction(run.tokensUsed, run.maxTokens)),
+            Meter("Time", "$minutes/${run.maxDurationMinutes} min", fraction(minutes, run.maxDurationMinutes.toLong())),
         )
+    } else {
+        listOf(
+            Meter("Turns", "${run.turnsUsed}", null),
+            Meter("Tokens", compactTokens(run.tokensUsed), null),
+            Meter("Time", "$minutes min", null),
+        )
+    }
 
-        run.lastError?.let {
-            Text(
-                text = it,
-                style = type.meta,
-                color = colors.dangerInk,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = Spacing.x1),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        for (meter in meters) {
+            MeterView(meter, Modifier.weight(1f))
+        }
+    }
+}
+
+private data class Meter(val label: String, val value: String, val fraction: Float?)
+
+private fun fraction(used: Long, of: Long): Float? =
+    if (of > 0) (used.toFloat() / of).coerceIn(0f, 1f) else null
+
+@Composable
+private fun MeterView(meter: Meter, modifier: Modifier = Modifier) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val filled = meter.fraction
+    val warn = filled != null && filled >= BUDGET_WARN_AT
+
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(meter.label, style = type.badge, color = colors.textFaint, modifier = Modifier.weight(1f))
+            Text(meter.value, style = type.badge, color = if (warn) colors.warnInk else colors.textMuted)
         }
 
-        run.summary?.takeIf { run.lastError == null }?.let {
-            Text(
-                text = it,
-                style = type.meta,
-                color = colors.textMuted,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        // How far through its budget, for a run that is actually using one.
-        //
-        // Deliberately still. A run can go for an hour, and something animating for
-        // an hour is wallpaper — the eye stops seeing it, and the phone spends
-        // frames redrawing what nobody is reading. The dot above is the one moving
-        // thing on this card and it is enough to say "working"; this says "how far",
-        // which is a fact rather than a state and does not need to breathe.
-        if (running && run.limitsEnabled && run.maxTurns > 0) {
-            TurnBudget(used = run.turnsUsed, of = run.maxTurns)
-        }
-
-        // Only a blocked run shows its plan. Everywhere else it is detail nobody
-        // asked for on a screen that exists to unblock things.
-        if (waiting && run.plan != null) {
-            PlanView(run.plan)
-        }
-
-        // Nothing at all for a run that has finished — the card opens it, and a row
-        // holding one button under every card was most of what made this a wall.
-        when {
-            busy -> Text("Working…", style = type.meta, color = colors.textFaint)
-
-            waiting -> Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-                // Reject sits first and carries the calmer weight: approving lets an
-                // agent loose on real files, and rejecting only costs a replan.
-                SecondaryButton(label = "Reject", onClick = onReject)
-                PrimaryButton(label = "Approve", onClick = onApprove)
+        if (filled == null) {
+            // `openEndedRule`: dashes, because there is no end to fill towards.
+            val rule = colors.borderStrong
+            Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+                val dash = 4.dp.toPx()
+                var x = 0f
+                while (x < size.width) {
+                    drawRect(rule, topLeft = Offset(x, 0f), size = Size(minOf(dash, size.width - x), size.height))
+                    x += dash * 2
+                }
             }
-
-            running -> SecondaryButton(label = "Stop", onClick = onStop)
+        } else {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .clip(Radii.pill)
+                    .background(colors.border),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(filled)
+                        .height(2.dp)
+                        .clip(Radii.pill)
+                        .background(if (warn) colors.warn else colors.accent.copy(alpha = 0.55f)),
+                )
+            }
         }
     }
 }
 
 /**
- * How much of its allowance a run has spent.
+ * What the run came to, in a tinted box — the desktop's `runResult`.
  *
- * "Turn 7 of 40" is already on the card in words, and words are the wrong shape for
- * this question: nobody converts a fraction while glancing at a phone. A bar is
- * read without being counted, which is the whole difference between knowing a run
- * has time left and having to work it out.
- *
- * Warns near the end rather than at it. A run that stops on budget stops
- * mid-thought, and the useful moment to notice is while there is still room to
- * decide something about it.
+ * Red for a failure, amber for a run that stopped with a reason, plain otherwise. A
+ * failure says so in words too, so the colour is never the only thing carrying it.
  */
 @Composable
-private fun TurnBudget(used: Int, of: Int) {
+private fun RunOutcome(run: AgentRun) {
     val colors = AnodexTheme.colors
-    val fraction = (used.toFloat() / of).coerceIn(0f, 1f)
+    val type = AnodexTheme.type
+    val text = run.summary ?: run.lastError ?: return
 
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(3.dp)
-            .clip(Radii.pill)
-            .background(colors.border),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(fraction)
-                .height(3.dp)
-                .clip(Radii.pill)
-                .background(if (fraction > 0.85f) colors.warnInk else colors.accentCyanInk),
-        )
+    val (ink, ground) = when {
+        run.status == AgentRun.Status.ERROR -> colors.dangerInk to colors.dangerSoft
+        run.status == AgentRun.Status.STOPPED && run.lastError != null -> colors.warnInk to colors.warnSoft
+        else -> colors.textMuted to colors.bgSurface2
     }
+
+    Text(
+        text = if (run.status == AgentRun.Status.ERROR) "Failed: $text" else text,
+        style = type.meta,
+        color = ink,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radii.md)
+            .background(ground)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+    )
 }
+
+/** "Local", "Claude · claude-sonnet-5" — what did the work, as the desktop labels it. */
+private fun providerLine(run: AgentRun): String? {
+    val vendor = providerVendor(run.provider) ?: return null
+    return run.model?.let { "$vendor · $it" } ?: vendor
+}
+
+/** 12400 → "12.4k", the desktop's `formatCompactTokens`. */
+internal fun compactTokens(n: Long): String =
+    if (n >= 1000) String.format(java.util.Locale.US, "%.1fk", n / 1000.0) else n.toString()
+
+/** The desktop's `STATUS_LABEL`, word for word. */
+private fun statusLabel(status: AgentRun.Status): String = when (status) {
+    AgentRun.Status.RUNNING -> "Running"
+    AgentRun.Status.NEEDS_REVIEW -> "Needs review"
+    AgentRun.Status.DONE -> "Done"
+    AgentRun.Status.STOPPED -> "Stopped"
+    AgentRun.Status.ERROR -> "Error"
+}
+
+/** Width of the status edge, the desktop's 3px `border-left`. */
+private val RUN_EDGE_WIDTH = 3.dp
+
+/** The comet is 46% of the card tall, as on the desktop. */
+private const val COMET_LENGTH = 0.46f
+private const val COMET_MS = 2_100
+private const val PULSE_MS = 1_800
+
+/** The core's white-hot middle, `#eaf2ff` on the desktop. Light, not a theme colour. */
+private val COMET_HOT = Color(0xFFEAF2FF)
+
+/** Where a budget bar turns amber. The desktop's `BUDGET_WARN_AT`. */
+private const val BUDGET_WARN_AT = 0.8f
 
 @Composable
 private fun PlanView(plan: Plan) {
@@ -467,27 +771,6 @@ private fun PlanView(plan: Plan) {
 /** A pasted prompt as one line, so a title cannot arrive already broken. */
 private fun oneLine(text: String): String = text.replace(Regex("\\s+"), " ").trim()
 
-@Composable
-private fun statusColour(status: AgentRun.Status): Color {
-    val colors = AnodexTheme.colors
-    return when (status) {
-        AgentRun.Status.NEEDS_REVIEW -> colors.accentInk
-        AgentRun.Status.RUNNING -> colors.accentCyanInk
-        AgentRun.Status.DONE -> colors.successInk
-        AgentRun.Status.ERROR -> colors.dangerInk
-        AgentRun.Status.STOPPED -> colors.textFaint
-    }
-}
-
-private fun statusLabel(run: AgentRun): String = when (run.status) {
-    AgentRun.Status.NEEDS_REVIEW -> "Waiting for you"
-    AgentRun.Status.RUNNING ->
-        if (run.limitsEnabled) "Running · turn ${run.turnsUsed}/${run.maxTurns}"
-        else "Running · turn ${run.turnsUsed}"
-    AgentRun.Status.DONE -> "Finished"
-    AgentRun.Status.ERROR -> "Failed"
-    AgentRun.Status.STOPPED -> "Stopped"
-}
 
 @Preview(name = "Agents - dark", showBackground = true, heightDp = 760)
 @Composable
