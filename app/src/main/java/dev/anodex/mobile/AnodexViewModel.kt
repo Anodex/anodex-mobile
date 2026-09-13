@@ -768,18 +768,25 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * waiting happens while they are still typing instead of after they have asked
      * for something. By the time send is pressed the bytes are usually already there.
      */
+    private val photoShrinker = dev.anodex.mobile.chat.PhotoShrinker(application)
+
     fun attach(uri: android.net.Uri) {
         val client = uploads ?: return
 
         viewModelScope.launch {
+            // A large photo is made smaller first: sent as the camera wrote it, a shot
+            // is several megabytes over mobile data. See `PhotoShrinker`.
+            val sendable = photoShrinker.shrinkIfLarge(uri)
             // Same reason as `openWorkspaceFile`: a suspend call over a socket that
             // may already be dying. `send` below reports through `Result`; this one
             // had nothing.
-            val file = runCatching { client.describe(uri) }.getOrNull() ?: return@launch
+            val file = runCatching { client.describe(sendable) }.getOrNull() ?: return@launch
 
+            // Matched on what is actually being sent, which for a shrunk photo is the
+            // smaller copy rather than the picture that was picked.
             fun update(state: UploadState) {
                 _attachments.value = _attachments.value.map {
-                    if (fileOf(it).uri == uri) state else it
+                    if (fileOf(it).uri == file.uri) state else it
                 }
             }
 
