@@ -587,6 +587,11 @@ private fun ConnectedScaffold(
         // background stayed invisible until something else forced a reconnect. The
         // view model throttles this; it is safe to call on every resume.
         viewModel.checkForUpdate()
+
+        // The unread count feeds the opener on an empty chat, which is the first thing
+        // a resumed app shows, so it is read again here rather than trusted from
+        // whenever the connection last came up.
+        viewModel.refreshUnreadEmail()
         onPauseOrDispose {}
     }
 
@@ -652,6 +657,9 @@ private fun ConnectedScaffold(
 
         if (destination == AppDestination.WORKSPACE) viewModel.refreshProjects()
         else viewModel.refreshConversations()
+
+        // The badge sits in the drawer too, on every destination.
+        viewModel.refreshUnreadEmail()
     }
 
     // Read when it is opened rather than on a timer, the same rule the Workspace
