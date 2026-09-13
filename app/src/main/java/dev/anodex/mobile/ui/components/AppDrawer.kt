@@ -82,6 +82,14 @@ fun AppDrawer(
     onNewChat: () -> Unit,
     onOpenAllConversations: () -> Unit,
     onClose: () -> Unit,
+    /**
+     * Open the conversation index with the search field focused.
+     *
+     * Every assistant this app was measured against puts search at the top of its
+     * drawer. Anodex had it, on the full index, shown only past twelve conversations
+     * and reached only by tapping Chat — so for most people it did not exist.
+     */
+    onSearch: () -> Unit = onOpenAllConversations,
     hostName: String,
     hostDetail: String,
     connected: Boolean,
@@ -139,6 +147,20 @@ fun AppDrawer(
                     // rather than at the edge a thumb reaches for.
                     modifier = Modifier.weight(1f),
                 )
+                Box(
+                    Modifier
+                        .size(Touch.minTarget)
+                        .clip(Radii.md)
+                        .clickable(role = Role.Button, onClick = onSearch),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnodexIcon(
+                        AnodexIcon.SEARCH,
+                        size = 18.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Search conversations",
+                    )
+                }
                 Box(
                     Modifier
                         .size(Touch.minTarget)

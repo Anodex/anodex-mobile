@@ -1,5 +1,7 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,6 +67,11 @@ fun ConversationsScreen(
     onChooseProject: (() -> Unit)? = null,
     /** Project id to name, for the group headings and the row tags. */
     projectNames: Map<String, String> = emptyMap(),
+    /**
+     * Opened from the drawer's search button: the field is shown however few
+     * conversations there are, and has the keyboard.
+     */
+    startSearching: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -92,13 +99,22 @@ fun ConversationsScreen(
             // Offered once there are enough of them to be worth searching. Below that
             // the field is a control taking up room above a list you can already see
             // all of.
-            if (conversations.size >= SEARCH_WORTH_IT) {
+            //
+            // Unless somebody asked to search, in which case the count is beside the
+            // point: they tapped a magnifying glass and a missing field would read as
+            // a button that did nothing.
+            if (startSearching || conversations.size >= SEARCH_WORTH_IT) {
+                val focus = remember { FocusRequester() }
                 SearchField(
                     value = query,
                     onValueChange = { query = it },
                     placeholder = "Search conversations",
                     modifier = Modifier.padding(top = Spacing.x2),
+                    focusRequester = focus.takeIf { startSearching },
                 )
+                if (startSearching) {
+                    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                }
             }
 
             // Which project the *computer* has open — for the workspace and for agent
