@@ -171,7 +171,11 @@ class Conversations(private val socket: AnodexSocket) {
             id = id,
             // An untitled conversation is one the desktop has not summarised yet,
             // which is normal for a turn or two rather than an error.
-            title = storedTitle ?: "Untitled",
+            //
+            // Shown without markdown marks, since a title is drawn as plain text and
+            // plenty already on the computer were cut from a pasted prompt. Only the
+            // display value: `storedTitle` is what gets saved back, untouched.
+            title = storedTitle?.let(::withoutMarkdown)?.takeIf { it.isNotBlank() } ?: "Untitled",
             storedTitle = storedTitle,
             createdAtEpochMs = fields["createdAt"]?.jsonPrimitive?.contentOrNull()
                 ?.toDoubleOrNull()?.toLong() ?: 0L,

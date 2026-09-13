@@ -155,15 +155,18 @@ class ChatSession(
      * single message renamed it to the first forty characters of the first thing
      * the user ever typed.
      */
-    /**
-     * The title the computer already has for this conversation, if any.
-     *
-     * Public so the chat header can show it. Null for a conversation that has not
-     * been summarised yet, which is normal for the first minute or two — the header
-     * falls back to the first thing the user said, exactly as the saved title does.
-     */
-    val existingTitle: String? = null,
+    existingTitle: String? = null,
 ) {
+    private val _title = MutableStateFlow(existingTitle?.takeIf { it.isNotBlank() })
+
+    /**
+     * The computer's title for this conversation, once there is one.
+     *
+     * Starts as whatever the computer already stored and changes once, when a
+     * conversation begun here is named after its first reply — see [nameAfterFirstReply].
+     */
+    val title: StateFlow<String?> = _title.asStateFlow()
+
     private val _messages = MutableStateFlow(initialMessages)
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
@@ -283,6 +286,7 @@ class ChatSession(
             // has stopped.
             lastActivityAt = System.currentTimeMillis()
             var wentQuiet = false
+            var answered = false
 
             val call = async { socket.awaitResult(callId, TURN_CAP) }
 
@@ -299,6 +303,7 @@ class ChatSession(
 
             try {
                 call.await()
+                answered = true
             } catch (e: CancellationException) {
                 // Only ours is worth reporting. A cancellation from the scope going
                 // away means the screen is gone and there is nobody to tell.
@@ -334,7 +339,45 @@ class ChatSession(
                     persist()
                 }
             }
+
+            // After the save, and outside `NonCancellable`: the turn is safe on the
+            // computer by now, and a title is worth a model call only while somebody
+            // is still here to read it.
+            if (answered) nameAfterFirstReply(messageId)
         }
+    }
+
+    /**
+     * Ask the computer to name a conversation that was started here.
+     *
+     * The desktop window names its own chats after the first reply, but that happens
+     * in its renderer, on the path its own composer takes. A turn sent from the phone
+     * never passes through there, so every conversation begun on a phone kept the
+     * first sixty characters of whatever was typed — or pasted — for good. The drawer
+     * showed one as "Yes. Here is the **single combined master pr…".
+     *
+     * `chat:title` is the same call the window makes, reachable from a paired phone,
+     * and it answers null when no model is loaded or the model produced nothing
+     * usable. Null leaves the first-line title in place, which is what it was before.
+     */
+    private suspend fun nameAfterFirstReply(messageId: String) {
+        if (_title.value != null) return
+
+        val turns = _messages.value
+        val question = turns.firstOrNull { it.id == messageId } ?: return
+        // Only the first exchange. A later turn in an untitled conversation is one the
+        // computer has already declined to name, and asking again after every message
+        // would queue a model call behind each of them.
+        if (turns.firstOrNull { it.role == ChatMessage.Role.USER }?.id != messageId) return
+        val reply = turns.firstOrNull { it.id == assistantIdFor(messageId) } ?: return
+        if (reply.text.isBlank()) return
+
+        val named = runCatching {
+            socket.invoke(CHANNEL_TITLE, listOf(titleRequest(question, reply)))
+        }.getOrNull().let(::titleFromReply) ?: return
+
+        _title.value = named
+        withContext(NonCancellable) { persist() }
     }
 
     /**
@@ -543,7 +586,7 @@ class ChatSession(
             // Whatever this turn actually ran against, so the conversation is filed
             // where the work happened rather than somewhere it did not.
             put("projectId", projectId?.let(::JsonPrimitive) ?: JsonNull)
-            put("title", titleToSave(existingTitle, turns))
+            put("title", titleToSave(_title.value, turns))
             put("createdAt", createdAt)
             put("updatedAt", now)
             put(
@@ -655,6 +698,7 @@ class ChatSession(
         const val CHANNEL_CONFIRM_RESPONSE = "tools:confirm-response"
         const val CHANNEL_SAVE = "conversations:save"
         const val CHANNEL_STOP = "chat:stop"
+        const val CHANNEL_TITLE = "chat:title"
 
         /**
          * How long the computer may say nothing before the turn is given up on.
@@ -701,12 +745,53 @@ internal fun titleToSave(existing: String?, turns: List<ChatMessage>): String =
  */
 internal fun titleFromFirstTurn(turns: List<ChatMessage>): String {
     val first = turns.firstOrNull { it.role == ChatMessage.Role.USER }?.text ?: return "New chat"
-    val line = first.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+    val line = first.lineSequence()
+        .map(::withoutMarkdown)
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
     return when {
         line.isEmpty() -> "New chat"
         line.length <= MAX_TITLE_LENGTH -> line
         else -> line.take(MAX_TITLE_LENGTH).trimEnd() + "…"
     }
+}
+
+/**
+ * A line with its markdown marks taken out, for use as a title.
+ *
+ * A title is drawn as plain text everywhere it appears, so `**bold**` in a pasted
+ * prompt reached the drawer as four literal asterisks. Only the marks are removed —
+ * emphasis, inline code, a heading or quote prefix, a list bullet — never the words
+ * inside them.
+ */
+internal fun withoutMarkdown(line: String): String = line
+    .replace(Regex("""^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)"""), "")
+    .replace(Regex("""(\*\*|__)(.+?)\1"""), "$2")
+    .replace(Regex("""(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])"""), "$1")
+    .replace(Regex("""`([^`]*)`"""), "$1")
+    .replace(Regex("""\s+"""), " ")
+    .trim()
+    // A rule or a stray run of marks is not a line of text at all.
+    .let { if (it.matches(Regex("""[*_`#>~=-]*"""))) "" else it }
+
+/** What `chat:title` is asked, in the shape of the desktop's `ChatTitleRequest`. */
+internal fun titleRequest(question: ChatMessage, reply: ChatMessage): JsonObject = buildJsonObject {
+    put("userPrompt", question.text)
+    put("assistantReply", reply.text)
+    put("attachmentNames", buildJsonArray { question.attachments.forEach { add(JsonPrimitive(it.name)) } })
+    put("editedFiles", buildJsonArray { reply.changedFiles.forEach { add(JsonPrimitive(it.path)) } })
+}
+
+/**
+ * The title out of `chat:title`'s answer, or null when there is not one.
+ *
+ * The handler returns the string itself rather than an `{ ok, value }` envelope, but
+ * both are read: a handler changing its shape should cost a title, not a crash.
+ */
+internal fun titleFromReply(element: kotlinx.serialization.json.JsonElement?): String? {
+    val value = (element as? JsonObject)?.let { it["value"] } ?: element
+    val text = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+    return withoutMarkdown(text).takeIf { it.isNotBlank() }?.take(MAX_TITLE_LENGTH)
 }
 
 /** Long enough to identify a conversation, short enough for a phone-width row. */

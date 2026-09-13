@@ -1025,9 +1025,9 @@ private fun ConnectedScaffold(
     // Inside a conversation the title takes the top line and the host shrinks to its
     // dot: you already know which computer, and what you are reading is the
     // conversation. Everywhere else the host bar is the most useful thing there.
+    val sessionTitle = chat?.title?.collectAsStateWithLifecycle()?.value
     val conversationTitle = chat?.let { session ->
-        session.existingTitle?.takeIf { it.isNotBlank() }
-            ?: messagesTitle(session)
+        sessionTitle ?: messagesTitle(session)
     }
 
     // The workspace this conversation belongs to, not whichever one the computer
