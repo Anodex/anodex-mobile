@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +41,13 @@ import kotlinx.coroutines.withContext
  * that will not decode. A tile that cannot be drawn should look like a file, not
  * like a hole.
  */
+/**
+ * How a transcript gets a picture that lives on the computer: a message id and the
+ * picture's position on it, to JPEG bytes. Provided by the chat for the conversation it
+ * shows; null where there is no conversation to ask about.
+ */
+val LocalRemotePictures = staticCompositionLocalOf<(suspend (messageId: String, index: Int) -> ByteArray?)?> { null }
+
 @Composable
 fun AttachmentThumb(
     /** The phone's own `content://` copy. Null for a file that came from elsewhere. */
@@ -55,15 +63,33 @@ fun AttachmentThumb(
      * what it was a screenshot of. The composer's small tile stays square.
      */
     whole: Boolean = false,
+    /** For a picture read back from the computer: its message and position there. */
+    remote: Pair<String, Int>? = null,
 ) {
     val colors = AnodexTheme.colors
     val context = LocalContext.current
     // The tile's longest edge in pixels, which is what the decode aims for.
     val targetPx = with(LocalDensity.current) { (size * if (whole) MAX_TALL else 1f).roundToPx() }
-    var bitmap by remember(localUri) { mutableStateOf<ImageBitmap?>(null) }
+    val remotePictures = LocalRemotePictures.current
+    var bitmap by remember(localUri, remote) { mutableStateOf<ImageBitmap?>(null) }
 
-    LaunchedEffect(localUri, isImage, targetPx) {
-        if (!isImage || localUri == null) return@LaunchedEffect
+    LaunchedEffect(localUri, isImage, targetPx, remote) {
+        if (!isImage) return@LaunchedEffect
+        if (localUri == null) {
+            val (messageId, index) = remote ?: return@LaunchedEffect
+            val bytes = remotePictures?.invoke(messageId, index) ?: return@LaunchedEffect
+            bitmap = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    val options = BitmapFactory.Options().apply {
+                        inSampleSize = sampleFor(maxOf(bounds.outWidth, bounds.outHeight), targetPx)
+                    }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+                }.getOrNull()
+            }
+            return@LaunchedEffect
+        }
 
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
