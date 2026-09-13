@@ -771,6 +771,11 @@ internal fun withoutMarkdown(line: String): String = line
     .replace(Regex("""(?<![\w*/])\*\*(?![\s*])(.+?)(?<![\s*])\*\*(?![\w*/])"""), "$1")
     .replace(Regex("""(?<!\w)__(?![\s_])(.+?)(?<![\s_])__(?![\w.])"""), "$1")
     .replace(Regex("""(?<![\w*/])\*(?![\s*])([^*]+?)(?<!\s)\*(?![\w*/])"""), "$1")
+    // Half a pair: a title cut through its own bold keeps the opening marks and loses
+    // the closing ones, and the drawer showed "Here is the **single combined ma…".
+    // Only `**` on a word edge: a glob's `**` between slashes stays, and a lone `__`
+    // is left alone because `__init__.py` is made of them.
+    .replace(Regex("""(?<![\w*/])\*\*(?=\w)|(?<=\w)\*\*(?![\w*/])"""), "")
     .replace(Regex("""`([^`]*)`"""), "$1")
     .replace(Regex("""\s+"""), " ")
     .trim()

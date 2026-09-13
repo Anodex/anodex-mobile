@@ -110,6 +110,19 @@ class ConversationTitleTest {
     }
 
     @Test
+    fun `a title cut through its own bold loses the orphaned marks`() {
+        // What the drawer still showed after the first fix: the stored title had been
+        // cut at 44 characters, so the closing marks were never in it.
+        assertEquals(
+            "Yes. Here is the single combined master pr…",
+            withoutMarkdown("Yes. Here is the **single combined master pr…"),
+        )
+        assertEquals("the end of it", withoutMarkdown("the end** of it"))
+        assertEquals("glob src/**/*.ts", withoutMarkdown("glob src/**/*.ts"))
+        assertEquals("Why does __init__.py run", withoutMarkdown("Why does __init__.py run"))
+    }
+
+    @Test
     fun `a heading or bullet prefix is dropped, and a line of only marks is skipped`() {
         assertEquals("Plan the release", titleToSave(null, listOf(user("## Plan the release"))))
         assertEquals("Plan the release", titleToSave(null, listOf(user("- Plan the release"))))
