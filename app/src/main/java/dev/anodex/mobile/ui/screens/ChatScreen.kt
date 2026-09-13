@@ -638,11 +638,18 @@ private fun MessageRow(
     // controls under every question would double the length of a conversation.
     var userActions by remember(message.id) { mutableStateOf(false) }
 
-    /** The attachment being looked at full-screen, if any. */
-    var viewing by remember(message.id) { mutableStateOf<String?>(null) }
+    /** The position of the attachment being looked at full-screen, if any. */
+    var viewing by remember(message.id) { mutableStateOf<Int?>(null) }
 
-    viewing?.let { uri ->
-        ImageViewer(localUri = uri, onDismiss = { viewing = null })
+    viewing?.let { index ->
+        val file = message.attachments.getOrNull(index)
+        if (file != null) {
+            ImageViewer(
+                localUri = file.localUri,
+                remote = if (file.localUri == null && file.fromComputer) message.id to index else null,
+                onDismiss = { viewing = null },
+            )
+        }
     }
 
     Row(
@@ -663,7 +670,9 @@ private fun MessageRow(
                         // attachment loaded back from the computer has no local copy,
                         // and a tile that responds by doing nothing reads as broken
                         // rather than as unavailable.
-                        val openable = file.localUri
+                        // A picture read back from the computer opens too, fetched the
+                        // same way its tile was.
+                        val openable = file.localUri != null || file.fromComputer
                         AttachmentThumb(
                             localUri = file.localUri,
                             isImage = true,
@@ -673,14 +682,14 @@ private fun MessageRow(
                             modifier = Modifier
                                 .padding(bottom = Spacing.x2)
                                 .then(
-                                    if (openable != null) {
+                                    if (openable) {
                                         // Clipped first so the press wash is the tile,
                                         // not a square behind its rounded corners.
                                         Modifier
                                             .clip(Radii.lg)
                                             .clickable(
                                                 onClickLabel = "Open image",
-                                                onClick = { viewing = openable },
+                                                onClick = { viewing = attachmentIndex },
                                             )
                                     } else {
                                         Modifier

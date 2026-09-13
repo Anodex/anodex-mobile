@@ -45,16 +45,33 @@ import kotlinx.coroutines.withContext
  * thread nobody can catch it from.
  */
 @Composable
-fun ImageViewer(localUri: String, onDismiss: () -> Unit) {
+fun ImageViewer(
+    localUri: String?,
+    onDismiss: () -> Unit,
+    /**
+     * A picture that lives on the computer: its message and position there, fetched
+     * through [LocalRemotePictures]. Used when there is no [localUri].
+     */
+    remote: Pair<String, Int>? = null,
+) {
     val context = LocalContext.current
-    var bitmap by remember(localUri) { mutableStateOf<ImageBitmap?>(null) }
+    val remotePictures = LocalRemotePictures.current
+    var bitmap by remember(localUri, remote) { mutableStateOf<ImageBitmap?>(null) }
 
-    LaunchedEffect(localUri) {
+    LaunchedEffect(localUri, remote) {
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
-                context.contentResolver.openInputStream(Uri.parse(localUri))?.use { input ->
-                    val options = BitmapFactory.Options().apply { inSampleSize = VIEW_SAMPLE }
-                    BitmapFactory.decodeStream(input, null, options)?.asImageBitmap()
+                if (localUri != null) {
+                    context.contentResolver.openInputStream(Uri.parse(localUri))?.use { input ->
+                        val options = BitmapFactory.Options().apply { inSampleSize = VIEW_SAMPLE }
+                        BitmapFactory.decodeStream(input, null, options)?.asImageBitmap()
+                    }
+                } else {
+                    // Already phone-sized by the computer, and usually already fetched
+                    // for the tile that was tapped, so it opens at once and whole.
+                    val (messageId, index) = remote ?: return@runCatching null
+                    val bytes = remotePictures?.invoke(messageId, index) ?: return@runCatching null
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
                 }
             }.getOrNull()
         }
