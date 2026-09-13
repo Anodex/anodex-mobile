@@ -109,6 +109,8 @@ fun ChatScreen(
     messages: List<ChatMessage>,
     sending: Boolean,
     error: String?,
+    /** The turn is queued behind other work on the computer — see `ChatSession.waitingForComputer`. */
+    waitingForComputer: Boolean = false,
     onSend: (String) -> Unit,
     onStop: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -415,6 +417,7 @@ fun ChatScreen(
                             // Nothing to copy or retry while the answer is still
                             // arriving, and a retry mid-turn would be refused anyway.
                             actionsEnabled = !sending,
+                            waitingForComputer = waitingForComputer,
                         )
                     }
                 }
@@ -525,6 +528,7 @@ private fun MessageRow(
     onOpenFile: ((String) -> Unit)? = null,
     onRetry: ((String) -> Unit)? = null,
     actionsEnabled: Boolean = true,
+    waitingForComputer: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -737,7 +741,7 @@ private fun MessageRow(
                     // Nothing has arrived yet and nothing is being reported. Without
                     // this the screen is simply blank, which reads as the app having
                     // frozen rather than the model having started.
-                    ThinkingLine()
+                    ThinkingLine(waitingForComputer)
                 }
 
                 // What ended up different, after the words. The tool rows above say
@@ -754,6 +758,23 @@ private fun MessageRow(
                         enabled = actionsEnabled,
                         onRetry = onRetry?.let { retry -> { retry(message.id) } },
                     )
+                } else if (!message.streaming && message.tools.isEmpty() && onRetry != null) {
+                    // A turn that ended with nothing — the phone stopped waiting, or the
+                    // computer failed before a word. It used to leave a name over an
+                    // empty space and no way to ask again short of retyping the question.
+                    Row(
+                        modifier = Modifier.padding(top = Spacing.x1),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
+                    ) {
+                        Text("No answer arrived", style = type.meta, color = colors.textFaint)
+                        ActionButton(
+                            label = "Retry",
+                            tint = colors.accentInk,
+                            enabled = actionsEnabled,
+                            onClick = { onRetry(message.id) },
+                        )
+                    }
                 }
             }
         }
@@ -1339,7 +1360,7 @@ private val UserBubble = RoundedCornerShape(
 )
 
 @Composable
-private fun ThinkingLine() {
+private fun ThinkingLine(waitingForComputer: Boolean = false) {
     val colors = AnodexTheme.colors
     val reducedMotion = LocalReducedMotion.current
 
@@ -1361,7 +1382,14 @@ private fun ThinkingLine() {
         AnodexSpinner(size = 14.dp, thickness = 1.5.dp, tint = colors.textFaint)
 
         Text(
-            text = "Thinking…",
+            // Said in words, because it changes what somebody should do: a turn that is
+            // thinking needs nothing, and one queued behind an agent run will start
+            // when that run's turn ends — which can be minutes on a local model.
+            text = if (waitingForComputer) {
+                "Waiting for your computer to finish another task…"
+            } else {
+                "Thinking…"
+            },
             style = AnodexTheme.type.chatBody,
             color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),
         )

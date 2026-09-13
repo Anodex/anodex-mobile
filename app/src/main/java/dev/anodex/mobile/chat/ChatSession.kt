@@ -176,6 +176,17 @@ class ChatSession(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _waitingForComputer = MutableStateFlow(false)
+
+    /**
+     * True while this turn is queued behind other work on the computer's model.
+     *
+     * The desktop says so with `chat:working`. Without it a question sent while an
+     * agent run held the model showed "Thinking…" for five minutes and then gave up,
+     * which is indistinguishable from a computer that has died.
+     */
+    val waitingForComputer: StateFlow<Boolean> = _waitingForComputer.asStateFlow()
+
     private val _approval = MutableStateFlow<ToolApproval?>(null)
 
     /**
@@ -308,9 +319,13 @@ class ChatSession(
                 // Only ours is worth reporting. A cancellation from the scope going
                 // away means the screen is gone and there is nobody to tell.
                 if (wentQuiet) {
-                    _error.value = "Your computer went quiet for " +
-                        "${IDLE_LIMIT.inWholeMinutes} minutes. The turn may still be " +
-                        "running there."
+                    // Said as what is known, and what to do. A computer on a current
+                    // build keeps the answer to a turn the phone stopped waiting for,
+                    // so the chat is worth opening again; and a turn that truly died
+                    // is one tap from being asked again with Retry.
+                    _error.value = "Nothing from your computer for " +
+                        "${IDLE_LIMIT.inWholeMinutes} minutes. It may still be working " +
+                        "— open this chat again later, or tap Retry below."
                 } else {
                     throw e
                 }
@@ -319,6 +334,7 @@ class ChatSession(
             } finally {
                 watchdog.cancel()
                 _sending.value = false
+                _waitingForComputer.value = false
 
                 // `NonCancellable`, and the conversation depends on it.
                 //
@@ -475,7 +491,24 @@ class ChatSession(
                 val payload = event.payload?.jsonObject ?: return
                 if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
                 lastActivityAt = System.currentTimeMillis()
+                _waitingForComputer.value = false
                 appendToken(payload["token"]?.jsonPrimitive?.content ?: return)
+            }
+
+            // Not drawn — the phone shows the answer, not the reasoning — but it is the
+            // model working. Ignoring it let a model that thinks for a while before
+            // answering trip the five-minute silence limit while it was busy.
+            CHANNEL_THINKING -> {
+                val payload = event.payload?.jsonObject ?: return
+                if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
+                lastActivityAt = System.currentTimeMillis()
+                _waitingForComputer.value = false
+            }
+
+            CHANNEL_WORKING -> {
+                val phase = workingPhase(event.payload, conversationId) ?: return
+                lastActivityAt = System.currentTimeMillis()
+                _waitingForComputer.value = phase == WorkingPhase.WAITING_FOR_MODEL
             }
 
             CHANNEL_ACTIVITY -> {
@@ -483,6 +516,7 @@ class ChatSession(
                 if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
                 val call = payload["call"]?.jsonObject ?: return
                 lastActivityAt = System.currentTimeMillis()
+                _waitingForComputer.value = false
                 onToolCall(call)
             }
 
@@ -692,6 +726,8 @@ class ChatSession(
     private companion object {
         const val CHANNEL_SEND = "chat:send"
         const val CHANNEL_STREAM = "chat:stream"
+        const val CHANNEL_THINKING = "chat:thinking-stream"
+        const val CHANNEL_WORKING = "chat:working"
         const val CHANNEL_ACTIVITY = "tools:activity"
         const val CHANNEL_CONFIRM_REQUEST = "tools:confirm-request"
         const val CHANNEL_CONFIRM_CANCELLED = "tools:confirm-cancelled"
@@ -781,6 +817,28 @@ internal fun withoutMarkdown(line: String): String = line
     .trim()
     // A rule or a stray run of marks is not a line of text at all.
     .let { if (it.matches(Regex("""[*_`#>~=-]*"""))) "" else it }
+
+/** What a quiet turn says it is doing — the desktop's `ChatWorkingEvent.phase`. */
+internal enum class WorkingPhase { WAITING_FOR_MODEL, WORKING }
+
+/**
+ * The phase out of a `chat:working` event for [conversationId], or null when the event
+ * is for another conversation or unreadable.
+ *
+ * An unknown phase reads as working: the one thing an event on this channel always
+ * means is that the turn is alive.
+ */
+internal fun workingPhase(
+    payload: kotlinx.serialization.json.JsonElement?,
+    conversationId: String,
+): WorkingPhase? {
+    val fields = payload as? JsonObject ?: return null
+    if ((fields["conversationId"] as? JsonPrimitive)?.content != conversationId) return null
+    return when ((fields["phase"] as? JsonPrimitive)?.content) {
+        "waiting-for-model" -> WorkingPhase.WAITING_FOR_MODEL
+        else -> WorkingPhase.WORKING
+    }
+}
 
 /** What `chat:title` is asked, in the shape of the desktop's `ChatTitleRequest`. */
 internal fun titleRequest(question: ChatMessage, reply: ChatMessage): JsonObject = buildJsonObject {
