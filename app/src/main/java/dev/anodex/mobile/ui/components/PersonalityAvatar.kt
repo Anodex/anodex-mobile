@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.anodex.mobile.R
+import dev.anodex.mobile.chat.LocalPersonalityPictures
 import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
@@ -28,10 +29,9 @@ import dev.anodex.mobile.ui.theme.Radii
  * personality that loses its picture should lose the picture, not the identity.
  *
  * 1. The shipped art for a built-in, keyed off its id.
- * 2. Nothing yet for a user's own picture: the desktop stores that as a *path* on
- *    its own disk, which means nothing here, and shipping the bytes over the socket
- *    on every personality list would put a megabyte on a call made at every connect.
- *    A lazy per-personality fetch is the right shape for that, and it is not built.
+ * 2. The user's own picture, fetched from the computer once and kept — see
+ *    [dev.anodex.mobile.chat.PersonalityPictures]. Read from
+ *    [LocalPersonalityPictures] by id, so a reply loaded from history finds it too.
  * 3. A tinted monogram, which is also what the desktop falls back to when the file
  *    behind a path has moved.
  */
@@ -47,6 +47,7 @@ fun PersonalityAvatar(
 ) {
     val colors = AnodexTheme.colors
     val art = builtInArt(id)
+    val picture = if (art == null) id?.let { LocalPersonalityPictures.current[it] } else null
 
     Box(
         modifier = modifier
@@ -57,10 +58,19 @@ fun PersonalityAvatar(
             .clip(Radii.md)
             // The shipped art carries its own ground, so a tint behind it would only
             // show at the corners where the two roundings disagree.
-            .background(if (art == null) monogramTint(tint, colors) else Color.Transparent),
+            .background(
+                if (art == null && picture == null) monogramTint(tint, colors) else Color.Transparent,
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        if (art != null) {
+        if (picture != null) {
+            Image(
+                bitmap = picture,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(size),
+            )
+        } else if (art != null) {
             Image(
                 painter = painterResource(art),
                 contentDescription = null,

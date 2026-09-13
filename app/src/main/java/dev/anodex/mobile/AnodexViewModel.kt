@@ -63,6 +63,8 @@ import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
 import dev.anodex.mobile.scheduler.parseTasks
+import dev.anodex.mobile.chat.PersonalityPictures
+import androidx.compose.ui.graphics.ImageBitmap
 import dev.anodex.mobile.transport.AnodexSocket
 import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.transport.ServerFrame
@@ -876,6 +878,25 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** How Anodex is set to answer, and what else it could be. */
     val personalities: StateFlow<PersonalityState> = _personalities.asStateFlow()
 
+    private val pictures = PersonalityPictures(java.io.File(application.cacheDir, "personality-pictures"))
+
+    /** Pictures for the user's own personalities, by id. Built-ins draw their shipped art. */
+    val personalityPictures: StateFlow<Map<String, ImageBitmap>> = pictures.byId
+
+    /**
+     * Fetch whatever pictures the phone lacks for the list it now has.
+     *
+     * After the list rather than inside it, so a slow picture never holds up the
+     * chooser, and guarded: a computer too old to have `personality:image` refuses
+     * the channel, which must cost faces, not the connection.
+     */
+    private fun syncPersonalityPictures(state: PersonalityState) {
+        val client = personalityClient ?: return
+        viewModelScope.launch {
+            runCatching { pictures.sync(state.personalities) { id -> client.picture(id) } }
+        }
+    }
+
     private val _personalityBusy = MutableStateFlow(false)
     val personalityBusy: StateFlow<Boolean> = _personalityBusy.asStateFlow()
 
@@ -907,6 +928,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             _personalities.value = runCatching { client.state() }
                 .orKeep(_personalities.value, "Could not read the personalities.")
                 .value
+            syncPersonalityPictures(_personalities.value)
         }
     }
 
