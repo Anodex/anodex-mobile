@@ -116,7 +116,12 @@ class AnodexSocket(
             // Keeps a half-open socket - a phone that walked out of range - from
             // looking alive indefinitely.
             .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .pingInterval(20, TimeUnit.SECONDS)
+            // How soon a computer that has gone away is noticed. OkHttp declares a
+            // socket dead when a ping is still unanswered as the next one is due, so
+            // this is roughly half the wait. At twenty seconds a desktop that closed
+            // took about 45s to notice on a Galaxy S7 — long enough to type a message
+            // into a connection that was already gone. A ping is a few bytes.
+            .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
             .sslSocketFactory(pinnedContext().socketFactory, PinnedTrustManager(certificateSha256))
             // See the class comment: the certificate asserts no hostname, so a name
             // check has nothing meaningful to compare and the pin is what decides.
@@ -318,6 +323,7 @@ class AnodexSocket(
          * mistaken for a dead one - a socket with nothing to say is the normal state
          * between turns.
          */
+        const val PING_INTERVAL_SECONDS = 8L
         const val READ_TIMEOUT_SECONDS = 60L
         private val random = SecureRandom()
 
