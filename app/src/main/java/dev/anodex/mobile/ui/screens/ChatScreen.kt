@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -49,7 +49,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -58,8 +60,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
@@ -70,18 +70,18 @@ import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexSpinner
-import dev.anodex.mobile.ui.components.SCRIM_ALPHA
-import dev.anodex.mobile.ui.components.SCRIM_FADE
-import dev.anodex.mobile.ui.components.SCRIM_HOLD
-import dev.anodex.mobile.ui.components.arrival
-import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.AttachmentThumb
 import dev.anodex.mobile.ui.components.FacetField
 import dev.anodex.mobile.ui.components.ImageViewer
 import dev.anodex.mobile.ui.components.MarkdownText
 import dev.anodex.mobile.ui.components.PersonalityAvatar
+import dev.anodex.mobile.ui.components.SCRIM_ALPHA
+import dev.anodex.mobile.ui.components.SCRIM_FADE
+import dev.anodex.mobile.ui.components.SCRIM_HOLD
 import dev.anodex.mobile.ui.components.ToolApprovalCard
 import dev.anodex.mobile.ui.components.ToolRow
+import dev.anodex.mobile.ui.components.arrival
+import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Elevation
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
@@ -1526,7 +1526,11 @@ private fun Composer(
                     // and kept going — a prompt of a few paragraphs left nothing on
                     // screen but the thing being typed.
                     maxLines = COMPOSER_MAX_LINES,
-                    modifier = Modifier.fillMaxWidth(),
+                    // Named for a screen reader. "Ask Anodex…" is a separate Text drawn
+                    // behind the field, so the field alone announced as "edit box".
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Message" },
                 )
             }
 

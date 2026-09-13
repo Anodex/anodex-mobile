@@ -25,6 +25,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ConversationSummary
@@ -278,7 +282,14 @@ private fun Entry(
             modifier = Modifier
                 .size(Touch.minTarget)
                 .clip(CircleShape)
-                .clickable(onClickLabel = "Select", onClick = onToggle),
+                .clickable(role = Role.Checkbox, onClickLabel = "Select", onClick = onToggle)
+                // Which row, and whether it is chosen. Without this every row's icon was
+                // announced as a nameless button, and a selection was invisible to anyone
+                // not looking at the tick.
+                .semantics {
+                    contentDescription = item.title
+                    stateDescription = if (checked) "Selected" else "Not selected"
+                },
             contentAlignment = Alignment.Center,
         ) {
             AnodexIcon(
