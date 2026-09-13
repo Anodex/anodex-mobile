@@ -732,7 +732,7 @@ private fun MeterView(meter: Meter, modifier: Modifier = Modifier) {
 private fun RunOutcome(run: AgentRun) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
-    val text = run.summary ?: run.lastError ?: return
+    val text = (run.summary ?: run.lastError ?: return).withoutOutcomeHeading()
 
     val (ink, ground) = when {
         run.status == AgentRun.Status.ERROR -> colors.dangerInk to colors.dangerSoft
@@ -753,6 +753,17 @@ private fun RunOutcome(run: AgentRun) {
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
     )
 }
+
+/**
+ * A summary without the desktop's "What this reply did" label.
+ *
+ * The desktop appends its account of a turn under that bold heading, which reads as a
+ * heading in a transcript. Flattened into one line on a card it ran straight into the
+ * account itself — "What this reply did Changed src/…" — and the box is already the
+ * answer to that question.
+ */
+internal fun String.withoutOutcomeHeading(): String =
+    replace(Regex("""(?m)^\s*\*\*What this reply did\*\*\s*$"""), "").trim()
 
 /** "Local", "Claude · claude-sonnet-5" — what did the work, as the desktop labels it. */
 private fun providerLine(run: AgentRun): String? {
