@@ -1786,6 +1786,7 @@ private fun ChatPane(
     val sending by chat.sending.collectAsStateWithLifecycle()
     val error by chat.error.collectAsStateWithLifecycle()
     val waitingForComputer by chat.waitingForComputer.collectAsStateWithLifecycle()
+    val reading by chat.reading.collectAsStateWithLifecycle()
     val approval by chat.approval.collectAsStateWithLifecycle()
 
     // The notification and the card represent the same pending question. When the
@@ -1835,6 +1836,7 @@ private fun ChatPane(
             sending = sending,
             error = error,
             waitingForComputer = waitingForComputer,
+            reading = reading,
             onSend = viewModel::sendMessage,
             onStop = chat::stop,
             approval = approval,

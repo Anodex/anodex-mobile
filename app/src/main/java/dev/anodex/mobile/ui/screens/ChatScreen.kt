@@ -3,8 +3,10 @@ package dev.anodex.mobile.ui.screens
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -68,6 +72,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.chat.ReadingProgress
 import dev.anodex.mobile.chat.ToolActivity
 import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.chat.UploadState
@@ -116,6 +121,8 @@ fun ChatScreen(
     error: String?,
     /** The turn is queued behind other work on the computer — see `ChatSession.waitingForComputer`. */
     waitingForComputer: Boolean = false,
+    /** How far the computer has read this turn's prompt — see `ChatSession.reading`. */
+    reading: ReadingProgress? = null,
     onSend: (String) -> Unit,
     onStop: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -526,6 +533,7 @@ fun ChatScreen(
                                 keyboard?.show()
                             },
                             waitingForComputer = waitingForComputer,
+                            reading = reading,
                         )
                     }
                 }
@@ -673,6 +681,7 @@ private fun MessageRow(
     onRetry: ((String) -> Unit)? = null,
     actionsEnabled: Boolean = true,
     waitingForComputer: Boolean = false,
+    reading: ReadingProgress? = null,
     /**
      * Put a sent message back in the composer to change and send again.
      *
@@ -931,7 +940,7 @@ private fun MessageRow(
                     // Nothing has arrived yet and nothing is being reported. Without
                     // this the screen is simply blank, which reads as the app having
                     // frozen rather than the model having started.
-                    ThinkingLine(waitingForComputer)
+                    ThinkingLine(waitingForComputer, reading)
                 }
 
                 // What ended up different, after the words. The tool rows above say
@@ -1595,9 +1604,10 @@ private val UserBubble = RoundedCornerShape(
 )
 
 @Composable
-private fun ThinkingLine(waitingForComputer: Boolean = false) {
+private fun ThinkingLine(waitingForComputer: Boolean = false, reading: ReadingProgress? = null) {
     val colors = AnodexTheme.colors
     val reducedMotion = LocalReducedMotion.current
+    val readingLabel = reading?.label
 
     val transition = rememberInfiniteTransition(label = "thinking")
     val alpha by transition.animateFloat(
@@ -1620,14 +1630,40 @@ private fun ThinkingLine(waitingForComputer: Boolean = false) {
             // Said in words, because it changes what somebody should do: a turn that is
             // thinking needs nothing, and one queued behind an agent run will start
             // when that run's turn ends — which can be minutes on a local model.
-            text = if (waitingForComputer) {
-                "Waiting for your computer to finish another task…"
-            } else {
-                "Thinking…"
+            text = when {
+                waitingForComputer -> "Waiting for your computer to finish another task…"
+                // Most of the wait on a local model when a long conversation has to be
+                // read before the reply starts — said, with how far, rather than
+                // "Thinking…" for all of it.
+                readingLabel != null -> readingLabel
+                else -> "Thinking…"
             },
             style = AnodexTheme.type.chatBody,
             color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),
         )
+    }
+
+    if (!waitingForComputer && readingLabel != null && reading != null) {
+        val fraction by animateFloatAsState(
+            targetValue = reading.percent / 100f,
+            animationSpec = if (reducedMotion) snap() else tween(400),
+            label = "readingFraction",
+        )
+        Box(
+            modifier = Modifier
+                .padding(top = Spacing.x1, start = 14.dp + Spacing.x2)
+                .width(120.dp)
+                .height(2.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(colors.textFaint.copy(alpha = 0.25f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .fillMaxHeight()
+                    .background(colors.accent),
+            )
+        }
     }
 }
 

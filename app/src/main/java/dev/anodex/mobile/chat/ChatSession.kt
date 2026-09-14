@@ -207,6 +207,17 @@ class ChatSession(
      */
     val waitingForComputer: StateFlow<Boolean> = _waitingForComputer.asStateFlow()
 
+    private val _reading = MutableStateFlow<ReadingProgress?>(null)
+
+    /**
+     * How far the computer's model has read this turn's prompt, while it reads.
+     *
+     * On a local model that read is most of the wait before any words: a long
+     * conversation is read in full before the reply starts. Null when nothing is
+     * being read, or on a computer too old to say.
+     */
+    val reading: StateFlow<ReadingProgress?> = _reading.asStateFlow()
+
     private val _approval = MutableStateFlow<ToolApproval?>(null)
 
     /**
@@ -360,6 +371,7 @@ class ChatSession(
                 watchdog.cancel()
                 _sending.value = false
                 _waitingForComputer.value = false
+                _reading.value = null
 
                 // `NonCancellable`, and the conversation depends on it.
                 //
@@ -583,6 +595,7 @@ class ChatSession(
                 if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
                 lastActivityAt = System.currentTimeMillis()
                 _waitingForComputer.value = false
+                _reading.value = null
                 appendToken(payload["token"]?.jsonPrimitive?.content ?: return)
             }
 
@@ -594,12 +607,14 @@ class ChatSession(
                 if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
                 lastActivityAt = System.currentTimeMillis()
                 _waitingForComputer.value = false
+                _reading.value = null
             }
 
             CHANNEL_WORKING -> {
                 val phase = workingPhase(event.payload, conversationId) ?: return
                 lastActivityAt = System.currentTimeMillis()
                 _waitingForComputer.value = phase == WorkingPhase.WAITING_FOR_MODEL
+                if (phase == WorkingPhase.READING) _reading.value = readingProgressOf(event.payload)
             }
 
             CHANNEL_ACTIVITY -> {
@@ -915,7 +930,33 @@ internal fun withoutMarkdown(line: String): String = line
     .let { if (it.matches(Regex("""[*_`#>~=-]*"""))) "" else it }
 
 /** What a quiet turn says it is doing — the desktop's `ChatWorkingEvent.phase`. */
-internal enum class WorkingPhase { WAITING_FOR_MODEL, WORKING }
+internal enum class WorkingPhase { WAITING_FOR_MODEL, WORKING, READING }
+
+/** How much of its prompt the computer's model has read, cached tokens included. */
+data class ReadingProgress(val done: Long, val total: Long) {
+    /**
+     * "Reading · 45%" while enough is left to be worth showing, otherwise null — a
+     * short read would flash past before it could be read.
+     */
+    val label: String?
+        get() = if (total <= 0 || total - done < MIN_VISIBLE_READ_TOKENS) null else "Reading · $percent%"
+
+    /** Whole percent read, never 100 while reading is still going. */
+    val percent: Int
+        get() = if (total <= 0) 0 else ((done * 100) / total).toInt().coerceIn(0, 99)
+
+    companion object {
+        const val MIN_VISIBLE_READ_TOKENS = 1_024L
+    }
+}
+
+/** The `reading` progress on a `chat:working` event, or null when it has none. */
+internal fun readingProgressOf(payload: kotlinx.serialization.json.JsonElement?): ReadingProgress? {
+    val reading = (payload as? JsonObject)?.get("reading") as? JsonObject ?: return null
+    val done = (reading["done"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toLong() ?: return null
+    val total = (reading["total"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toLong() ?: return null
+    return if (total > 0) ReadingProgress(done.coerceIn(0, total), total) else null
+}
 
 /**
  * The phase out of a `chat:working` event for [conversationId], or null when the event
@@ -932,6 +973,7 @@ internal fun workingPhase(
     if ((fields["conversationId"] as? JsonPrimitive)?.content != conversationId) return null
     return when ((fields["phase"] as? JsonPrimitive)?.content) {
         "waiting-for-model" -> WorkingPhase.WAITING_FOR_MODEL
+        "reading" -> WorkingPhase.READING
         else -> WorkingPhase.WORKING
     }
 }
