@@ -22,6 +22,17 @@ class ParsePairedDevicesTest {
     }
 
     @Test
+    fun `devices say whether they are connected, and a computer that does not say means no`() {
+        val devices = parsePairedDevices(
+            Json.parseToJsonElement(
+                """[{"deviceId":"a","name":"Pixel","connected":true},{"deviceId":"b","name":"S7"}]""",
+            ),
+        )
+
+        assertEquals(listOf(true, false), devices.map { it.connected })
+    }
+
+    @Test
     fun `a computer without the channel, or a malformed row, is no devices rather than a failure`() {
         assertTrue(parsePairedDevices(Json.parseToJsonElement("""{"ok":false}""")).isEmpty())
         assertEquals(1, parsePairedDevices(Json.parseToJsonElement("""[{"name":"no id"},{"deviceId":"x"}]""")).size)

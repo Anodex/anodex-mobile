@@ -691,8 +691,13 @@ private fun RemoteSection(
                     SettingsRow(
                         icon = AnodexIcon.SMARTPHONE,
                         label = if (device.isThisDevice) "${device.name} (this phone)" else device.name,
-                        value = relativeTime(device.lastSeenEpochMs.takeIf { it > 0 })
-                            ?.let { if (device.isThisDevice) "Connected now" else "Last seen $it" },
+                        // "Last seen" only moves when a device connects, so a phone in
+                        // use all afternoon read "Last seen 3 hours ago".
+                        value = if (device.isThisDevice || device.connected) {
+                            "Connected now"
+                        } else {
+                            relativeTime(device.lastSeenEpochMs.takeIf { it > 0 })?.let { "Last seen $it" }
+                        },
                         onClick = { acting = device },
                     )
                 }

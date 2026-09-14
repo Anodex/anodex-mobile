@@ -43,6 +43,7 @@ import dev.anodex.mobile.connection.ModelStatus
 import dev.anodex.mobile.connection.NetworkMonitor
 import dev.anodex.mobile.connection.PairedHostRef
 import dev.anodex.mobile.connection.Reachability
+import dev.anodex.mobile.connection.RemoteFarewell
 import dev.anodex.mobile.connection.connectionDetail
 import dev.anodex.mobile.connection.diagnoseConnectionFailure
 import dev.anodex.mobile.connection.isNoLongerPaired
@@ -142,6 +143,7 @@ private const val CHANNEL_PROJECTS_CHANGED = "projects:changed"
  * a whole turn or a renamed title and the phone should not guess which.
  */
 private const val CHANNEL_CONVERSATIONS_CHANGED = "conversations:changed"
+private const val CHANNEL_DEVICES_CHANGED = "devices:changed"
 
 /**
  * What the assistant is carrying forward has changed on the computer.
@@ -261,6 +263,17 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * nothing useful to add beyond "it did not answer".
      */
     val connectionHint: StateFlow<String?> = _connectionHint.asStateFlow()
+
+    private val _noLongerPaired = MutableStateFlow(false)
+
+    /**
+     * The computer has said it no longer holds this phone's key.
+     *
+     * The offline screen turns into a way back rather than a wait: the headline said
+     * the computer was offline, and Retry was the main button, while the computer was
+     * awake and would refuse every retry.
+     */
+    val noLongerPaired: StateFlow<Boolean> = _noLongerPaired.asStateFlow()
 
     private val _conversations = MutableStateFlow<List<ConversationSummary>>(emptyList())
 
@@ -2002,6 +2015,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                         if (farewell != null) {
                             _connectionHint.value = farewell.explain(host.identity.displayName)
                         }
+                        _noLongerPaired.value = farewell == RemoteFarewell.UNPAIRED
                         controller.onDisconnected(host)
                     }
                 }
@@ -2015,6 +2029,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 if (_newerVersion.value != null) checkForUpdate(force = true)
 
                 _connectionHint.value = null
+                _noLongerPaired.value = false
                 socket = candidate
                 conversationReader = Conversations(candidate)
                 devicesClient = dev.anodex.mobile.devices.Devices(candidate)
@@ -2146,6 +2161,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             attempted = attemptedLabel(stored.addresses, stored.port),
         )
         _connectionHint.value = explanation
+        _noLongerPaired.value = telling?.error?.let(::isNoLongerPaired) == true
         throw telling?.error ?: IllegalStateException(explanation)
     }
 
@@ -2632,6 +2648,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Forget the desktop entirely, dropping the stored secret and its Keystore key. */
     fun unpair() {
+        _noLongerPaired.value = false
         viewModelScope.launch(farEnd) {
             controller.unpair()
             store.clear()
@@ -2711,6 +2728,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             CHANNEL_CONVERSATIONS_CHANGED -> onConversationChanged(event.payload)
+
+            // A device paired, renamed, unpaired, connected or disconnected. Read
+            // again only when the list has been loaded, which is when it is on show.
+            CHANNEL_DEVICES_CHANGED -> if (_pairedDevices.value != null) refreshPairedDevices()
 
             // Most memory is written by the model mid-turn rather than by anyone
             // typing, so this is the one that arrives while the phone is just
@@ -2892,8 +2913,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _chatOpenRequest.value = null
     }
 
-    /** What the home screen widget asked for: a new chat, or a photo for one. */
-    enum class QuickAction { NEW_CHAT, CAMERA }
+    /** What the home screen widget asked for: a new chat, or a photo for one — taken or chosen. */
+    enum class QuickAction { NEW_CHAT, CAMERA, PHOTOS }
 
     private val _quickAction = MutableStateFlow<QuickAction?>(null)
 

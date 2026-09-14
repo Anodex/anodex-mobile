@@ -10,9 +10,10 @@ import dev.anodex.mobile.MainActivity
 import dev.anodex.mobile.R
 
 /**
- * "Ask Anodex…" on the home screen, with a camera beside it.
+ * "Ask Anodex…" on the home screen, with photos and a camera beside it.
  *
- * One tap to a new chat, or to a photo to ask about, without finding the app first.
+ * One tap to a new chat, or to a photo to ask about — taken or chosen — without
+ * finding the app first.
  * Both open the app the way a notification does — onto the one existing copy — and
  * say what was asked for; the app does the rest once it is in front.
  */
@@ -21,6 +22,7 @@ class AskWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, widgetIds: IntArray) {
         val views = RemoteViews(context.packageName, R.layout.widget_ask).apply {
             setOnClickPendingIntent(R.id.widget_ask, launch(context, ACTION_NEW_CHAT))
+            setOnClickPendingIntent(R.id.widget_photos, launch(context, ACTION_PHOTOS))
             setOnClickPendingIntent(R.id.widget_camera, launch(context, ACTION_CAMERA))
         }
         manager.updateAppWidget(widgetIds, views)
@@ -42,5 +44,6 @@ class AskWidget : AppWidgetProvider() {
         const val EXTRA_QUICK_ACTION = "dev.anodex.mobile.quickAction"
         const val ACTION_NEW_CHAT = "new-chat"
         const val ACTION_CAMERA = "camera"
+        const val ACTION_PHOTOS = "photos"
     }
 }
