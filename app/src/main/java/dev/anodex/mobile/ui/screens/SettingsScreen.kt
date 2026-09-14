@@ -3,7 +3,6 @@ package dev.anodex.mobile.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,57 +11,64 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.LocalModel
 import dev.anodex.mobile.chat.Personality
+import dev.anodex.mobile.chat.Project
 import dev.anodex.mobile.chat.detailLabel
+import dev.anodex.mobile.devices.PairedDeviceInfo
+import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.notify.NotificationAccess
-import dev.anodex.mobile.ui.components.Hairline
+import dev.anodex.mobile.profile.UsageProfile
+import dev.anodex.mobile.profile.UserProfile
+import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexSpinner
-import dev.anodex.mobile.ui.components.SpinnerVariant
+import dev.anodex.mobile.ui.components.ConfirmDialog
+import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.SecondaryButton
-import dev.anodex.mobile.memory.MemoryEntry
-import dev.anodex.mobile.profile.UserProfile
-import dev.anodex.mobile.profile.UsageProfile
-import dev.anodex.mobile.chat.ConversationSummary
-import dev.anodex.mobile.chat.Project
-import dev.anodex.mobile.update.UpdateCheck
-import dev.anodex.mobile.ui.theme.FontScale
-import dev.anodex.mobile.ui.theme.UiFont
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import dev.anodex.mobile.ui.theme.MotionPreference
+import dev.anodex.mobile.ui.components.SpinnerVariant
+import dev.anodex.mobile.ui.components.TextInputDialog
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.FontScale
+import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import dev.anodex.mobile.ui.theme.UiFont
+import dev.anodex.mobile.update.UpdateCheck
 
 /**
  * Settings, divided the way the desktop divides them.
@@ -93,6 +99,11 @@ fun SettingsScreen(
     hostName: String? = null,
     hostStatus: String = "Not connected",
     onOpenHost: (() -> Unit)? = null,
+    /** Every device paired with the computer, or null when it is not known. */
+    pairedDevices: List<PairedDeviceInfo>? = null,
+    onRefreshDevices: () -> Unit = {},
+    onRenameDevice: (deviceId: String, name: String) -> Unit = { _, _ -> },
+    onUnpairDevice: (deviceId: String) -> Unit = {},
     /** Whose Anodex this is, read from the computer. Null until it answers. */
     user: UserProfile? = null,
     /** Lifetime activity, as the computer counts it. Null until it answers. */
@@ -244,7 +255,15 @@ fun SettingsScreen(
                 onAllowBackground = onAllowBackground,
             )
 
-            SettingsSection.REMOTE -> RemoteSection(hostName, hostStatus, onOpenHost)
+            SettingsSection.REMOTE -> RemoteSection(
+                hostName,
+                hostStatus,
+                onOpenHost,
+                pairedDevices,
+                onRefreshDevices,
+                onRenameDevice,
+                onUnpairDevice,
+            )
 
             SettingsSection.ARCHIVE -> SectionBody(spacing = Spacing.x4) {
                 ArchiveScreen(
@@ -636,7 +655,22 @@ private fun NotificationsSection(
 }
 
 @Composable
-private fun RemoteSection(hostName: String?, hostStatus: String, onOpenHost: (() -> Unit)?) {
+private fun RemoteSection(
+    hostName: String?,
+    hostStatus: String,
+    onOpenHost: (() -> Unit)?,
+    pairedDevices: List<PairedDeviceInfo>?,
+    onRefreshDevices: () -> Unit,
+    onRenameDevice: (String, String) -> Unit,
+    onUnpairDevice: (String) -> Unit,
+) {
+    // Read when the section opens: another device may have paired since.
+    LaunchedEffect(Unit) { onRefreshDevices() }
+
+    var renaming by remember { mutableStateOf<PairedDeviceInfo?>(null) }
+    var unpairing by remember { mutableStateOf<PairedDeviceInfo?>(null) }
+    var acting by remember { mutableStateOf<PairedDeviceInfo?>(null) }
+
     SectionBody {
         SectionLabel("Your computer")
 
@@ -649,9 +683,80 @@ private fun RemoteSection(hostName: String?, hostStatus: String, onOpenHost: (()
             )
         }
 
-        Footnote(
-            "The full picture \u2014 model, context, project, and unpairing \u2014 is on the " +
-                "computer\u2019s own screen.",
+        if (!pairedDevices.isNullOrEmpty()) {
+            SectionLabel("Paired devices")
+            Group {
+                pairedDevices.forEachIndexed { index, device ->
+                    if (index > 0) RowDivider()
+                    SettingsRow(
+                        icon = AnodexIcon.SMARTPHONE,
+                        label = if (device.isThisDevice) "${device.name} (this phone)" else device.name,
+                        value = relativeTime(device.lastSeenEpochMs.takeIf { it > 0 })
+                            ?.let { if (device.isThisDevice) "Connected now" else "Last seen $it" },
+                        onClick = { acting = device },
+                    )
+                }
+            }
+            Footnote(
+                "Each device keeps its own key. To add one, pair it from the computer\u2019s " +
+                    "Settings \u2192 Remote.",
+            )
+        } else {
+            Footnote(
+                "The full picture \u2014 model, context, project, and pairing \u2014 is on the " +
+                    "computer\u2019s own screen.",
+            )
+        }
+    }
+
+    acting?.let { device ->
+        ConfirmDialog(
+            title = device.name,
+            body = if (device.isThisDevice) {
+                "This phone. Rename it, or unpair it from the computer."
+            } else {
+                "Rename this device, or unpair it so its key stops working."
+            },
+            confirmLabel = "Rename",
+            cancelLabel = "Unpair",
+            onConfirm = {
+                acting = null
+                renaming = device
+            },
+            onDismiss = {
+                acting = null
+                unpairing = device
+            },
+        )
+    }
+
+    renaming?.let { device ->
+        TextInputDialog(
+            title = "Rename device",
+            initial = device.name,
+            confirmLabel = "Rename",
+            onConfirm = { name ->
+                renaming = null
+                if (name.isNotBlank()) onRenameDevice(device.deviceId, name)
+            },
+            onDismiss = { renaming = null },
+        )
+    }
+
+    unpairing?.let { device ->
+        ConfirmDialog(
+            title = if (device.isThisDevice) "Unpair this phone?" else "Unpair ${device.name}?",
+            body = if (device.isThisDevice) {
+                "This phone disconnects now and needs pairing again from the computer to reconnect."
+            } else {
+                "Its key stops working immediately and it is disconnected. Other devices stay paired."
+            },
+            confirmLabel = "Unpair",
+            onConfirm = {
+                unpairing = null
+                onUnpairDevice(device.deviceId)
+            },
+            onDismiss = { unpairing = null },
         )
     }
 }
