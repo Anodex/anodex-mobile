@@ -89,6 +89,20 @@ data class ChatMessage(
     val persona: MessagePersona? = null,
     /** Written while the computer was unreachable, and not sent yet. */
     val queued: Boolean = false,
+    /**
+     * What the model thought before it answered, as far as this phone has it.
+     *
+     * Only a reasoning model writes any. Null when there is none, and also when there
+     * is some on the computer that has not been read yet — see [hasThinking].
+     */
+    val thinking: String? = null,
+    /**
+     * The computer has thinking saved for this reply that is not in [thinking] yet.
+     *
+     * History arrives without it, because it is often longer than the reply, and it is
+     * read when somebody opens it.
+     */
+    val hasThinking: Boolean = false,
 ) {
     enum class Role { USER, ASSISTANT }
 }
@@ -247,11 +261,36 @@ class ChatSession(
         }
     }
 
-    init {
-        scope.launch {
-            socket.events.collect { event -> onEvent(event) }
-        }
+    /** What this session hears from the computer, until it is closed. */
+    private val collector = scope.launch {
+        socket.events.collect { event -> onEvent(event) }
     }
+
+    @Volatile private var closed = false
+
+    /**
+     * This session is no longer the one on screen.
+     *
+     * Stops it listening, once any turn it is running has finished — that turn still
+     * saves, and still says it was answered. A session left listening after it was
+     * replaced went on reading every token of every turn for as long as the app ran,
+     * one more for each conversation opened.
+     */
+    fun close() {
+        closed = true
+        if (!_sending.value) collector.cancel()
+    }
+
+    /**
+     * Ids of the turns the computer already has.
+     *
+     * The ones this session opened with came from it, and every save adds what it
+     * sent. A save then carries only what is new: the computer merges a phone's save
+     * into what it holds rather than replacing it, so sending two hundred turns it
+     * already has, to add two, uploaded the whole transcript after every reply.
+     */
+    private val confirmedIds: MutableSet<String> =
+        java.util.Collections.synchronizedSet(initialMessages.mapTo(HashSet()) { it.id })
 
     fun send(text: String, attachments: List<UploadedFile> = emptyList()) {
         val trimmed = text.trim()
@@ -349,7 +388,10 @@ class ChatSession(
             }
 
             try {
-                call.await().getOrThrow()
+                val result = call.await().getOrThrow()
+                // The finished turn carries its whole thinking, which this phone was not
+                // sent as it was written unless somebody had it open.
+                thinkingFromResult(result)?.let { setThinking(assistantIdFor(messageId), it) }
                 answered = true
             } catch (e: CancellationException) {
                 // Only ours is worth reporting. A cancellation from the scope going
@@ -402,6 +444,7 @@ class ChatSession(
                     ?.let { onAnswered(this@ChatSession, it) }
                 nameAfterFirstReply(messageId)
             }
+            if (closed) collector.cancel()
         }
     }
 
@@ -599,15 +642,19 @@ class ChatSession(
                 appendToken(payload["token"]?.jsonPrimitive?.content ?: return)
             }
 
-            // Not drawn — the phone shows the answer, not the reasoning — but it is the
-            // model working. Ignoring it let a model that thinks for a while before
-            // answering trip the five-minute silence limit while it was busy.
+            // Sent by a current computer only while somebody has the thinking open —
+            // first everything so far, marked `replace`, then the rest as it is written.
+            // It is also the model working: ignoring it let a model that thinks for a
+            // while before answering trip the five-minute silence limit.
             CHANNEL_THINKING -> {
                 val payload = event.payload?.jsonObject ?: return
                 if (payload["conversationId"]?.jsonPrimitive?.content != conversationId) return
                 lastActivityAt = System.currentTimeMillis()
                 _waitingForComputer.value = false
                 _reading.value = null
+                val token = (payload["token"] as? JsonPrimitive)?.contentOrNull ?: return
+                val replace = (payload["replace"] as? JsonPrimitive)?.contentOrNull == "true"
+                appendThinking(token, replace)
             }
 
             CHANNEL_WORKING -> {
@@ -696,6 +743,76 @@ class ChatSession(
         }
     }
 
+    private fun appendThinking(token: String, replace: Boolean) {
+        _messages.value = _messages.value.map { message ->
+            if (message.role == ChatMessage.Role.ASSISTANT && message.streaming) {
+                message.copy(thinking = if (replace) token else message.thinking.orEmpty() + token)
+            } else {
+                message
+            }
+        }
+    }
+
+    private fun setThinking(messageId: String, text: String) {
+        _messages.value = _messages.value.map {
+            if (it.id == messageId) it.copy(thinking = text, hasThinking = false) else it
+        }
+    }
+
+    /**
+     * Read one reply's thinking from the computer, for a reply that has some saved.
+     *
+     * Asked for when somebody opens it rather than sent with the conversation, because
+     * it is often longer than the reply. A read that fails leaves it unread, so
+     * opening it again tries again.
+     */
+    fun loadThinking(messageId: String) {
+        val message = _messages.value.firstOrNull { it.id == messageId } ?: return
+        if (!message.hasThinking || message.thinking != null) return
+        scope.launch {
+            val answer = runCatching {
+                socket.invoke(CHANNEL_READ_THINKING, listOf(JsonPrimitive(conversationId), JsonPrimitive(messageId)))
+            }.getOrElse { return@launch }
+            val text = thinkingTextOf(answer)
+            _messages.value = _messages.value.map {
+                if (it.id == messageId) it.copy(thinking = text.orEmpty(), hasThinking = false) else it
+            }
+        }
+    }
+
+    /**
+     * Bring this conversation up to date with the computer's copy, in place.
+     *
+     * [tail] is the computer's newest turns. What this session holds from before the
+     * first of them is kept, and from there the computer's version replaces this one —
+     * so a reply finished at the desk, or turns cut back by an edit there, arrive
+     * without the whole conversation being read again. Returns false when the two do
+     * not overlap, which means the whole conversation has to be read instead.
+     *
+     * [complete] says [tail] is the whole conversation, and then it simply replaces.
+     */
+    fun syncFromComputer(tail: OpenedConversation, complete: Boolean): Boolean {
+        if (_sending.value) return true
+        val current = _messages.value
+        val merged = if (complete) {
+            tail.messages
+        } else {
+            val first = tail.messages.firstOrNull() ?: return false
+            val at = current.indexOfFirst { it.id == first.id }
+            if (at < 0) return false
+            current.take(at) + tail.messages
+        }
+        // Thinking already read here is kept: the computer's copy only says there is some.
+        val known = current.associateBy { it.id }
+        _messages.value = merged.map { turn ->
+            val had = known[turn.id]?.thinking
+            if (had != null && turn.hasThinking) turn.copy(thinking = had, hasThinking = false) else turn
+        }
+        merged.mapTo(confirmedIds) { it.id }
+        tail.storedTitle?.let { _title.value = it }
+        return true
+    }
+
     private fun finishStreaming() {
         _messages.value = _messages.value.map {
             if (it.streaming) it.copy(streaming = false) else it
@@ -720,6 +837,7 @@ class ChatSession(
         // wrote a conversation that did not contain it.
         val turns = _messages.value.filter { it.text.isNotBlank() || it.attachments.isNotEmpty() }
         if (turns.isEmpty()) return
+        val toSend = turnsToSave(turns, confirmedIds.toSet())
 
         val now = System.currentTimeMillis()
         val conversation = buildJsonObject {
@@ -733,7 +851,7 @@ class ChatSession(
             put(
                 "messages",
                 buildJsonArray {
-                    for (turn in turns) {
+                    for (turn in toSend) {
                         add(
                             buildJsonObject {
                                 put("id", turn.id)
@@ -800,6 +918,7 @@ class ChatSession(
         }
 
         runCatching { socket.invoke(CHANNEL_SAVE, listOf(conversation)) }
+            .onSuccess { toSend.mapTo(confirmedIds) { it.id } }
             .onFailure { _error.value = "Saved on your computer failed: ${it.message}" }
     }
 
@@ -846,6 +965,7 @@ class ChatSession(
         const val CHANNEL_SAVE = "conversations:save"
         const val CHANNEL_STOP = "chat:stop"
         const val CHANNEL_TITLE = "chat:title"
+        const val CHANNEL_READ_THINKING = "conversations:thinking"
 
         /**
          * How long the computer may say nothing before the turn is given up on.
@@ -928,6 +1048,32 @@ internal fun withoutMarkdown(line: String): String = line
     .trim()
     // A rule or a stray run of marks is not a line of text at all.
     .let { if (it.matches(Regex("""[*_`#>~=-]*"""))) "" else it }
+
+/**
+ * The turns a save sends, given the ids the computer already has.
+ *
+ * Only the new ones, because the computer merges a phone's save into what it holds.
+ * Everything, for a conversation never saved, which it may hold none of. And the last
+ * turn alone when nothing is new — a rename — so the save has a turn to merge into
+ * rather than arriving empty.
+ */
+internal fun turnsToSave(turns: List<ChatMessage>, confirmed: Set<String>): List<ChatMessage> {
+    if (confirmed.isEmpty()) return turns
+    val unsent = turns.filterNot { it.id in confirmed }
+    return unsent.ifEmpty { turns.takeLast(1) }
+}
+
+/** The thinking on `chat:send`'s answer — the turn result, in or out of its `{ ok, value }`. */
+internal fun thinkingFromResult(element: JsonElement?): String? {
+    val fields = (element as? JsonObject)?.let { (it["value"] as? JsonObject) ?: it } ?: return null
+    return (fields["thinking"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+}
+
+/** `conversations:thinking`'s answer: the text, or null for none. */
+internal fun thinkingTextOf(element: JsonElement?): String? {
+    val value = (element as? JsonObject)?.get("value") ?: element
+    return (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+}
 
 /** What a quiet turn says it is doing — the desktop's `ChatWorkingEvent.phase`. */
 internal enum class WorkingPhase { WAITING_FOR_MODEL, WORKING, READING }

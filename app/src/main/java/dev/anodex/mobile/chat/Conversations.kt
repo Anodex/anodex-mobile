@@ -76,6 +76,29 @@ class Conversations(private val socket: AnodexSocket) {
             .sortedByDescending { it.updatedAtEpochMs }
     }
 
+    /**
+     * Just these conversations' rows, read again after the computer said they changed.
+     *
+     * One row is a few hundred bytes where the whole list is tens of kilobytes, and a
+     * save is announced after every reply. A conversation archived or gone is absent
+     * from the answer.
+     *
+     * Null when the computer answered with its whole list instead — one from before it
+     * could be asked for less ignores the ids — which the caller takes as the list.
+     */
+    suspend fun summariesOf(ids: Collection<String>): SummaryRead {
+        val result = socket.invoke(
+            CHANNEL_SUMMARIES,
+            listOf(kotlinx.serialization.json.JsonArray(ids.map(::JsonPrimitive))),
+        ) as? JsonArray ?: return SummaryRead.Rows(emptyList())
+        val rows = result.filterNot { it.isArchived() }.mapNotNull { it.asSummary() }
+        return if (rows.any { it.id !in ids }) {
+            SummaryRead.WholeList(rows.sortedByDescending { it.updatedAtEpochMs })
+        } else {
+            SummaryRead.Rows(rows)
+        }
+    }
+
     /** Whether the computer has archived this row. */
     private fun kotlinx.serialization.json.JsonElement.isArchived(): Boolean =
         (this as? JsonObject)?.get("archived")?.jsonPrimitive?.contentOrNull() == "true"
@@ -122,13 +145,13 @@ class Conversations(private val socket: AnodexSocket) {
         return parseAttachmentPreview(answer)
     }
 
-    suspend fun open(conversationId: String): OpenedConversation? {
+    suspend fun open(conversationId: String, limit: Int = RECENT_MESSAGES): OpenedConversation? {
         val conversation = socket.invoke(
             CHANNEL_GET,
-            listOf(JsonPrimitive(conversationId), JsonPrimitive(RECENT_MESSAGES)),
+            listOf(JsonPrimitive(conversationId), JsonPrimitive(limit)),
         ) as? JsonObject ?: return null
 
-        return parseOpenedConversation(conversation) { it.asMessage() }
+        return parseOpenedConversation(conversation, limit) { it.asMessage() }
     }
 
     /**
@@ -241,6 +264,7 @@ class Conversations(private val socket: AnodexSocket) {
             // guess taken from whatever is selected now.
             persona = (this["persona"] as? JsonObject)?.asPersona(),
             attachments = parseRemoteAttachments(this["attachments"]),
+            hasThinking = this["hasThinking"]?.jsonPrimitive?.contentOrNull() == "true",
         )
     }
 
@@ -276,6 +300,31 @@ class Conversations(private val socket: AnodexSocket) {
     }
 }
 
+/** What [Conversations.summariesOf] was answered with. */
+sealed interface SummaryRead {
+    /** The rows asked for that still exist; any missing is archived or gone. */
+    data class Rows(val rows: List<ConversationSummary>) : SummaryRead
+
+    /** The whole list, from a computer that does not read rows by id. */
+    data class WholeList(val rows: List<ConversationSummary>) : SummaryRead
+}
+
+/**
+ * The conversation list with [changed] rows brought up to date.
+ *
+ * [asked] is every id that was read: one asked for and not answered is archived or
+ * gone, and leaves the list.
+ */
+internal fun withChangedRows(
+    list: List<ConversationSummary>,
+    asked: Collection<String>,
+    changed: List<ConversationSummary>,
+): List<ConversationSummary> {
+    val fresh = changed.associateBy { it.id }
+    val kept = list.filterNot { it.id in asked }
+    return (kept + fresh.values).sortedByDescending { it.updatedAtEpochMs }
+}
+
 /** `content` on a JSON null is the string "null", which is never what a caller wants. */
 private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? =
     if (this is kotlinx.serialization.json.JsonNull) null else content
@@ -287,6 +336,11 @@ data class OpenedConversation(
     val projectId: String?,
     val storedTitle: String?,
     val createdAtEpochMs: Long?,
+    /**
+     * True when these are all of the conversation's turns: the computer sent fewer
+     * than were asked for and dropped none to fit.
+     */
+    val complete: Boolean = false,
 )
 
 /**
@@ -297,18 +351,18 @@ data class OpenedConversation(
  */
 internal fun parseOpenedConversation(
     conversation: JsonObject,
+    limit: Int? = null,
     message: (JsonObject) -> ChatMessage?,
 ): OpenedConversation {
     fun text(key: String) = (conversation[key] as? JsonPrimitive)?.contentOrNull()?.takeIf { it.isNotBlank() }
+    val sent = (conversation["messages"] as? JsonArray)?.filterIsInstance<JsonObject>().orEmpty()
 
     return OpenedConversation(
-        messages = (conversation["messages"] as? JsonArray)
-            ?.filterIsInstance<JsonObject>()
-            ?.mapNotNull(message)
-            .orEmpty(),
+        messages = sent.mapNotNull(message),
         projectId = text("projectId"),
         storedTitle = text("title"),
         createdAtEpochMs = text("createdAt")?.toDoubleOrNull()?.toLong()?.takeIf { it > 0 },
+        complete = limit != null && sent.size < limit && text("partial") != "true",
     )
 }
 

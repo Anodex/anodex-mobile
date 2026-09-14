@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -143,6 +144,10 @@ fun ChatScreen(
     onRetryMessage: ((String) -> Unit)? = null,
     /** Send an edited question in place of the original: (message id, new text). */
     onEditMessage: ((String, String) -> Unit)? = null,
+    /** Read a reply's saved thinking from the computer, by message id. */
+    onLoadThinking: (String) -> Unit = {},
+    /** Thinking of a reply still being written was opened (true) or closed (false). */
+    onLiveThinking: (Boolean) -> Unit = {},
     /** What is attached to the message being written, and how it is getting on. */
     pendingAttachments: List<UploadState> = emptyList(),
     /** Null where attaching is not possible — previews, and no socket. */
@@ -534,6 +539,8 @@ fun ChatScreen(
                             },
                             waitingForComputer = waitingForComputer,
                             reading = reading,
+                            onLoadThinking = onLoadThinking,
+                            onLiveThinking = onLiveThinking,
                         )
                     }
                 }
@@ -690,6 +697,8 @@ private fun MessageRow(
      * detail that was forgotten without typing the whole question out again.
      */
     onEdit: ((String) -> Unit)? = null,
+    onLoadThinking: (String) -> Unit = {},
+    onLiveThinking: (Boolean) -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -877,6 +886,29 @@ private fun MessageRow(
                     }
                 }
 
+                // What the model thought first, folded to a line until somebody opens it.
+                // The computer sends thinking only while it is open, so opening it on a
+                // reply still being written asks for it — the thinking so far, then the
+                // rest live — and opening a finished one reads it once.
+                var thoughtsOpen by rememberSaveable(message.id) { mutableStateOf(false) }
+                val liveThoughts = message.streaming && thoughtsOpen
+                DisposableEffect(liveThoughts) {
+                    if (liveThoughts) onLiveThinking(true)
+                    onDispose { if (liveThoughts) onLiveThinking(false) }
+                }
+                LaunchedEffect(thoughtsOpen, message.hasThinking) {
+                    if (thoughtsOpen && message.hasThinking && message.thinking == null) onLoadThinking(message.id)
+                }
+                if (!message.thinking.isNullOrBlank() || message.hasThinking || liveThoughts) {
+                    Thoughts(
+                        thinking = message.thinking,
+                        unread = message.hasThinking,
+                        streaming = message.streaming,
+                        open = thoughtsOpen,
+                        onToggle = { thoughtsOpen = !thoughtsOpen },
+                    )
+                }
+
                 // Open while the turn is working, folded once it has finished.
                 //
                 // This mirrors the desktop's `TurnRecap` deliberately, because the two
@@ -940,7 +972,13 @@ private fun MessageRow(
                     // Nothing has arrived yet and nothing is being reported. Without
                     // this the screen is simply blank, which reads as the app having
                     // frozen rather than the model having started.
-                    ThinkingLine(waitingForComputer, reading)
+                    ThinkingLine(
+                        waitingForComputer,
+                        reading,
+                        // Tapping "Thinking…" opens what is being thought. Not while
+                        // waiting or reading, when there is no thinking yet to show.
+                        onShowThinking = { thoughtsOpen = true }.takeIf { !thoughtsOpen },
+                    )
                 }
 
                 // What ended up different, after the words. The tool rows above say
@@ -1603,11 +1641,84 @@ private val UserBubble = RoundedCornerShape(
     bottomEnd = 4.dp,
 )
 
+/**
+ * A reply's thinking: a rule and its first line, opened to the whole of it.
+ *
+ * Plain text rather than markdown, as on the desktop — a scratchpad, not an answer,
+ * and stray `#` and `*` in it were never meant as formatting. Quiet on purpose: it
+ * must never compete with the reply for attention.
+ */
 @Composable
-private fun ThinkingLine(waitingForComputer: Boolean = false, reading: ReadingProgress? = null) {
+private fun Thoughts(
+    thinking: String?,
+    /** The computer has some that has not been read yet. */
+    unread: Boolean,
+    streaming: Boolean,
+    open: Boolean,
+    onToggle: () -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val text = thinking?.trim()?.takeIf { it.isNotEmpty() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = Spacing.x1),
+    ) {
+        Box(
+            Modifier
+                .width(2.dp)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(1.dp))
+                .background(if (streaming) colors.accent.copy(alpha = 0.6f) else colors.border),
+        )
+        Column(Modifier.padding(start = Spacing.x3).weight(1f)) {
+            if (open) {
+                Text(
+                    text = text ?: if (unread) "Reading the thinking…" else "Nothing yet",
+                    style = type.meta,
+                    color = colors.textMuted,
+                )
+                Text(
+                    text = "Hide thinking",
+                    style = type.label,
+                    color = colors.accentInk,
+                    modifier = Modifier
+                        .clip(Radii.md)
+                        .clickable(role = Role.Button, onClick = onToggle)
+                        .padding(vertical = Spacing.x2),
+                )
+            } else {
+                Text(
+                    text = text?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Show thinking",
+                    style = type.meta,
+                    color = colors.textFaint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 32.dp)
+                        .clickable(onClickLabel = "Show the model's thinking", onClick = onToggle)
+                        .padding(vertical = Spacing.x1),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThinkingLine(
+    waitingForComputer: Boolean = false,
+    reading: ReadingProgress? = null,
+    /** Open the thinking. Null when it is already open. */
+    onShowThinking: (() -> Unit)? = null,
+) {
     val colors = AnodexTheme.colors
     val reducedMotion = LocalReducedMotion.current
     val readingLabel = reading?.label
+    val canShowThinking = onShowThinking != null && !waitingForComputer && readingLabel == null
 
     val transition = rememberInfiniteTransition(label = "thinking")
     val alpha by transition.animateFloat(
@@ -1623,6 +1734,13 @@ private fun ThinkingLine(waitingForComputer: Boolean = false, reading: ReadingPr
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        modifier = if (canShowThinking) {
+            Modifier
+                .heightIn(min = 36.dp)
+                .clickable(onClickLabel = "Show the model's thinking") { onShowThinking?.invoke() }
+        } else {
+            Modifier
+        },
     ) {
         AnodexSpinner(size = 14.dp, thickness = 1.5.dp, tint = colors.textFaint)
 
@@ -1641,6 +1759,7 @@ private fun ThinkingLine(waitingForComputer: Boolean = false, reading: ReadingPr
             style = AnodexTheme.type.chatBody,
             color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),
         )
+        if (canShowThinking) Text("\u203a", style = AnodexTheme.type.meta, color = colors.textFaint)
     }
 
     if (!waitingForComputer && readingLabel != null && reading != null) {
