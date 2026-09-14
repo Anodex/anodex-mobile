@@ -1,5 +1,6 @@
 package dev.anodex.mobile.connection
 
+import dev.anodex.mobile.transport.RemoteCallException
 import java.io.EOFException
 import java.io.IOException
 import java.net.ConnectException
@@ -8,6 +9,8 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.cert.CertificateException
 import javax.net.ssl.SSLHandshakeException
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -119,5 +122,28 @@ class TransportDiagnosisTest {
         second.initCause(first)
 
         assertNull(diagnose(first))
+    }
+
+    @Test
+    fun `a key the computer no longer holds says it was unpaired, not that nothing answered`() {
+        // Seen on the emulator right after it was unpaired from another phone: the
+        // computer answered and refused its key, and the screen said "No answer from
+        // 3 addresses" and asked whether the computer was awake.
+        val refused = RemoteCallException("bad-secret", "That device is not paired.")
+
+        val message = diagnoseConnectionFailure(refused, address, port, hostName = "Gort")
+
+        assertEquals("Gort no longer accepts this phone — it was unpaired. Pair again from the computer.", message)
+        assertTrue(isNoLongerPaired(refused))
+        assertTrue(isNoLongerPaired(RemoteCallException("no-session", "No phone is paired with this computer.")))
+    }
+
+    @Test
+    fun `any other refusal is explained in the computer's own words and is worth retrying`() {
+        val limited = RemoteCallException("rate-limited", "Too many failed attempts.")
+
+        assertEquals("Too many failed attempts.", diagnose(limited))
+        assertFalse(isNoLongerPaired(limited))
+        assertFalse(isNoLongerPaired(SocketTimeoutException()))
     }
 }

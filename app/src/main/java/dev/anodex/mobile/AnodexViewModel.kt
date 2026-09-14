@@ -45,6 +45,7 @@ import dev.anodex.mobile.connection.PairedHostRef
 import dev.anodex.mobile.connection.Reachability
 import dev.anodex.mobile.connection.connectionDetail
 import dev.anodex.mobile.connection.diagnoseConnectionFailure
+import dev.anodex.mobile.connection.isNoLongerPaired
 import dev.anodex.mobile.connection.isUpdateAvailable
 import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.mostTellingFailure
@@ -1935,6 +1936,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         scope = viewModelScope,
         networkRelation = { networkMonitor.currentRelation(_paired.value?.pairedNetworkId) },
         attemptConnection = { host -> openSocket(host) },
+        isFinal = ::isNoLongerPaired,
     )
 
     private val deviceName: String
@@ -2114,6 +2116,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 candidate.close()
                 failures += AttemptFailure(address, e)
+                // Every address leads to the same computer, and it has just said this
+                // key is not paired. Asking again at the next address only counts
+                // towards its lockout.
+                if (isNoLongerPaired(e)) break
             }
         }
 
@@ -2127,6 +2133,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             telling?.error,
             telling?.address ?: stored.addresses.firstOrNull().orEmpty(),
             stored.port,
+            hostName = host.identity.displayName,
         )
 
         val explanation = diagnosis ?: explainUnreachable(

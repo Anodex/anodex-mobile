@@ -33,6 +33,13 @@ class ConnectionController(
      * implementation does not need its own mutual exclusion.
      */
     private val attemptConnection: suspend (PairedHostRef) -> ModelStatus? = { null },
+    /**
+     * Whether a failed attempt settles it, so the loop stops instead of backing off.
+     *
+     * The offline screen's Retry still tries again: a person asking is different from
+     * a loop that would hammer a computer which has already said no.
+     */
+    private val isFinal: (Exception) -> Boolean = { false },
 ) {
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Unpaired)
@@ -176,6 +183,7 @@ class ConnectionController(
                     // Count the failure before waiting on it, so the attempt shown on screen
                     // matches the attempt actually being made rather than the previous one.
                     dispatch(ConnectionEvent.SocketClosed)
+                    if (isFinal(e)) return@launch
                     delay(wait)
                     wait = (wait * BACKOFF_FACTOR).coerceAtMost(MAX_BACKOFF)
                     continue

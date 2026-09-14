@@ -1,5 +1,8 @@
 package dev.anodex.mobile.connection
 
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
@@ -8,9 +11,6 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The controller's timing.
@@ -224,6 +224,35 @@ class ConnectionControllerTest {
 
         val offline = controller.state.value as ConnectionState.Offline
         assertTrue("the wrong-network explanation is shown", offline.networkChanged)
+
+        controller.stop()
+    }
+
+    @Test
+    fun `a refusal that settles it stops the loop, and Retry still tries once more`() = runTest {
+        // An unpaired phone retrying on its backoff counts towards the computer's
+        // lockout, which is shared by every device — it would keep the phones that are
+        // still paired from reconnecting.
+        class NotPaired : Exception("That device is not paired.")
+
+        var attempts = 0
+        val controller = ConnectionController(
+            scope = this,
+            attemptConnection = {
+                attempts++
+                throw NotPaired()
+            },
+            isFinal = { it is NotPaired },
+        )
+        controller.pair(host)
+        advanceTimeBy(2.minutes)
+
+        assertEquals("one attempt, then nothing", 1, attempts)
+        assertTrue(controller.state.value is ConnectionState.Offline)
+
+        controller.retryNow(host)
+        advanceTimeBy(2.minutes)
+        assertEquals(2, attempts)
 
         controller.stop()
     }
