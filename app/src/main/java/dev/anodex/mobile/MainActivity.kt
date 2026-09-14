@@ -1850,6 +1850,8 @@ private fun ChatPane(
             onOpenScheduler = onOpenScheduler,
             onRetryMessage = chat::retry,
             onEditMessage = chat::editAndResend,
+            onLoadThinking = chat::loadThinking,
+            onLiveThinking = viewModel::setLiveThinking,
             pendingAttachments = attachments,
             onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
             onPickPhoto = {

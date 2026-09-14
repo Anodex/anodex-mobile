@@ -160,6 +160,7 @@ private const val CHANNEL_MEMORY_CHANGED = "memory:changed"
 
 /** Telling the computer whether to send tokens as it generates them. */
 private const val CHANNEL_SET_LIVE_TOKENS = "chat:set-live-tokens"
+private const val CHANNEL_SET_LIVE_THINKING = "chat:set-live-thinking"
 
 class AnodexViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -254,6 +255,18 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     /** The live conversation, or null while disconnected. Never a cache - see ChatSession. */
     val chat: StateFlow<ChatSession?> = _chat.asStateFlow()
+
+    /**
+     * Put [session] on screen, and close the one it replaces.
+     *
+     * Closed rather than dropped: a session listens to the socket until it is told to
+     * stop, and every one ever opened used to go on reading every token.
+     */
+    private fun showChat(session: ChatSession?) {
+        val previous = _chat.value
+        _chat.value = session
+        if (previous != null && previous !== session) previous.close()
+    }
 
     private val _pairingError = MutableStateFlow<String?>(null)
     val pairingError: StateFlow<String?> = _pairingError.asStateFlow()
@@ -1188,6 +1201,34 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Whether a reply's thinking is open on screen while the reply is still being written. */
+    @Volatile private var liveThinkingWanted = false
+
+    /**
+     * Somebody opened, or closed, the thinking of a reply still being written.
+     *
+     * The computer sends thinking only while it is open: it is often most of what a
+     * reasoning model writes, and read far less often than the reply.
+     */
+    fun setLiveThinking(wanted: Boolean) {
+        if (liveThinkingWanted == wanted) return
+        liveThinkingWanted = wanted
+        tellComputerAboutThinking()
+    }
+
+    /**
+     * Tell the computer whether to send thinking as it is written. Said on every new
+     * socket, like [tellComputerAboutTokens], and ignored by a computer too old to ask:
+     * that one sends thinking regardless, which the chat shows as it arrives.
+     */
+    private fun tellComputerAboutThinking() {
+        val open = socket ?: return
+        val wanted = liveThinkingWanted
+        viewModelScope.launch {
+            runCatching { open.invoke(CHANNEL_SET_LIVE_THINKING, listOf(JsonPrimitive(wanted))) }
+        }
+    }
+
     /**
      * Whether a reply is arriving right now.
      *
@@ -1935,7 +1976,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 projectId = opened.projectId,
                 existingTitle = opened.storedTitle ?: summary?.storedTitle,
             )
-            _chat.value = session
+            showChat(session)
             then?.invoke(session)
         }
     }
@@ -1956,13 +1997,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun newConversation(projectId: String? = null, temporary: Boolean = false) {
         val open = socket ?: return
-        _chat.value = ChatSession(
-            socket = open,
-            scope = viewModelScope,
-            activePersona = ::currentPersona,
-            onAnswered = ::replyReady,
-            projectId = projectId,
-            temporary = temporary,
+        showChat(
+            ChatSession(
+                socket = open,
+                scope = viewModelScope,
+                activePersona = ::currentPersona,
+                onAnswered = ::replyReady,
+                projectId = projectId,
+                temporary = temporary,
+            ),
         )
     }
 
@@ -2038,7 +2081,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 candidate.onDropped = { farewell ->
                     if (socket === candidate) {
                         _chat.value?.let { rememberForReconnect(it) }
-                        _chat.value = null
+                        showChat(null)
 
                         // The computer's own account of why it went, when it gave
                         // one. It beats anything the phone can work out from a dead
@@ -2081,18 +2124,21 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 // The desktop forgets this when the socket goes, so it is said again
                 // on every new one rather than only when the user changes it.
                 tellComputerAboutTokens()
+                tellComputerAboutThinking()
                 // The greeting on the home screen wants the name, and that screen is
                 // the first thing anybody sees. Reading it only when Settings opens
                 // meant it was never there when it was needed.
                 refreshProfile()
                 modelClient = Models(candidate)
-                _chat.value = ChatSession(
-                    socket = candidate,
-                    scope = viewModelScope,
-                    // Read per turn, so a personality changed mid-conversation labels
-                    // what follows rather than rewriting what came before.
-                    activePersona = ::currentPersona,
-                onAnswered = ::replyReady,
+                showChat(
+                    ChatSession(
+                        socket = candidate,
+                        scope = viewModelScope,
+                        // Read per turn, so a personality changed mid-conversation labels
+                        // what follows rather than rewriting what came before.
+                        activePersona = ::currentPersona,
+                        onAnswered = ::replyReady,
+                    ),
                 )
                 // Adopt whatever the computer calls itself, every connection rather
                 // than only at pairing. A phone paired by typing an address had the
@@ -2813,23 +2859,63 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * gets written afterwards, and a turn that began before this phone connected was
      * never streamed to it at all.
      *
-     * The list is always refreshed, because a change is as likely to be a new
-     * conversation or a new title as it is new turns in this one.
+     * The changed row in the list is read again, because a change is as likely to be a
+     * new conversation or a new title as it is new turns in this one. Only that row: the
+     * whole list is tens of kilobytes and a save is announced after every reply, to
+     * every other device. Changes arriving together are read together.
      *
-     * The open conversation is re-read unless this phone is the one mid-send. The
-     * computer already excludes whoever wrote the change, so a save of this phone's
-     * own turn does not come back here — the guard is for the window between sending
-     * and that save, where a re-read would replace a turn in flight with the version
-     * on disk that does not have it yet.
+     * The open conversation is brought up to date unless this phone is the one
+     * mid-send — a re-read then would replace a turn in flight with the version on disk
+     * that does not have it yet. Its newest turns are read and laid over what is here,
+     * rather than all of it again.
      */
     private fun onConversationChanged(payload: JsonElement?) {
         val changedId = (payload as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: return
+        changedConversations.add(changedId)
+        if (changeRead?.isActive == true) return
+        changeRead = viewModelScope.launch {
+            // A turn's end is announced more than once in a moment: the computer's own
+            // record of it, the phone's save, the title. One read covers them all, and
+            // anything announced while it reads is read straight after.
+            delay(CHANGE_SETTLE_MS)
+            while (changedConversations.isNotEmpty()) {
+                val ids = changedConversations.toSet()
+                changedConversations.removeAll(ids)
+                readChangedRows(ids)
+                _chat.value?.takeIf { it.conversationId in ids && !it.sending.value }
+                    ?.let { syncOpenConversation(it) }
+            }
+        }
+    }
 
-        refreshConversations()
+    private val changedConversations: MutableSet<String> = java.util.Collections.synchronizedSet(LinkedHashSet())
+    private var changeRead: kotlinx.coroutines.Job? = null
 
-        val open = _chat.value ?: return
-        if (open.conversationId != changedId || open.sending.value) return
-        openConversation(changedId)
+    private suspend fun readChangedRows(ids: Set<String>) {
+        val reader = conversationReader ?: return
+        when (val read = runCatching { reader.summariesOf(ids) }.getOrElse { return refreshConversations() }) {
+            is dev.anodex.mobile.chat.SummaryRead.WholeList -> _conversations.value = read.rows
+            is dev.anodex.mobile.chat.SummaryRead.Rows ->
+                _conversations.value = dev.anodex.mobile.chat.withChangedRows(_conversations.value, ids, read.rows)
+        }
+        _conversationsError.value = null
+        rememberRecentsForWidget(_conversations.value)
+    }
+
+    /**
+     * Lay the computer's newest turns over the open conversation.
+     *
+     * A few more than this phone is missing, so the two overlap; the whole of it only
+     * when they do not.
+     */
+    private suspend fun syncOpenConversation(session: ChatSession) {
+        val reader = conversationReader ?: return
+        val stored = _conversations.value.firstOrNull { it.id == session.conversationId }?.messageCount
+        val missing = (stored ?: 0) - session.messages.value.size
+        val limit = (missing + SYNC_OVERLAP).coerceIn(SYNC_OVERLAP, SYNC_MAX)
+        val tail = runCatching { reader.open(session.conversationId, limit) }.getOrNull() ?: return
+        if (_chat.value !== session) return
+        if (!session.syncFromComputer(tail, tail.complete)) openConversation(session.conversationId)
     }
 
     private fun onNotification(payload: JsonElement?) {
@@ -2912,6 +2998,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     /** How long to wait for a dropped conversation to reopen before sending into what is open. */
     private val QUEUE_REOPEN_TIMEOUT_MS = 15_000L
+
+    /** How long announcements of a change are gathered before they are read. */
+    private val CHANGE_SETTLE_MS = 300L
+
+    /** Turns read beyond what the phone is missing, so the computer's copy overlaps this one. */
+    private val SYNC_OVERLAP = 8
+
+    /** The most turns a sync reads — as many as opening the conversation does. */
+    private val SYNC_MAX = 200
 
     /** Whether the app is on screen. Set from the activity's resume and pause. */
     @Volatile private var appVisible = false
@@ -3080,13 +3175,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Rebuilt from the phone's own copy, still temporary: the computer never
             // had it, and reconnecting must not quietly turn it into a saved chat.
             socket?.let { open ->
-                _chat.value = ChatSession(
-                    socket = open,
-                    scope = viewModelScope,
-                    activePersona = ::currentPersona,
-                    onAnswered = ::replyReady,
-                    initialMessages = offline.messages,
-                    temporary = true,
+                showChat(
+                    ChatSession(
+                        socket = open,
+                        scope = viewModelScope,
+                        activePersona = ::currentPersona,
+                        onAnswered = ::replyReady,
+                        initialMessages = offline.messages,
+                        temporary = true,
+                    ),
                 )
             }
         }
