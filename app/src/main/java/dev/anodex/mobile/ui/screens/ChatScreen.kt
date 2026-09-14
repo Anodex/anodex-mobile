@@ -133,6 +133,8 @@ fun ChatScreen(
     userName: String? = null,
     /** Ask the same question again. Null where there is no socket to ask down. */
     onRetryMessage: ((String) -> Unit)? = null,
+    /** Send an edited question in place of the original: (message id, new text). */
+    onEditMessage: ((String, String) -> Unit)? = null,
     /** What is attached to the message being written, and how it is getting on. */
     pendingAttachments: List<UploadState> = emptyList(),
     /** Null where attaching is not possible — previews, and no socket. */
@@ -194,6 +196,8 @@ fun ChatScreen(
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     var draft by remember { mutableStateOf("") }
+    /** The question being edited in place, while its text is in the composer. */
+    var editingId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(sharedDraft) {
         val shared = sharedDraft ?: return@LaunchedEffect
@@ -513,6 +517,7 @@ fun ChatScreen(
                             // arriving, and a retry mid-turn would be refused anyway.
                             actionsEnabled = !sending,
                             onEdit = { text ->
+                                editingId = message.id
                                 draft = text
                                 runCatching { composerFocus.requestFocus() }
                                 // Focus alone leaves the keyboard shut, so Edit ended in a
@@ -605,12 +610,45 @@ fun ChatScreen(
                 )
             }
 
+            // Editing an earlier question: what is sent replaces it. Said above the
+            // composer, with a way out, because the difference from an ordinary send
+            // — the answers after it go — is not something to discover afterwards.
+            editingId?.let {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x1),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Editing your message \u00b7 what came after it is replaced",
+                        style = type.meta,
+                        color = colors.textMuted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "Cancel",
+                        style = type.label,
+                        color = colors.accentInk,
+                        modifier = Modifier
+                            .clip(Radii.md)
+                            .clickable(role = Role.Button) {
+                                editingId = null
+                                draft = ""
+                            }
+                            .padding(Spacing.x2),
+                    )
+                }
+            }
+
             Composer(
                 draft = draft,
                 sending = sending,
                 onDraftChange = { draft = it },
                 onSend = {
-                    onSend(draft)
+                    val editing = editingId
+                    if (editing != null && onEditMessage != null) onEditMessage(editing, draft) else onSend(draft)
+                    editingId = null
                     draft = ""
                 },
                 onClearDraft = { draft = "" },

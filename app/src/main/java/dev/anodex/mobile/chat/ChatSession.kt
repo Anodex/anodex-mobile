@@ -10,21 +10,23 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -449,6 +451,51 @@ class ChatSession(
      * was asked for. Both stay in the transcript, which is also what makes them
      * comparable.
      */
+    /**
+     * Ask an edited version of one of your questions in place of the original.
+     *
+     * The computer cuts the conversation back to just before it (`conversations:branch-for-edit`)
+     * and the edited question is sent from there, so what followed the original goes —
+     * as editing does on the computer, and in ChatGPT and Claude.
+     *
+     * Sent as a new question instead, with a note saying so, when the computer refuses:
+     * in a project chat whose later replies may have changed files (only the computer can
+     * roll those back), or on a computer too old to edit from a phone. A conversation the
+     * computer has never saved — a temporary chat, or one still on its first turn — is
+     * simply cut here.
+     */
+    fun editAndResend(messageId: String, text: String) {
+        if (_sending.value || text.isBlank()) return
+        val index = _messages.value.indexOfFirst { it.id == messageId && it.role == ChatMessage.Role.USER }
+        if (index < 0) {
+            send(text)
+            return
+        }
+
+        scope.launch {
+            val outcome = if (temporary) {
+                EditOutcome.CUT
+            } else {
+                runCatching {
+                    socket.invoke(CHANNEL_BRANCH_FOR_EDIT, listOf(JsonPrimitive(conversationId), JsonPrimitive(messageId)))
+                }.fold(onSuccess = ::editOutcomeOf, onFailure = { EditOutcome.UNSUPPORTED })
+            }
+
+            if (outcome == EditOutcome.CUT) _messages.value = _messages.value.take(index)
+            send(text)
+            // After sending, which clears the error line as a turn starts.
+            _error.value = when (outcome) {
+                EditOutcome.CUT -> return@launch
+                EditOutcome.PROJECT_CHAT ->
+                    "Sent as a new message. Editing an earlier message in a project chat is done on the " +
+                        "computer, where any file changes after it can be rolled back."
+                EditOutcome.REFUSED -> "Sent as a new message — that one couldn't be edited in place."
+                EditOutcome.UNSUPPORTED ->
+                    "Sent as a new message. Update Anodex on your computer to edit messages in place."
+            }
+        }
+    }
+
     fun retry(assistantMessageId: String) {
         if (_sending.value) return
 
@@ -773,6 +820,7 @@ class ChatSession(
 
     private companion object {
         const val CHANNEL_SEND = "chat:send"
+        const val CHANNEL_BRANCH_FOR_EDIT = "conversations:branch-for-edit"
         const val CHANNEL_STREAM = "chat:stream"
         const val CHANNEL_THINKING = "chat:thinking-stream"
         const val CHANNEL_WORKING = "chat:working"
@@ -990,5 +1038,25 @@ internal fun chatRequest(
                 }
             },
         )
+    }
+}
+
+/** What the computer said to cutting a conversation back for an edit. */
+internal enum class EditOutcome { CUT, PROJECT_CHAT, REFUSED, UNSUPPORTED }
+
+/**
+ * `conversations:branch-for-edit`'s answer. Not found means the computer never saved
+ * this conversation, so there is nothing there to cut — and cutting here is right.
+ */
+internal fun editOutcomeOf(element: JsonElement?): EditOutcome {
+    val fields = element as? JsonObject ?: return EditOutcome.UNSUPPORTED
+    val ok = (fields["ok"] as? JsonPrimitive)?.contentOrNull
+    if (ok == "true") return EditOutcome.CUT
+    val code = ((fields["error"] as? JsonObject)?.get("code") as? JsonPrimitive)?.contentOrNull
+    return when (code) {
+        "conversations.edit-not-found" -> EditOutcome.CUT
+        "conversations.edit-project-chat" -> EditOutcome.PROJECT_CHAT
+        null -> EditOutcome.UNSUPPORTED
+        else -> EditOutcome.REFUSED
     }
 }

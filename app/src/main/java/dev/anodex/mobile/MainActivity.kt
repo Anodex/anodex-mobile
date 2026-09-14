@@ -1779,6 +1779,7 @@ private fun ChatPane(
             dueLine = dueLine,
             onOpenScheduler = onOpenScheduler,
             onRetryMessage = chat::retry,
+            onEditMessage = chat::editAndResend,
             pendingAttachments = attachments,
             onAttach = { pickFile.launch(ATTACHABLE_TYPES) },
             onPickPhoto = {
