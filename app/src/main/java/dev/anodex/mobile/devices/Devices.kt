@@ -16,6 +16,11 @@ data class PairedDeviceInfo(
     val lastSeenEpochMs: Long,
     /** This phone. Unpairing it disconnects the app you are using. */
     val isThisDevice: Boolean,
+    /**
+     * Connected to the computer right now. False from a computer too old to say, where
+     * only this phone is known to be connected.
+     */
+    val connected: Boolean = false,
 )
 
 /**
@@ -55,6 +60,7 @@ internal fun parsePairedDevices(element: JsonElement?): List<PairedDeviceInfo> {
             pairedAtEpochMs = text("pairedAtEpochMs")?.toDoubleOrNull()?.toLong() ?: 0L,
             lastSeenEpochMs = text("lastSeenEpochMs")?.toDoubleOrNull()?.toLong() ?: 0L,
             isThisDevice = row["isThisDevice"]?.jsonPrimitive?.contentOrNull == "true",
+            connected = row["connected"]?.jsonPrimitive?.contentOrNull == "true",
         )
     }
 }

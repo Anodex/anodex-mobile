@@ -225,6 +225,7 @@ class MainActivity : ComponentActivity() {
         val action = when (intent?.getStringExtra(AskWidget.EXTRA_QUICK_ACTION)) {
             AskWidget.ACTION_NEW_CHAT -> AnodexViewModel.QuickAction.NEW_CHAT
             AskWidget.ACTION_CAMERA -> AnodexViewModel.QuickAction.CAMERA
+            AskWidget.ACTION_PHOTOS -> AnodexViewModel.QuickAction.PHOTOS
             else -> return
         }
         intent.removeExtra(AskWidget.EXTRA_QUICK_ACTION)
@@ -369,6 +370,7 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
 
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val connectionHint by viewModel.connectionHint.collectAsStateWithLifecycle()
+    val noLongerPaired by viewModel.noLongerPaired.collectAsStateWithLifecycle()
 
     // Up here, above the connected app, because updating needs GitHub and nothing
     // else. It used to live inside the connected scaffold, so with the computer
@@ -524,6 +526,8 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
                 onReplacePairing = { replacingPairing = true },
                 hint = connectionHint,
                 onOpenSettings = { offlineSettings = true },
+                noLongerPaired = noLongerPaired,
+                onPairAgain = viewModel::unpair,
             )
             // Under Settings, which draws over it.
             FloatingUpdateBanner()
@@ -1725,10 +1729,15 @@ private fun ChatPane(
         if (granted) launchCamera() else cameraPermission.launch(android.Manifest.permission.CAMERA)
     }
 
-    // The widget's camera: the new chat is already open, so this is the photo.
+    // The widget's camera and photos: the new chat is already open, so this is the photo.
     val quickAction by viewModel.quickAction.collectAsStateWithLifecycle()
     LaunchedEffect(quickAction) {
         if (quickAction == AnodexViewModel.QuickAction.CAMERA) takePhotoNow()
+        if (quickAction == AnodexViewModel.QuickAction.PHOTOS) {
+            runCatching {
+                pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+        }
         if (quickAction != null && quickAction != AnodexViewModel.QuickAction.NEW_CHAT) viewModel.consumeQuickAction()
     }
 

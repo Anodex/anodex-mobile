@@ -59,6 +59,11 @@ fun OfflineScreen(
      */
     onReplacePairing: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Forget the dead pairing and go to the pairing screen. No question first: the
+     * computer has already refused the key, so there is nothing left to lose.
+     */
+    onPairAgain: () -> Unit = onReplacePairing,
     nowEpochMs: Long = System.currentTimeMillis(),
     /**
      * Why the last attempt could not have worked, when the phone can tell.
@@ -80,6 +85,11 @@ fun OfflineScreen(
     onOpenSettings: (() -> Unit)? = null,
     /** Messages written before the connection went, waiting to be sent. */
     queuedCount: Int = 0,
+    /**
+     * The computer refused this phone's key: it was unpaired. The screen then says so
+     * and leads with pairing again, since retrying cannot work.
+     */
+    noLongerPaired: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -117,7 +127,11 @@ fun OfflineScreen(
             )
 
             Text(
-                text = "${state.host.displayName} is offline.",
+                text = if (noLongerPaired) {
+                    "${state.host.displayName} no longer accepts this phone."
+                } else {
+                    "${state.host.displayName} is offline."
+                },
                 style = type.title,
                 color = colors.text,
                 textAlign = TextAlign.Center,
@@ -125,7 +139,7 @@ fun OfflineScreen(
             )
 
             val lastSeen = state.lastSeenEpochMs?.let { relativeLastSeen(it, nowEpochMs) }
-            if (lastSeen != null) {
+            if (lastSeen != null && !noLongerPaired) {
                 Text(
                     text = "Last seen $lastSeen.",
                     style = type.body,
@@ -135,7 +149,16 @@ fun OfflineScreen(
                 )
             }
 
-            if (hint != null) {
+            if (noLongerPaired) {
+                Text(
+                    text = "This phone was unpaired, from the computer or from another device. " +
+                        "Pair it again: on the computer, open Settings → Remote → Pair another device.",
+                    style = type.body,
+                    color = colors.textMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = Spacing.x3),
+                )
+            } else if (hint != null) {
                 Text(
                     text = hint,
                     style = type.body,
@@ -171,14 +194,16 @@ fun OfflineScreen(
                 )
             }
 
-            Text(
-                text = "Your work stays on your computer, so there's nothing to show until it's " +
-                    "reachable again. Anodex reconnects on its own the moment it is.",
-                style = type.meta,
-                color = colors.textFaint,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = Spacing.x5),
-            )
+            if (!noLongerPaired) {
+                Text(
+                    text = "Your work stays on your computer, so there's nothing to show until it's " +
+                        "reachable again. Anodex reconnects on its own the moment it is.",
+                    style = type.meta,
+                    color = colors.textFaint,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = Spacing.x5),
+                )
+            }
 
         }
 
@@ -205,8 +230,16 @@ fun OfflineScreen(
             // the destruction of the credential — on the one screen where a user is
             // already casting about for something to press. The trailing dots are the
             // standard signal that a further step follows, and one does.
-            SecondaryButton(label = "Pair another…", onClick = onReplacePairing)
-            PrimaryButton(label = "Retry", onClick = onRetry)
+            if (noLongerPaired) {
+                // Retry stays, quieter: unpairing and pairing again at the computer
+                // can happen in either order, and a phone re-paired some other way
+                // should not need a trip through the pairing screen.
+                SecondaryButton(label = "Retry", onClick = onRetry)
+                PrimaryButton(label = "Pair again", onClick = onPairAgain)
+            } else {
+                SecondaryButton(label = "Pair another…", onClick = onReplacePairing)
+                PrimaryButton(label = "Retry", onClick = onRetry)
+            }
         }
 
         // Quiet, and below the buttons, because it is not the answer most of the
@@ -276,6 +309,25 @@ private fun PreviewOfflineNetworkChanged() {
             onReplacePairing = {},
             onOpenSettings = {},
             nowEpochMs = PREVIEW_NOW,
+        )
+    }
+}
+
+@Preview(name = "No longer paired — dark", showBackground = true, heightDp = 720)
+@Composable
+private fun PreviewNoLongerPaired() {
+    AnodexTheme(darkTheme = true) {
+        OfflineScreen(
+            state = ConnectionState.Offline(
+                host = PreviewHost,
+                lastSeenEpochMs = PREVIEW_NOW - 60 * 1000,
+                networkChanged = false,
+            ),
+            onRetry = {},
+            onReplacePairing = {},
+            onOpenSettings = {},
+            nowEpochMs = PREVIEW_NOW,
+            noLongerPaired = true,
         )
     }
 }
