@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Long-press the app icon. Each opens the app the way the widget does: a new chat,
+  a temporary one, or straight to the camera for a photo to ask about.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_chat"
+        android:shortcutId="new-chat"
+        android:shortcutLongLabel="@string/shortcut_new_chat_long"
+        android:shortcutShortLabel="@string/shortcut_new_chat">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="dev.anodex.mobile.MainActivity"
+            android:targetPackage="dev.anodex.mobile">
+            <extra android:name="dev.anodex.mobile.quickAction" android:value="new-chat" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_temporary"
+        android:shortcutId="temporary-chat"
+        android:shortcutLongLabel="@string/shortcut_temporary_long"
+        android:shortcutShortLabel="@string/shortcut_temporary">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="dev.anodex.mobile.MainActivity"
+            android:targetPackage="dev.anodex.mobile">
+            <extra android:name="dev.anodex.mobile.quickAction" android:value="temporary" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_camera"
+        android:shortcutId="camera"
+        android:shortcutLongLabel="@string/shortcut_camera_long"
+        android:shortcutShortLabel="@string/shortcut_camera">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="dev.anodex.mobile.MainActivity"
+            android:targetPackage="dev.anodex.mobile">
+            <extra android:name="dev.anodex.mobile.quickAction" android:value="camera" />
+        </intent>
+    </shortcut>
+</shortcuts>

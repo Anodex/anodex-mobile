@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import dev.anodex.mobile.MainActivity
 import dev.anodex.mobile.R
@@ -116,6 +117,11 @@ class Notifications(private val context: Context) {
          * or the shade without opening the app at all.
          */
         planRunId: String? = null,
+        /**
+         * The conversation a reply typed into the notification goes to. Adds a Reply
+         * button with a text field, so an answer can be followed up from the shade.
+         */
+        replyConversationId: String? = null,
     ): Boolean {
         if (!canNotify()) return false
 
@@ -145,6 +151,17 @@ class Notifications(private val context: Context) {
             // Reject first, so the positive answer sits at the end where the thumb is.
             builder.addAction(0, "Reject", runActionIntent(id, planRunId, conversationId, approve = false))
             builder.addAction(0, "Approve", runActionIntent(id, planRunId, conversationId, approve = true))
+        }
+        if (replyConversationId != null) {
+            val input = RemoteInput.Builder(ReplyReceiver.KEY_REPLY)
+                .setLabel("Reply to Anodex")
+                .build()
+            builder.addAction(
+                NotificationCompat.Action.Builder(0, "Reply", replyIntent(id, replyConversationId))
+                    .addRemoteInput(input)
+                    .setAllowGeneratedReplies(false)
+                    .build(),
+            )
         }
         val notification = builder.build()
 
@@ -183,6 +200,36 @@ class Notifications(private val context: Context) {
             id * 2 + if (approve) 1 else 0,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun replyIntent(id: Int, conversationId: String): PendingIntent {
+        val intent = Intent(context, ReplyReceiver::class.java)
+            .putExtra(ReplyReceiver.EXTRA_CONVERSATION_ID, conversationId)
+        // Mutable, which a reply needs: the system writes the typed text into this
+        // intent. Explicit, so nothing but this app's receiver can be handed it.
+        val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        return PendingIntent.getBroadcast(
+            context,
+            id,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or mutable,
+        )
+    }
+
+    /**
+     * A notification reply that nothing could send, with the words kept.
+     *
+     * The app was closed or not connected. Replaces the notification, so its Reply
+     * stops spinning, and a tap opens the conversation to send it from there.
+     */
+    fun showReplyNotSent(conversationId: String, text: String) {
+        show(
+            id = replyNotificationId(conversationId),
+            kind = NotificationKind.FINISHED,
+            title = "Your reply was not sent",
+            body = "Anodex is not connected to your computer. Open it to send: “$text”",
+            conversationId = conversationId,
         )
     }
 

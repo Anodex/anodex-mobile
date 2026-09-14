@@ -21,7 +21,18 @@ data class PairedDeviceInfo(
      * only this phone is known to be connected.
      */
     val connected: Boolean = false,
-)
+    /** How it reaches the computer while connected: "home", "vpn" or "internet". */
+    val route: String? = null,
+) {
+    /** "Connected now", with how, when the computer says. */
+    val connectedLabel: String
+        get() = "Connected now" + when (route) {
+            "home" -> " · home network"
+            "vpn" -> " · over VPN"
+            "internet" -> " · from outside"
+            else -> ""
+        }
+}
 
 /**
  * The devices paired with the computer: list, rename, unpair.
@@ -61,6 +72,7 @@ internal fun parsePairedDevices(element: JsonElement?): List<PairedDeviceInfo> {
             lastSeenEpochMs = text("lastSeenEpochMs")?.toDoubleOrNull()?.toLong() ?: 0L,
             isThisDevice = row["isThisDevice"]?.jsonPrimitive?.contentOrNull == "true",
             connected = row["connected"]?.jsonPrimitive?.contentOrNull == "true",
+            route = text("route"),
         )
     }
 }

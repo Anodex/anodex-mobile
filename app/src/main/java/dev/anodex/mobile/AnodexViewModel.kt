@@ -59,6 +59,7 @@ import dev.anodex.mobile.memory.MemoryEntry
 import dev.anodex.mobile.notify.NotificationAccess
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
+import dev.anodex.mobile.notify.ReplyBridge
 import dev.anodex.mobile.notify.RunActionBridge
 import dev.anodex.mobile.pairing.CertificateProbe
 import dev.anodex.mobile.pairing.PairedHost
@@ -86,6 +87,9 @@ import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.update.UpdateCheck
 import dev.anodex.mobile.update.UpdateState
 import dev.anodex.mobile.update.Updater
+import dev.anodex.mobile.widget.WidgetConnection
+import dev.anodex.mobile.widget.WidgetRecent
+import dev.anodex.mobile.widget.WidgetState
 import dev.anodex.mobile.workspace.FileContent
 import dev.anodex.mobile.workspace.Workspace
 import dev.anodex.mobile.workspace.WorkspaceFile
@@ -1583,8 +1587,33 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         if (approve) approvePlan(runId) else rejectPlan(runId)
     }
 
+    /** A reply typed into an "answer ready" notification. See [ReplyReceiver]. */
+    private val replyHandler: (String, String) -> Boolean = { conversationId, text ->
+        replyFromNotification(conversationId, text)
+    }
+
     init {
         RunActionBridge.handler = runActionHandler
+        ReplyBridge.handler = replyHandler
+    }
+
+    /**
+     * Send a reply typed into a notification, in that notification's conversation.
+     *
+     * The conversation on screen takes it directly. Any other is opened first, the way
+     * tapping the notification would, and the reply goes once it is loaded. False when
+     * there is no connection to send it through.
+     */
+    fun replyFromNotification(conversationId: String, text: String): Boolean {
+        val current = _chat.value
+        if (current != null && current.conversationId == conversationId) {
+            if (current.sending.value) return false
+            current.send(text)
+            return true
+        }
+        if (socket == null || conversationReader == null) return false
+        openConversation(conversationId) { opened -> opened.send(text) }
+        return true
     }
 
     private fun actOnRun(runId: String, action: suspend (Agents) -> Unit) {
@@ -1746,6 +1775,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 .orKeep(_conversations.value, "Could not read your conversations.")
             _conversations.value = read.value
             _conversationsError.value = read.error
+            rememberRecentsForWidget(read.value)
             _loadingConversations.value = false
         }
     }
@@ -1848,7 +1878,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         return runCatching { reader.search(query) }.getOrDefault(emptyList())
     }
 
-    fun openConversation(conversationId: String) {
+    fun openConversation(
+        conversationId: String,
+        /** Run with the conversation once it is open — a notification reply sends from here. */
+        then: ((ChatSession) -> Unit)? = null,
+    ) {
         notifications.cancel(Notifications.replyNotificationId(conversationId))
         val reader = conversationReader ?: return
         val open = socket ?: return
@@ -1878,7 +1912,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 ?: summary?.createdAtEpochMs?.takeIf { it > 0 }
                 ?: System.currentTimeMillis()
 
-            _chat.value = ChatSession(
+            val session = ChatSession(
                 socket = open,
                 scope = viewModelScope,
                 activePersona = ::currentPersona,
@@ -1901,6 +1935,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 projectId = opened.projectId,
                 existingTitle = opened.storedTitle ?: summary?.storedTitle,
             )
+            _chat.value = session
+            then?.invoke(session)
         }
     }
 
@@ -2546,6 +2582,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         combine(state, turnInFlight(), contextUsage) { current, working, usage ->
             Triple(current, working, usage)
         }.collect { (current, working, usage) ->
+            // The home screen widget's dot. Saved only when it changes, so a context
+            // meter ticking over does not redraw the launcher.
+            WidgetState.saveConnection(context, widgetConnectionFor(current))
+
             val hold = processHoldFor(current)
             if (hold == null) {
                 ConnectionService.stop(context)
@@ -2656,8 +2696,29 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Hand the larger home screen widget the conversations you used most recently.
+     *
+     * The same rule as the drawer's recents: only chats a person started, newest
+     * first — never the scheduled and agent runs that write conversations too.
+     */
+    private fun rememberRecentsForWidget(conversations: List<ConversationSummary>) {
+        WidgetState.saveRecents(
+            getApplication(),
+            conversations
+                .filter { it.isMine }
+                .sortedByDescending { it.updatedAtEpochMs }
+                .take(WidgetState.RECENT_LIMIT)
+                .map { WidgetRecent(it.id, it.title) },
+        )
+    }
+
     override fun onCleared() {
+        // Nothing will be holding the connection once this is gone, so the widget
+        // must not go on showing a green dot for it.
+        WidgetState.saveConnection(getApplication(), WidgetConnection.OFFLINE)
         if (RunActionBridge.handler === runActionHandler) RunActionBridge.handler = null
+        if (ReplyBridge.handler === replyHandler) ReplyBridge.handler = null
         socket?.close()
         // viewModelScope cancellation would stop the loop anyway; saying so explicitly means the
         // controller's lifecycle does not depend on knowing that.
@@ -2884,6 +2945,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // A temporary chat has no conversation on the computer to open again, so
             // a tap brings the app forward instead, where the chat still is.
             conversationId = session.conversationId.takeUnless { session.temporary },
+            replyConversationId = session.conversationId,
         )
     }
 
@@ -2914,7 +2976,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** What the home screen widget asked for: a new chat, or a photo for one — taken or chosen. */
-    enum class QuickAction { NEW_CHAT, CAMERA, PHOTOS }
+    enum class QuickAction { NEW_CHAT, TEMPORARY, CAMERA, PHOTOS }
 
     private val _quickAction = MutableStateFlow<QuickAction?>(null)
 
@@ -2937,7 +2999,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun applyQuickAction(action: QuickAction) {
-        newConversation()
+        newConversation(temporary = action == QuickAction.TEMPORARY)
         _chat.value?.let { _chatOpenRequest.value = it.conversationId }
         _quickAction.value = action
     }
@@ -3146,3 +3208,10 @@ data class RunTurnsState(
 
 /** About a hundred phone-sized pictures, read back from the computer. */
 private const val PICTURE_CACHE_BYTES = 16 * 1024 * 1024
+
+/** The widget's dot for a connection state. */
+internal fun widgetConnectionFor(state: ConnectionState): WidgetConnection = when (state) {
+    is ConnectionState.Connected -> WidgetConnection.CONNECTED
+    is ConnectionState.Reconnecting -> WidgetConnection.RECONNECTING
+    is ConnectionState.Offline, ConnectionState.Unpaired -> WidgetConnection.OFFLINE
+}

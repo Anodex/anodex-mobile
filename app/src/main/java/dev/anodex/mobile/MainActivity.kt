@@ -224,6 +224,7 @@ class MainActivity : ComponentActivity() {
     private fun receiveQuickAction(intent: Intent?) {
         val action = when (intent?.getStringExtra(AskWidget.EXTRA_QUICK_ACTION)) {
             AskWidget.ACTION_NEW_CHAT -> AnodexViewModel.QuickAction.NEW_CHAT
+            AskWidget.ACTION_TEMPORARY -> AnodexViewModel.QuickAction.TEMPORARY
             AskWidget.ACTION_CAMERA -> AnodexViewModel.QuickAction.CAMERA
             AskWidget.ACTION_PHOTOS -> AnodexViewModel.QuickAction.PHOTOS
             else -> return
@@ -1738,7 +1739,7 @@ private fun ChatPane(
                 pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
         }
-        if (quickAction != null && quickAction != AnodexViewModel.QuickAction.NEW_CHAT) viewModel.consumeQuickAction()
+        if (quickAction?.focusesComposer() == false) viewModel.consumeQuickAction()
     }
 
     val colors = AnodexTheme.colors
@@ -1821,7 +1822,7 @@ private fun ChatPane(
             // purpose mid-turn is not a reason to send what was left in the box later.
             onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
             // The widget's "Ask Anodex…": the keyboard is up and waiting on arrival.
-            focusComposer = quickAction == AnodexViewModel.QuickAction.NEW_CHAT,
+            focusComposer = quickAction?.focusesComposer() == true,
             onComposerFocused = viewModel::consumeQuickAction,
             temporary = chat.temporary,
             onToggleTemporary = if (messages.isEmpty()) viewModel::setTemporary else null,
@@ -1964,3 +1965,7 @@ private fun InitialFocusSink() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return
     Box(Modifier.size(1.dp).focusTarget())
 }
+
+/** A new chat, plain or temporary, opens with the keyboard up and waiting. */
+private fun AnodexViewModel.QuickAction.focusesComposer(): Boolean =
+    this == AnodexViewModel.QuickAction.NEW_CHAT || this == AnodexViewModel.QuickAction.TEMPORARY

@@ -10,8 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,6 +117,31 @@ fun UpdateBanner(
                             contentDescription = "Dismiss this notice"
                         },
                     )
+                }
+            }
+        }
+
+        // What the update is for, before deciding whether to take it. The notes are
+        // written for exactly this reader, so they are shown as written.
+        if (release.notes.isNotBlank()) {
+            var showNotes by remember(release.version) { mutableStateOf(false) }
+            Text(
+                text = if (showNotes) "Hide what's new" else "What's new",
+                style = type.label,
+                color = colors.accentInk,
+                modifier = Modifier
+                    .clip(Radii.md)
+                    .clickable(role = Role.Button) { showNotes = !showNotes }
+                    .padding(vertical = Spacing.x1),
+            )
+            if (showNotes) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    MarkdownText(release.notes)
                 }
             }
         }

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The bar both widget sizes share: the Anodex mark with a connection dot on its
+  corner, "Ask Anodex…", photos and a camera.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="56dp"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingEnd="8dp">
+
+    <LinearLayout
+        android:id="@+id/widget_ask"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:contentDescription="@string/widget_ask"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="28dp"
+            android:layout_height="28dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:contentDescription="@null"
+                android:src="@drawable/anodex_mark" />
+
+            <!-- Green connected, amber reconnecting, grey not connected. -->
+            <ImageView
+                android:id="@+id/widget_status"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_gravity="bottom|end"
+                android:contentDescription="@string/widget_status_offline"
+                android:src="@drawable/widget_dot_offline" />
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif"
+            android:maxLines="1"
+            android:text="@string/widget_ask"
+            android:textColor="#FFB4B4B4"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/widget_photos"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/widget_button_background"
+        android:contentDescription="@string/widget_photos"
+        android:padding="10dp"
+        android:src="@drawable/ic_widget_photos" />
+
+    <ImageView
+        android:id="@+id/widget_camera"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/widget_button_background"
+        android:contentDescription="@string/widget_camera"
+        android:padding="10dp"
+        android:src="@drawable/ic_widget_camera" />
+</LinearLayout>
