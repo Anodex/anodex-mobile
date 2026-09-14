@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The home screen widget: the Anodex mark, "Ask Anodex…", photos and a camera.
-
-  A slim bar centred in its cell rather than a slab filling it. The first version
-  stretched to the whole cell, which on a Samsung home screen is far taller than the
-  search bar beside it and read as a black block.
+  The home screen widget at its usual one-row size: a slim bar centred in its cell
+  rather than a slab filling it.
 
   RemoteViews, not Compose: a widget is drawn by the launcher, which only knows the
   platform's own views. Kept to the handful of view types every launcher back to
@@ -16,61 +13,9 @@
     android:paddingStart="2dp"
     android:paddingEnd="2dp">
 
-    <LinearLayout
-        android:id="@+id/widget_root"
+    <include
+        layout="@layout/widget_bar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:layout_gravity="center_vertical"
-        android:background="@drawable/widget_background"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="8dp">
-
-        <LinearLayout
-            android:id="@+id/widget_ask"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:contentDescription="@string/widget_ask"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="@null"
-                android:src="@drawable/anodex_mark" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:ellipsize="end"
-                android:fontFamily="sans-serif"
-                android:maxLines="1"
-                android:text="@string/widget_ask"
-                android:textColor="#FFB4B4B4"
-                android:textSize="16sp" />
-        </LinearLayout>
-
-        <ImageView
-            android:id="@+id/widget_photos"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/widget_button_background"
-            android:contentDescription="@string/widget_photos"
-            android:padding="10dp"
-            android:src="@drawable/ic_widget_photos" />
-
-        <ImageView
-            android:id="@+id/widget_camera"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/widget_button_background"
-            android:contentDescription="@string/widget_camera"
-            android:padding="10dp"
-            android:src="@drawable/ic_widget_camera" />
-    </LinearLayout>
+        android:layout_gravity="center_vertical" />
 </FrameLayout>

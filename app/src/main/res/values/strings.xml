@@ -5,4 +5,16 @@
     <string name="widget_camera">Take a photo for a new chat</string>
     <string name="widget_photos">Choose a photo for a new chat</string>
     <string name="widget_description">Ask Anodex, or ask about a photo you take or choose</string>
+    <string name="shortcut_new_chat">New chat</string>
+    <string name="shortcut_new_chat_long">Start a new chat</string>
+    <string name="shortcut_temporary">Temporary chat</string>
+    <string name="shortcut_temporary_long">Start a temporary chat</string>
+    <string name="shortcut_camera">Camera</string>
+    <string name="shortcut_camera_long">Ask about a photo</string>
+    <string name="tile_ask">Ask Anodex</string>
+    <string name="widget_recent">Recent</string>
+    <string name="widget_recent_empty">Your recent chats will show here</string>
+    <string name="widget_status_connected">Your computer is connected</string>
+    <string name="widget_status_reconnecting">Reconnecting to your computer</string>
+    <string name="widget_status_offline">Not connected to your computer</string>
 </resources>

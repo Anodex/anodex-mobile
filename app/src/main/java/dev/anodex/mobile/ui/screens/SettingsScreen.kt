@@ -694,7 +694,7 @@ private fun RemoteSection(
                         // "Last seen" only moves when a device connects, so a phone in
                         // use all afternoon read "Last seen 3 hours ago".
                         value = if (device.isThisDevice || device.connected) {
-                            "Connected now"
+                            device.connectedLabel
                         } else {
                             relativeTime(device.lastSeenEpochMs.takeIf { it > 0 })?.let { "Last seen $it" }
                         },

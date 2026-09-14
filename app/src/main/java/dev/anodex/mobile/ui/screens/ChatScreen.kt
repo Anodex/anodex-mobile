@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -946,6 +947,7 @@ private fun MessageRow(
                         text = message.text,
                         enabled = actionsEnabled,
                         onRetry = onRetry?.let { retry -> { retry(message.id) } },
+                        shareable = true,
                     )
                 } else if (!message.streaming && message.tools.isEmpty() && onRetry != null) {
                     // A turn that ended with nothing — the phone stopped waiting, or the
@@ -986,10 +988,13 @@ private fun MessageActions(
     enabled: Boolean,
     onRetry: (() -> Unit)?,
     onEdit: (() -> Unit)? = null,
+    /** Offer Share, which hands the text to Android's share sheet. Replies only. */
+    shareable: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
 
     // Reverts on its own. A tick that stays forever stops meaning "just now" and
     // starts meaning "this message is special", which is not a thing.
@@ -1015,6 +1020,16 @@ private fun MessageActions(
             copied = true
         }
 
+        if (shareable) {
+            ActionButton(label = "Share", tint = colors.textFaint, enabled = enabled) {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, text)
+                runCatching {
+                    context.startActivity(android.content.Intent.createChooser(send, "Share reply"))
+                }
+            }
+        }
         if (onRetry != null) {
             ActionButton(label = "Retry", tint = colors.textFaint, enabled = enabled, onClick = onRetry)
         }
