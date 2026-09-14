@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Anodex</string>
+    <string name="widget_ask">Ask Anodex…</string>
+    <string name="widget_camera">Take a photo for a new chat</string>
+    <string name="widget_description">Start a chat or snap a photo to ask about</string>
 </resources>
