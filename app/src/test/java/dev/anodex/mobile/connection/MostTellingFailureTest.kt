@@ -1,5 +1,6 @@
 package dev.anodex.mobile.connection
 
+import dev.anodex.mobile.transport.RemoteCallException
 import java.io.EOFException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -136,5 +137,20 @@ class MostTellingFailureTest {
 
         assertEquals(strange, mostTellingFailure(listOf(timeout, strange)))
         assertEquals(refused, mostTellingFailure(listOf(strange, refused)))
+    }
+
+    @Test
+    fun `the computer refusing the key outranks every address that did not answer`() {
+        val refused = AttemptFailure("10.0.0.153", RemoteCallException("bad-secret", "That device is not paired."))
+
+        val telling = mostTellingFailure(
+            listOf(
+                AttemptFailure("172.23.226.1", SocketTimeoutException()),
+                refused,
+                AttemptFailure("203.0.113.9", SSLPeerUnverifiedException("x")),
+            ),
+        )
+
+        assertEquals(refused, telling)
     }
 }

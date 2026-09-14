@@ -1,5 +1,6 @@
 package dev.anodex.mobile.connection
 
+import dev.anodex.mobile.transport.RemoteCallException
 import java.io.EOFException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -26,7 +27,13 @@ import javax.net.ssl.SSLException
  * Every message names the address and port that were tried. Not knowing what the app
  * actually dialled is most of what makes this hard to report.
  */
-fun diagnoseConnectionFailure(error: Throwable?, address: String, port: Int): String? {
+fun diagnoseConnectionFailure(
+    error: Throwable?,
+    address: String,
+    port: Int,
+    /** What the computer is called, for the one message that is about the computer itself. */
+    hostName: String? = null,
+): String? {
     if (error == null) return null
     val where = "$address:$port"
 
@@ -34,6 +41,20 @@ fun diagnoseConnectionFailure(error: Throwable?, address: String, port: Int): St
     // outer exception is a generic one whose message says nothing.
     for (cause in causeChain(error)) {
         when (cause) {
+            // The computer answered — past the pinned certificate, so it is the right
+            // one — and said no. It was diagnosed as "no answer from 3 addresses" until
+            // this, because nothing here recognised a refusal: after this phone was
+            // unpaired from another device, it was told to check the computer was awake
+            // while the computer was awake, reachable, and refusing its key.
+            is RemoteCallException -> return if (cause.code in NOT_PAIRED_CODES) {
+                "${hostName ?: "The computer at $where"} no longer accepts this phone — it was " +
+                    "unpaired. Pair again from the computer."
+            } else {
+                // Its own words: "Too many failed attempts.", or the protocol mismatch
+                // that ends "Update the app."
+                cause.message
+            }
+
             // The strongest signal available, and the one the network heuristic would
             // most badly misdiagnose. Something answered and proved it was not the
             // computer this phone paired with.
@@ -118,6 +139,10 @@ fun mostTellingFailure(failures: List<AttemptFailure>): AttemptFailure? =
 private fun tellsUs(error: Throwable): Int {
     for (cause in causeChain(error)) {
         when (cause) {
+            // The paired computer itself, answering. Nothing is more definite than
+            // being told.
+            is RemoteCallException -> return 6
+
             // Something answered and proved it was not the paired computer. Nothing
             // else is this conclusive, and it is true of the machine rather than of
             // the route, so one address establishing it settles all of them.
@@ -139,6 +164,22 @@ private fun tellsUs(error: Throwable): Int {
 
     return 1
 }
+
+/**
+ * The computer's codes for a device key it does not hold: this one was unpaired, or
+ * every device was.
+ */
+private val NOT_PAIRED_CODES = setOf("bad-secret", "no-session")
+
+/**
+ * Whether the computer refused this phone's key — so trying again cannot work.
+ *
+ * Retrying is worse than useless. The computer locks out *every* device for five
+ * minutes after ten wrong keys, so an unpaired phone left retrying on its backoff
+ * would keep the phones that are still paired from reconnecting.
+ */
+fun isNoLongerPaired(error: Throwable): Boolean =
+    causeChain(error).any { it is RemoteCallException && it.code in NOT_PAIRED_CODES }
 
 /**
  * The exception and everything underneath it.

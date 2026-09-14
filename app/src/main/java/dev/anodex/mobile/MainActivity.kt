@@ -22,13 +22,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -365,6 +370,37 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val connectionHint by viewModel.connectionHint.collectAsStateWithLifecycle()
 
+    // Up here, above the connected app, because updating needs GitHub and nothing
+    // else. It used to live inside the connected scaffold, so with the computer
+    // offline - or the phone not paired - nothing checked, no banner showed and
+    // Settings had no button. That includes the phone told "Update the app" because
+    // its protocol is too old to connect, which had no way to update at all.
+    val updates = rememberUpdateInstall(viewModel)
+    val updateState by viewModel.update.collectAsStateWithLifecycle()
+    val updateDismissed by viewModel.updateDismissed.collectAsStateWithLifecycle()
+    val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
+
+    /** The banner, over a screen that has no header of its own to sit under. */
+    @Composable
+    fun FloatingUpdateBanner() {
+        if (updateDismissed) return
+        Box(Modifier.fillMaxSize()) {
+            UpdateBanner(
+                state = updateState,
+                canInstall = updates.canInstall,
+                onInstall = viewModel::installUpdate,
+                onGrantInstall = updates.requestPermission,
+                onDismiss = viewModel::dismissUpdate,
+                installedVersion = BuildConfig.VERSION_NAME,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                    ),
+            )
+        }
+    }
+
     // Everything standing between "paired" and "tells you when your computer needs
     // you", asked for in order, as ordinary system dialogs.
     //
@@ -469,12 +505,15 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
     }
 
     when (val current = state) {
-        ConnectionState.Unpaired -> NotPairedScreen(
-            onScan = { scanning = true },
-            onEnterManually = { typing = true },
-            onPreviewDesign = { showingDesignPreview = true },
-            error = pairingError,
-        )
+        ConnectionState.Unpaired -> {
+            NotPairedScreen(
+                onScan = { scanning = true },
+                onEnterManually = { typing = true },
+                onPreviewDesign = { showingDesignPreview = true },
+                error = pairingError,
+            )
+            FloatingUpdateBanner()
+        }
 
         is ConnectionState.Offline -> {
             val waiting by viewModel.queuedMessages.collectAsStateWithLifecycle()
@@ -486,6 +525,8 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
                 hint = connectionHint,
                 onOpenSettings = { offlineSettings = true },
             )
+            // Under Settings, which draws over it.
+            FloatingUpdateBanner()
 
             // Settings, on the one screen that used to have no way to reach them.
             //
@@ -524,6 +565,8 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
                     },
                     hostName = current.host.displayName,
                     hostStatus = "Offline",
+                    updateCheck = updateCheck,
+                    onCheckForUpdates = viewModel::checkForUpdateNow,
                 )
             }
 
@@ -547,7 +590,7 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
             }
         }
 
-        else -> ConnectedScaffold(current, chat, viewModel)
+        else -> ConnectedScaffold(current, chat, viewModel, updates)
     }
 }
 
@@ -561,11 +604,70 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
  * and it has room for the conversation list, which is what people are usually
  * looking for when they navigate at all.
  */
+/** Whether this phone may install an update, and the way to ask it for leave. */
+private class UpdateInstall(val canInstall: Boolean, val requestPermission: () -> Unit)
+
+/**
+ * Checking for, and being allowed to install, a newer build - on every screen.
+ *
+ * Needs GitHub and nothing else, so none of it waits for the computer.
+ */
+@Composable
+private fun rememberUpdateInstall(viewModel: AnodexViewModel): UpdateInstall {
+    var canInstall by remember { mutableStateOf(true) }
+
+    /**
+     * Carry straight on once the permission is granted.
+     *
+     * The user tapped "Allow installs" meaning "update the app", not meaning "visit a
+     * settings page" — so coming back having granted it should continue the job rather
+     * than return them to the same button they just pressed. This page reports no
+     * result of its own, so the answer is read back rather than taken from the
+     * callback.
+     */
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        canInstall = viewModel.canInstallUpdates()
+        if (canInstall) viewModel.installUpdate()
+    }
+
+    // A cold start always looks, throttle or not: GitHub is the only source that
+    // works when the computer is not reachable, which is exactly when somebody is
+    // most likely to be wondering whether their app is current.
+    LaunchedEffect(Unit) { viewModel.checkForUpdate(force = true) }
+
+    /**
+     * Re-read every time the app comes back to the front.
+     *
+     * The permission is granted on a system screen, so the app is always backgrounded
+     * at the moment it changes and there is no callback that carries the new value.
+     * Keying this on the update state instead was the bug: the state does not change
+     * while the user is away, so returning from the settings page left the banner
+     * still offering "Allow installs" and tapping it sent them straight back — a loop
+     * that only a force-close broke.
+     */
+    LifecycleResumeEffect(Unit) {
+        canInstall = viewModel.canInstallUpdates()
+
+        // And ask again whether there is a newer build. Checking only at launch meant
+        // reopening from recents — which resumes this process rather than starting
+        // one — never checked again, so an update published while the app sat in the
+        // background stayed invisible until something else forced a reconnect. The
+        // view model throttles this; it is safe to call on every resume.
+        viewModel.checkForUpdate()
+        onPauseOrDispose { }
+    }
+
+    return UpdateInstall(canInstall) { launcher.launch(viewModel.installPermissionIntent()) }
+}
+
 @Composable
 private fun ConnectedScaffold(
     state: ConnectionState,
     chat: ChatSession?,
     viewModel: AnodexViewModel,
+    updates: UpdateInstall,
 ) {
     val colors = AnodexTheme.colors
     // Read here rather than inside Settings, because the greeting on an empty chat
@@ -662,28 +764,7 @@ private fun ConnectedScaffold(
     val updateState by viewModel.update.collectAsStateWithLifecycle()
     val updateDismissed by viewModel.updateDismissed.collectAsStateWithLifecycle()
 
-    var canInstallUpdates by remember { mutableStateOf(true) }
-
-    /**
-     * Re-read every time the app comes back to the front.
-     *
-     * The permission is granted on a system screen, so the app is always backgrounded
-     * at the moment it changes and there is no callback that carries the new value.
-     * Keying this on the update state instead was the bug: the state does not change
-     * while the user is away, so returning from the settings page left the banner
-     * still offering "Allow installs" and tapping it sent them straight back — a loop
-     * that only a force-close broke.
-     */
     LifecycleResumeEffect(Unit) {
-        canInstallUpdates = viewModel.canInstallUpdates()
-
-        // And ask again whether there is a newer build. Checking only at launch meant
-        // reopening from recents — which resumes this process rather than starting
-        // one — never checked again, so an update published while the app sat in the
-        // background stayed invisible until something else forced a reconnect. The
-        // view model throttles this; it is safe to call on every resume.
-        viewModel.checkForUpdate()
-
         // The unread count feeds the opener on an empty chat, which is the first thing
         // a resumed app shows, so it is read again here rather than trusted from
         // whenever the connection last came up.
@@ -692,27 +773,6 @@ private fun ConnectedScaffold(
         viewModel.onAppVisible(true)
         onPauseOrDispose { viewModel.onAppVisible(false) }
     }
-
-    /**
-     * Carry straight on once the permission is granted.
-     *
-     * The user tapped "Allow installs" meaning "update the app", not meaning "visit a
-     * settings page" — so coming back having granted it should continue the job rather
-     * than return them to the same button they just pressed. This page reports no
-     * result of its own, so the answer is read back rather than taken from the
-     * callback.
-     */
-    val installPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) {
-        canInstallUpdates = viewModel.canInstallUpdates()
-        if (canInstallUpdates) viewModel.installUpdate()
-    }
-
-    // A cold start always looks, throttle or not: GitHub is the only source that
-    // works when the computer is not reachable, which is exactly when somebody is
-    // most likely to be wondering whether their app is current.
-    LaunchedEffect(Unit) { viewModel.checkForUpdate(force = true) }
 
     // Fetched when its destination is opened rather than on every connect: a phone
     // that never opens Agents should not be polling the computer for them. The
@@ -1230,9 +1290,9 @@ private fun ConnectedScaffold(
             if (!floatingChrome && !updateDismissed) {
                 UpdateBanner(
                     state = updateState,
-                    canInstall = canInstallUpdates,
+                    canInstall = updates.canInstall,
                     onInstall = viewModel::installUpdate,
-                    onGrantInstall = { installPermission.launch(viewModel.installPermissionIntent()) },
+                    onGrantInstall = updates.requestPermission,
                     onDismiss = viewModel::dismissUpdate,
                     installedVersion = BuildConfig.VERSION_NAME,
                 )
@@ -1443,11 +1503,9 @@ private fun ConnectedScaffold(
                 if (!updateDismissed) {
                     UpdateBanner(
                         state = updateState,
-                        canInstall = canInstallUpdates,
+                        canInstall = updates.canInstall,
                         onInstall = viewModel::installUpdate,
-                        onGrantInstall = {
-                            installPermission.launch(viewModel.installPermissionIntent())
-                        },
+                        onGrantInstall = updates.requestPermission,
                         onDismiss = viewModel::dismissUpdate,
                         installedVersion = BuildConfig.VERSION_NAME,
                     )
