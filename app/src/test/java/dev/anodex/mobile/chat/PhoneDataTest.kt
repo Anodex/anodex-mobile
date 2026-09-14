@@ -80,6 +80,35 @@ class PhoneDataTest {
     }
 
     @Test
+    fun `a sync keeps the thinking and tool rows of a reply this phone watched finish`() {
+        // Seen on the emulator: the thinking of a reply vanished the moment it ended,
+        // replaced by the computer's copy, which carries none.
+        val watched = ChatMessage(
+            "q:reply",
+            ChatMessage.Role.ASSISTANT,
+            "Stripes.",
+            tools = listOf(ToolActivity("t", "web_search", "Searched", null, ToolActivity.Status.DONE)),
+            thinking = "Why stripes?",
+        )
+        val fromComputer = ChatMessage("q:reply", ChatMessage.Role.ASSISTANT, "Stripes.")
+
+        assertEquals(watched, keepWhatOnlyThisPhoneHas(watched, fromComputer))
+    }
+
+    @Test
+    fun `a sync takes the computer's words for a turn that changed there, and keeps the rest`() {
+        val had = ChatMessage("r", ChatMessage.Role.ASSISTANT, "Half a rep", thinking = "Hm.")
+        val fromComputer = ChatMessage("r", ChatMessage.Role.ASSISTANT, "Half a reply, finished.", hasThinking = true)
+
+        val synced = keepWhatOnlyThisPhoneHas(had, fromComputer)
+
+        assertEquals("Half a reply, finished.", synced.text)
+        assertEquals("Hm.", synced.thinking)
+        assertFalse(synced.hasThinking)
+        assertEquals(fromComputer, keepWhatOnlyThisPhoneHas(null, fromComputer))
+    }
+
+    @Test
     fun `a conversation read in full is known to be whole, and a tail is not`() {
         fun open(json: String, limit: Int) =
             parseOpenedConversation(Json.parseToJsonElement(json).jsonObject, limit) {

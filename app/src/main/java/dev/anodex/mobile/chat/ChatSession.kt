@@ -802,12 +802,8 @@ class ChatSession(
             if (at < 0) return false
             current.take(at) + tail.messages
         }
-        // Thinking already read here is kept: the computer's copy only says there is some.
         val known = current.associateBy { it.id }
-        _messages.value = merged.map { turn ->
-            val had = known[turn.id]?.thinking
-            if (had != null && turn.hasThinking) turn.copy(thinking = had, hasThinking = false) else turn
-        }
+        _messages.value = merged.map { turn -> keepWhatOnlyThisPhoneHas(known[turn.id], turn) }
         merged.mapTo(confirmedIds) { it.id }
         tail.storedTitle?.let { _title.value = it }
         return true
@@ -1061,6 +1057,28 @@ internal fun turnsToSave(turns: List<ChatMessage>, confirmed: Set<String>): List
     if (confirmed.isEmpty()) return turns
     val unsent = turns.filterNot { it.id in confirmed }
     return unsent.ifEmpty { turns.takeLast(1) }
+}
+
+/**
+ * One turn after a sync: the computer's copy, keeping what only this phone holds.
+ *
+ * The computer's transcript for a phone carries text, author and attachments — not
+ * the tool rows, the changed files, or thinking already read. A turn whose text is
+ * unchanged is kept exactly as this phone has it, which is every turn it watched
+ * finish: replacing those emptied the tool log and the thinking of a reply the
+ * moment it ended.
+ */
+internal fun keepWhatOnlyThisPhoneHas(had: ChatMessage?, computer: ChatMessage): ChatMessage {
+    if (had == null) return computer
+    if (had.text == computer.text) {
+        return had.copy(hasThinking = had.thinking == null && (had.hasThinking || computer.hasThinking))
+    }
+    return computer.copy(
+        tools = had.tools,
+        changedFiles = had.changedFiles,
+        thinking = had.thinking,
+        hasThinking = had.thinking == null && computer.hasThinking,
+    )
 }
 
 /** The thinking on `chat:send`'s answer — the turn result, in or out of its `{ ok, value }`. */
