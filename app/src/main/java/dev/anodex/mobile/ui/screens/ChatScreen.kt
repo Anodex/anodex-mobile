@@ -124,6 +124,8 @@ fun ChatScreen(
     waitingForComputer: Boolean = false,
     /** How far the computer has read this turn's prompt — see `ChatSession.reading`. */
     reading: ReadingProgress? = null,
+    /** "sharing the model with another job", while this turn shares it. See `ModelStatus.sharingNote`. */
+    sharingNote: String? = null,
     onSend: (String) -> Unit,
     onStop: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -539,6 +541,7 @@ fun ChatScreen(
                             },
                             waitingForComputer = waitingForComputer,
                             reading = reading,
+                            sharingNote = sharingNote,
                             onLoadThinking = onLoadThinking,
                             onLiveThinking = onLiveThinking,
                         )
@@ -689,6 +692,7 @@ private fun MessageRow(
     actionsEnabled: Boolean = true,
     waitingForComputer: Boolean = false,
     reading: ReadingProgress? = null,
+    sharingNote: String? = null,
     /**
      * Put a sent message back in the composer to change and send again.
      *
@@ -975,6 +979,7 @@ private fun MessageRow(
                     ThinkingLine(
                         waitingForComputer,
                         reading,
+                        sharingNote = sharingNote,
                         // Tapping "Thinking…" opens what is being thought. Not while
                         // waiting or reading, when there is no thinking yet to show.
                         onShowThinking = { thoughtsOpen = true }.takeIf { !thoughtsOpen },
@@ -1714,6 +1719,7 @@ private fun Thoughts(
 private fun ThinkingLine(
     waitingForComputer: Boolean = false,
     reading: ReadingProgress? = null,
+    sharingNote: String? = null,
     /** Open the thinking. Null when it is already open. */
     onShowThinking: (() -> Unit)? = null,
 ) {
@@ -1757,6 +1763,9 @@ private fun ThinkingLine(
                 // "Thinking…" for all of it.
                 readingLabel != null -> readingLabel
                 else -> "Thinking…"
+            }.let { label ->
+                // Not while queued: a turn waiting for the model is not yet sharing it.
+                if (sharingNote != null && !waitingForComputer) "$label · $sharingNote" else label
             },
             style = AnodexTheme.type.chatBody,
             color = colors.textFaint.copy(alpha = if (reducedMotion) 1f else alpha),

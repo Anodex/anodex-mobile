@@ -36,7 +36,26 @@ data class ToolApproval(
      * and until now it asked for it every time.
      */
     val diff: FileDiff? = null,
+    /**
+     * How long the computer said was left when it sent this, or null from a computer
+     * older than 0.9.13, which gives the full five minutes.
+     */
+    val expiresInMs: Long? = null,
+    /** When this phone received it, which is when [expiresInMs] was counted from. */
+    val receivedAtMs: Long = System.currentTimeMillis(),
 ) {
+    /**
+     * Whole seconds until the computer declines it.
+     *
+     * Counted from when it arrived rather than from when the card was drawn: a card
+     * reopened minutes later showed nearly five minutes left while the computer had
+     * far less.
+     */
+    fun secondsLeft(nowMs: Long): Int {
+        val deadline = receivedAtMs + (expiresInMs ?: DEFAULT_WINDOW_MS)
+        return ((deadline - nowMs + 999) / 1000).coerceAtLeast(0).toInt()
+    }
+
     enum class Risk { SAFE, SENSITIVE, DESTRUCTIVE }
 
     companion object {
@@ -65,8 +84,12 @@ data class ToolApproval(
                 // An email draft is still summarised rather than shown. Saying so is
                 // honest; rendering the summary alone and staying quiet is not.
                 hasUnshownDetail = payload["emailDraft"] != null,
+                expiresInMs = (payload["expiresInMs"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toLong(),
             )
         }
+
+        /** How long the computer waits for an answer, when it did not say. */
+        const val DEFAULT_WINDOW_MS = 5 * 60 * 1000L
 
         private fun JsonObject.str(key: String): String? =
             (this[key] as? JsonPrimitive)?.let { if (it.isString || it.content != "null") it.content else null }
