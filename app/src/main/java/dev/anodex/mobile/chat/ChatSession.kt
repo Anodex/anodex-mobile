@@ -148,6 +148,11 @@ class ChatSession(
     val conversationId: String = UUID.randomUUID().toString(),
     initialMessages: List<ChatMessage> = emptyList(),
     /**
+     * Whether [initialMessages] came from the computer. False for turns this phone is
+     * holding that the computer may not have saved yet, so the next save sends them.
+     */
+    initialMessagesSaved: Boolean = true,
+    /**
      * When this conversation began, for an existing one.
      *
      * Passed in rather than stamped on open: re-saving with "now" would overwrite
@@ -289,8 +294,9 @@ class ChatSession(
      * into what it holds rather than replacing it, so sending two hundred turns it
      * already has, to add two, uploaded the whole transcript after every reply.
      */
-    private val confirmedIds: MutableSet<String> =
-        java.util.Collections.synchronizedSet(initialMessages.mapTo(HashSet()) { it.id })
+    private val confirmedIds: MutableSet<String> = java.util.Collections.synchronizedSet(
+        if (initialMessagesSaved) initialMessages.mapTo(HashSet()) { it.id } else HashSet(),
+    )
 
     fun send(text: String, attachments: List<UploadedFile> = emptyList()) {
         val trimmed = text.trim()

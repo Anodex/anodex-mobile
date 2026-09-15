@@ -1921,6 +1921,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun openConversation(
         conversationId: String,
+        /**
+         * What this phone was holding of it, for a conversation the computer may not have
+         * saved yet. See [resumeAfterReconnect].
+         */
+        heldHere: OfflineChat? = null,
         /** Run with the conversation once it is open — a notification reply sends from here. */
         then: ((ChatSession) -> Unit)? = null,
     ) {
@@ -1937,8 +1942,30 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Said out loud, too. Leaving it closed and silent is safe and looks
             // exactly like a broken app: the drawer shuts, nothing opens, and there is
             // nothing on screen to suggest the tap was even received.
+            val found = runCatching { reader.open(conversationId) }.getOrNull()
+            // Not on the computer yet is not the same as gone. A connection that drops
+            // during a chat's first reply comes back before the computer has saved that
+            // chat — it saves a phone's turn when the reply finishes — and reopening it
+            // said "It is not on your computer any more" over an empty new chat while the
+            // reply was still being written. It is shown from what this phone held
+            // instead, and the computer's copy replaces it when the turn is saved.
+            if (found == null && heldHere != null && heldHere.messages.isNotEmpty()) {
+                val session = ChatSession(
+                    socket = open,
+                    scope = viewModelScope,
+                    activePersona = ::currentPersona,
+                    onAnswered = ::replyReady,
+                    conversationId = conversationId,
+                    initialMessages = heldHere.messages,
+                    initialMessagesSaved = false,
+                    projectId = heldHere.projectId,
+                )
+                showChat(session)
+                then?.invoke(session)
+                return@launch
+            }
             val opened = runCatching {
-                reader.open(conversationId) ?: error("It is not on your computer any more.")
+                found ?: reader.open(conversationId) ?: error("It is not on your computer any more.")
             }
                 .getOrElse { failure ->
                     _notice.value = failure.message?.takeIf { it.isNotBlank() }
@@ -3109,6 +3136,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val messages: List<ChatMessage>,
         /** A temporary chat, which has nothing on the computer to reopen. */
         val temporary: Boolean = false,
+        /** The project it runs against, for a chat reopened from this copy. */
+        val projectId: String? = null,
     )
 
     private val _offlineChat = MutableStateFlow<OfflineChat?>(null)
@@ -3154,6 +3183,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             conversationId = if (messages.isEmpty() || session.temporary) "" else session.conversationId,
             messages = messages,
             temporary = session.temporary,
+            projectId = session.projectId,
         )
     }
 
@@ -3170,7 +3200,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val goingElsewhere = pendingNotificationOpen != null || pendingShare != null
 
         if (offline.conversationId.isNotEmpty() && !goingElsewhere) {
-            openConversation(offline.conversationId)
+            openConversation(offline.conversationId, heldHere = offline)
         } else if (offline.temporary && !goingElsewhere) {
             // Rebuilt from the phone's own copy, still temporary: the computer never
             // had it, and reconnecting must not quietly turn it into a saved chat.

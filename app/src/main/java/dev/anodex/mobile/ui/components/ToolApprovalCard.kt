@@ -10,9 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -80,6 +82,11 @@ fun ToolApprovalCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // As tall as what it says. The edge below fills the height it is given,
+            // and without this it was given the whole screen: the card grew over the
+            // conversation, its question slid under the header, and the composer was
+            // pushed off the bottom (seen on a web-search approval on the emulator).
+            .height(IntrinsicSize.Min)
             .clip(Radii.lg)
             .background(colors.bgSurface),
     ) {

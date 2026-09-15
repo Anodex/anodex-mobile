@@ -996,10 +996,12 @@ private fun MessageRow(
                         onRetry = onRetry?.let { retry -> { retry(message.id) } },
                         shareable = true,
                     )
-                } else if (!message.streaming && message.tools.isEmpty() && onRetry != null) {
+                } else if (!message.streaming && onRetry != null) {
                     // A turn that ended with nothing — the phone stopped waiting, or the
                     // computer failed before a word. It used to leave a name over an
                     // empty space and no way to ask again short of retyping the question.
+                    // Also when it ran a tool first: a reply stopped after a web search
+                    // was refused showed the search and nothing to press.
                     Row(
                         modifier = Modifier.padding(top = Spacing.x1),
                         verticalAlignment = Alignment.CenterVertically,
