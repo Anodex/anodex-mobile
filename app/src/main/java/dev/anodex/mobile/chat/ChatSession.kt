@@ -103,6 +103,12 @@ data class ChatMessage(
      * read when somebody opens it.
      */
     val hasThinking: Boolean = false,
+    /**
+     * The reply stopped partway — out of room, out of time, or the model failed — rather
+     * than finishing or being stopped by the user. What it did is kept, so it can be
+     * continued rather than only asked again.
+     */
+    val endedEarly: Boolean = false,
 ) {
     enum class Role { USER, ASSISTANT }
 }
@@ -412,6 +418,7 @@ class ChatSession(
                 // The finished turn carries its whole thinking, which this phone was not
                 // sent as it was written unless somebody had it open.
                 thinkingFromResult(result)?.let { setThinking(assistantIdFor(messageId), it) }
+                if (endedEarlyFromResult(result)) markEndedEarly(assistantIdFor(messageId))
                 answered = true
             } catch (e: CancellationException) {
                 // Only ours is worth reporting. A cancellation from the scope going
@@ -751,6 +758,10 @@ class ChatSession(
                 message
             }
         }
+    }
+
+    private fun markEndedEarly(messageId: String) {
+        _messages.value = _messages.value.map { if (it.id == messageId) it.copy(endedEarly = true) else it }
     }
 
     private fun appendToken(token: String) {
@@ -1115,13 +1126,17 @@ internal fun turnsToSave(turns: List<ChatMessage>, confirmed: Set<String>): List
 internal fun keepWhatOnlyThisPhoneHas(had: ChatMessage?, computer: ChatMessage): ChatMessage {
     if (had == null) return computer
     if (had.text == computer.text) {
-        return had.copy(hasThinking = had.thinking == null && (had.hasThinking || computer.hasThinking))
+        return had.copy(
+            hasThinking = had.thinking == null && (had.hasThinking || computer.hasThinking),
+            endedEarly = had.endedEarly || computer.endedEarly,
+        )
     }
     return computer.copy(
         tools = had.tools,
         changedFiles = had.changedFiles,
         thinking = had.thinking,
         hasThinking = had.thinking == null && computer.hasThinking,
+        endedEarly = had.endedEarly || computer.endedEarly,
     )
 }
 
@@ -1130,6 +1145,31 @@ internal fun thinkingFromResult(element: JsonElement?): String? {
     val fields = (element as? JsonObject)?.let { (it["value"] as? JsonObject) ?: it } ?: return null
     return (fields["thinking"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 }
+
+/**
+ * Whether `chat:send`'s answer says the reply stopped partway: `stopped` for a reason
+ * other than the user pressing Stop.
+ */
+internal fun endedEarlyFromResult(element: JsonElement?): Boolean {
+    val fields = (element as? JsonObject)?.let { (it["value"] as? JsonObject) ?: it } ?: return false
+    val stopped = (fields["stopped"] as? JsonPrimitive)?.content == "true"
+    val reason = (fields["stopReason"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    return stopped && reason != null && reason != "user"
+}
+
+/** What Continue sends: the same instruction the computer resumes a reply with. */
+internal const val CONTINUE_MESSAGE = "Continue from where you stopped."
+
+/**
+ * Whether a reply can be continued: the newest reply, stopped partway, having written
+ * or done something to continue from.
+ */
+internal fun canContinue(message: ChatMessage, isNewest: Boolean): Boolean =
+    isNewest &&
+        message.role == ChatMessage.Role.ASSISTANT &&
+        !message.streaming &&
+        message.endedEarly &&
+        (message.text.isNotBlank() || message.tools.isNotEmpty())
 
 /** `conversations:thinking`'s answer: the text, or null for none. */
 internal fun thinkingTextOf(element: JsonElement?): String? {

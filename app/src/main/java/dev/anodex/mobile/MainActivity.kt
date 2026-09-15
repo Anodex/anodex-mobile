@@ -1856,6 +1856,7 @@ private fun ChatPane(
             dueLine = dueLine,
             onOpenScheduler = onOpenScheduler,
             onRetryMessage = chat::retry,
+            onContinue = { viewModel.sendMessage(dev.anodex.mobile.chat.CONTINUE_MESSAGE) },
             onEditMessage = chat::editAndResend,
             onLoadThinking = chat::loadThinking,
             onLiveThinking = viewModel::setLiveThinking,
