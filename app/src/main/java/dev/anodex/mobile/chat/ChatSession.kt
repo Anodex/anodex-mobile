@@ -196,7 +196,7 @@ class ChatSession(
      */
     val temporary: Boolean = false,
 ) {
-    private val _title = MutableStateFlow(existingTitle?.takeIf { it.isNotBlank() })
+    private val _title = MutableStateFlow(initialTitle(existingTitle, initialMessages.isNotEmpty()))
 
     /**
      * The computer's title for this conversation, once there is one.
@@ -811,7 +811,7 @@ class ChatSession(
         val known = current.associateBy { it.id }
         _messages.value = merged.map { turn -> keepWhatOnlyThisPhoneHas(known[turn.id], turn) }
         merged.mapTo(confirmedIds) { it.id }
-        tail.storedTitle?.let { _title.value = it }
+        _title.value = titleFromComputer(tail.storedTitle, _title.value)
         return true
     }
 
@@ -1002,6 +1002,30 @@ class ChatSession(
  *
  * @param existing the title the computer already stores, or null if it has none yet.
  */
+/** The title the computer gives a conversation before anyone has named it. */
+internal fun isPlaceholderTitle(title: String): Boolean = title.trim() == "New chat"
+
+/**
+ * The name a session starts with, or null for a conversation still to be named.
+ *
+ * An empty conversation made at the computer reads "New chat" until its first turn.
+ * Taken as a name, it stopped the phone naming the conversation after that turn, so a
+ * chat created at the desk and first used on the phone kept "New chat" for good.
+ */
+internal fun initialTitle(stored: String?, hasMessages: Boolean): String? =
+    stored?.takeIf { it.isNotBlank() && !(isPlaceholderTitle(it) && !hasMessages) }
+
+/**
+ * The title after the computer's copy arrives. The computer records a phone's first
+ * turn under the placeholder before the phone has named it, and that is not a name —
+ * neither in place of none nor over the one the phone has since given it.
+ */
+internal fun titleFromComputer(stored: String?, current: String?): String? = when {
+    stored == null -> current
+    isPlaceholderTitle(stored) -> current
+    else -> stored
+}
+
 internal fun titleToSave(existing: String?, turns: List<ChatMessage>): String =
     existing?.takeIf { it.isNotBlank() } ?: titleFromFirstTurn(turns)
 
