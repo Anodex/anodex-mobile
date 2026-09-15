@@ -109,6 +109,14 @@ fun ToolApprovalCard(
                     text = detail,
                     style = type.mono,
                     color = colors.textMuted,
+                    // Bounded, like the diff. A file edit's detail is the whole
+                    // replacement text, and unbounded it pushed Allow and Deny off the
+                    // bottom of a card that does not scroll: seen on the emulator, a
+                    // 60-line edit to utils.js could be neither allowed nor denied and
+                    // was declined when its time ran out. With a diff below it, the
+                    // detail only has to say what the tool is doing.
+                    maxLines = if (approval.diff != null) DETAIL_LINES_WITH_DIFF else DETAIL_LINES,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(Radii.sm)
@@ -258,13 +266,20 @@ private fun DiffView(diff: FileDiff) {
 }
 
 /**
- * Forty lines.
+ * Twelve lines.
  *
  * Enough to see what a normal edit does, and short enough that Deny stays on
  * screen. A card whose buttons are below the fold is a card that gets approved by
- * whoever was scrolling.
+ * whoever was scrolling. Forty was not: at the phone's code size forty lines alone
+ * are taller than the screen.
  */
-private const val MAX_LINES_ON_SCREEN = 40
+private const val MAX_LINES_ON_SCREEN = 12
+
+/** A tool's own description of what it will do, when there is no diff to show. */
+private const val DETAIL_LINES = 8
+
+/** The same description beside a diff, which already shows the change itself. */
+private const val DETAIL_LINES_WITH_DIFF = 3
 
 @Preview(name = "Approval - sensitive", showBackground = true, backgroundColor = 0xFF0C0C0C)
 @Composable
