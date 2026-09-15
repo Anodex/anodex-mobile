@@ -195,6 +195,10 @@ class ChatSession(
      * is gone.
      */
     val temporary: Boolean = false,
+    /** An approval already waiting in this conversation when it is opened. See [PendingApprovals]. */
+    initialApproval: ToolApproval? = null,
+    /** This session answered an approval, so nothing else goes on offering it. */
+    private val onApprovalAnswered: (id: String) -> Unit = {},
 ) {
     private val _title = MutableStateFlow(initialTitle(existingTitle, initialMessages.isNotEmpty()))
 
@@ -237,7 +241,7 @@ class ChatSession(
      */
     val reading: StateFlow<ReadingProgress?> = _reading.asStateFlow()
 
-    private val _approval = MutableStateFlow<ToolApproval?>(null)
+    private val _approval = MutableStateFlow(initialApproval?.takeIf { it.conversationId == conversationId })
 
     /**
      * A tool call waiting for an answer, if any.
@@ -248,10 +252,20 @@ class ChatSession(
      */
     val approval: StateFlow<ToolApproval?> = _approval.asStateFlow()
 
+    /**
+     * An approval found waiting in this conversation after it opened — asked for when a
+     * connection came back. Shown unless one is on screen already.
+     */
+    fun offerApproval(approval: ToolApproval) {
+        if (approval.conversationId != conversationId || _approval.value != null) return
+        _approval.value = approval
+    }
+
     /** Answer a pending approval. Whichever screen answers first settles it. */
     fun respondToApproval(approved: Boolean) {
         val pending = _approval.value ?: return
         _approval.value = null
+        onApprovalAnswered(pending.id)
 
         scope.launch {
             runCatching {
