@@ -265,6 +265,12 @@ class Conversations(private val socket: AnodexSocket) {
             persona = (this["persona"] as? JsonObject)?.asPersona(),
             attachments = parseRemoteAttachments(this["attachments"]),
             hasThinking = this["hasThinking"]?.jsonPrimitive?.contentOrNull() == "true",
+            // A reply the computer recorded as ending in an error kept what it had done.
+            // Desktop 0.9.14 says so as `endedEarly`; the error text stays over there.
+            endedEarly = role != "user" && (
+                this["endedEarly"]?.jsonPrimitive?.contentOrNull() == "true" ||
+                    !this["error"]?.jsonPrimitive?.contentOrNull().isNullOrBlank()
+                ),
         )
     }
 

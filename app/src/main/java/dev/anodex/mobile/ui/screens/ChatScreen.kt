@@ -73,6 +73,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ChatMessage
+import dev.anodex.mobile.chat.canContinue
 import dev.anodex.mobile.chat.ReadingProgress
 import dev.anodex.mobile.chat.ToolActivity
 import dev.anodex.mobile.chat.ToolApproval
@@ -144,6 +145,8 @@ fun ChatScreen(
     userName: String? = null,
     /** Ask the same question again. Null where there is no socket to ask down. */
     onRetryMessage: ((String) -> Unit)? = null,
+    /** Carry on from a reply that stopped partway. See `canContinue`. */
+    onContinue: (() -> Unit)? = null,
     /** Send an edited question in place of the original: (message id, new text). */
     onEditMessage: ((String, String) -> Unit)? = null,
     /** Read a reply's saved thinking from the computer, by message id. */
@@ -528,6 +531,9 @@ fun ChatScreen(
                             message = if (runInstruction) message.copy(text = runGoal!!) else message,
                             onOpenFile = onOpenFile,
                             onRetry = onRetryMessage,
+                            onContinue = onContinue?.takeIf {
+                                canContinue(message, isNewest = index == messages.lastIndex)
+                            },
                             // Nothing to copy or retry while the answer is still
                             // arriving, and a retry mid-turn would be refused anyway.
                             actionsEnabled = !sending,
@@ -689,6 +695,8 @@ private fun MessageRow(
     message: ChatMessage,
     onOpenFile: ((String) -> Unit)? = null,
     onRetry: ((String) -> Unit)? = null,
+    /** Present only on the reply that can be continued. */
+    onContinue: (() -> Unit)? = null,
     actionsEnabled: Boolean = true,
     waitingForComputer: Boolean = false,
     reading: ReadingProgress? = null,
@@ -995,6 +1003,7 @@ private fun MessageRow(
                 }
 
                 if (!message.streaming && message.text.isNotEmpty()) {
+                    if (onContinue != null) StoppedPartway(enabled = actionsEnabled, onContinue = onContinue)
                     MessageActions(
                         text = message.text,
                         enabled = actionsEnabled,
@@ -1013,9 +1022,17 @@ private fun MessageRow(
                         horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
                     ) {
                         Text("No answer arrived", style = type.meta, color = colors.textFaint)
+                        if (onContinue != null) {
+                            ActionButton(
+                                label = "Continue",
+                                tint = colors.accentInk,
+                                enabled = actionsEnabled,
+                                onClick = onContinue,
+                            )
+                        }
                         ActionButton(
                             label = "Retry",
-                            tint = colors.accentInk,
+                            tint = if (onContinue != null) colors.textFaint else colors.accentInk,
                             enabled = actionsEnabled,
                             onClick = { onRetry(message.id) },
                         )
@@ -1023,6 +1040,26 @@ private fun MessageRow(
                 }
             }
         }
+    }
+}
+
+/**
+ * A reply that stopped partway, and the way on from it.
+ *
+ * Retry asks the question again and starts over; the work this reply already did — half
+ * a website, in the build that found this — is what Continue keeps.
+ */
+@Composable
+private fun StoppedPartway(enabled: Boolean, onContinue: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    Row(
+        modifier = Modifier.padding(top = Spacing.x1),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
+    ) {
+        Text("Stopped partway", style = type.meta, color = colors.textFaint)
+        ActionButton(label = "Continue", tint = colors.accentInk, enabled = enabled, onClick = onContinue)
     }
 }
 
