@@ -171,3 +171,26 @@ class ConversationTitleTest {
         assertEquals("src/orbit.ts", request["editedFiles"]?.jsonArray?.single()?.jsonPrimitive?.content)
     }
 }
+
+class PlaceholderTitleTest {
+    // Seen on the emulator: an empty chat made at the desk, first used on the phone,
+    // kept "New chat" after its reply instead of being named.
+    @Test
+    fun `an empty conversation's placeholder is not a name`() {
+        assertNull(initialTitle("New chat", hasMessages = false))
+        assertEquals("New chat", initialTitle("New chat", hasMessages = true))
+        assertEquals("Plan Garden Layout", initialTitle("Plan Garden Layout", hasMessages = false))
+        assertNull(initialTitle("  ", hasMessages = true))
+    }
+
+    @Test
+    fun `the computer's placeholder does not stop the phone naming its first turn`() {
+        assertNull(titleFromComputer("New chat", current = null))
+        assertEquals("Define Pelican Characteristics", titleFromComputer("Define Pelican Characteristics", null))
+        assertEquals("Mine", titleFromComputer(null, "Mine"))
+        // A save that landed before the phone's own still says "New chat".
+        assertEquals("Mine", titleFromComputer("New chat", "Mine"))
+        // A name the computer has, it keeps: a rename at the desk still arrives.
+        assertEquals("Renamed at the desk", titleFromComputer("Renamed at the desk", "Mine"))
+    }
+}
