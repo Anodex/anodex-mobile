@@ -15,6 +15,10 @@ import dev.anodex.mobile.agents.RunTurn
 import dev.anodex.mobile.agents.parseAgentRuns
 import dev.anodex.mobile.chat.ChatMessage
 import dev.anodex.mobile.chat.ChatSession
+import dev.anodex.mobile.chat.PendingApprovals
+import dev.anodex.mobile.chat.holdsMoreThanComputer
+import dev.anodex.mobile.chat.parseToolApproval
+import dev.anodex.mobile.chat.waitingApprovals
 import dev.anodex.mobile.chat.ContextUsage
 import dev.anodex.mobile.chat.ConversationSummary
 import dev.anodex.mobile.chat.Conversations
@@ -167,6 +171,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val store = PairedHostStore(application)
     private val networkMonitor = NetworkMonitor(application)
     private val notifications = Notifications(application).apply { ensureChannels() }
+
+    /** Approvals the computer is waiting on, for whichever chat opens next. */
+    private val pendingApprovals = PendingApprovals()
 
 
 
@@ -1949,7 +1956,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // said "It is not on your computer any more" over an empty new chat while the
             // reply was still being written. It is shown from what this phone held
             // instead, and the computer's copy replaces it when the turn is saved.
-            if (found == null && heldHere != null && heldHere.messages.isNotEmpty()) {
+            //
+            // The computer now writes the question as the turn starts, so it can also have
+            // the conversation and still be behind this phone: held here is the reply.
+            val heldIsAhead = heldHere != null && heldHere.messages.isNotEmpty() &&
+                (found == null || holdsMoreThanComputer(found.messages.map { it.id }, heldHere.messages.map { it.id }))
+            if (heldIsAhead && heldHere != null) {
                 val session = ChatSession(
                     socket = open,
                     scope = viewModelScope,
@@ -1959,6 +1971,28 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     initialMessages = heldHere.messages,
                     initialMessagesSaved = false,
                     projectId = heldHere.projectId,
+                    initialApproval = pendingApprovals.forConversation(conversationId),
+                    onApprovalAnswered = pendingApprovals::answered,
+                )
+                showChat(session)
+                then?.invoke(session)
+                return@launch
+            }
+            // A turn waiting on an approval in a conversation the computer has not written
+            // yet (a computer older than 0.9.12 writes it only when the reply finishes). It
+            // opens empty with the approval on it, rather than as "not on your computer
+            // any more" with a turn stopped behind it.
+            val waiting = pendingApprovals.forConversation(conversationId)
+            if (found == null && waiting != null) {
+                val session = ChatSession(
+                    socket = open,
+                    scope = viewModelScope,
+                    activePersona = ::currentPersona,
+                    onAnswered = ::replyReady,
+                    conversationId = conversationId,
+                    initialMessagesSaved = false,
+                    initialApproval = waiting,
+                    onApprovalAnswered = pendingApprovals::answered,
                 )
                 showChat(session)
                 then?.invoke(session)
@@ -2002,6 +2036,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 // renamed, moved into Nebula2.
                 projectId = opened.projectId,
                 existingTitle = opened.storedTitle ?: summary?.storedTitle,
+                initialApproval = pendingApprovals.forConversation(conversationId),
+                onApprovalAnswered = pendingApprovals::answered,
             )
             showChat(session)
             then?.invoke(session)
@@ -2148,6 +2184,20 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 schedulerClient = Scheduler(candidate)
                 memoryClient = Memory(candidate)
                 profileReader = ProfileReader(candidate)
+                // What the computer is still waiting on, asked again on every connection:
+                // an approval asked while this phone was away, or before the app restarted,
+                // was sent to nobody who is here now. Asked rather than pushed, because
+                // nothing is listening until this point.
+                pendingApprovals.clear()
+                viewModelScope.launch {
+                    val answer = runCatching {
+                        candidate.invoke(PendingApprovals.CHANNEL_WAITING, emptyList())
+                    }.getOrNull() ?: return@launch
+                    waitingApprovals(answer).forEach(pendingApprovals::onRequest)
+                    _chat.value?.let { open ->
+                        pendingApprovals.forConversation(open.conversationId)?.let(open::offerApproval)
+                    }
+                }
                 // The desktop forgets this when the socket goes, so it is said again
                 // on every new one rather than only when the user changes it.
                 tellComputerAboutTokens()
@@ -2828,6 +2878,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private fun onPushed(event: ServerFrame.Event) {
         when (event.channel) {
             CHANNEL_NOTIFICATION -> onNotification(event.payload)
+
+            // Kept for whichever chat opens next: see `PendingApprovals`.
+            PendingApprovals.CHANNEL_REQUEST -> parseToolApproval(event.payload)?.let(pendingApprovals::onRequest)
+            PendingApprovals.CHANNEL_CANCELLED ->
+                pendingApprovals.onCancelled((event.payload as? JsonPrimitive)?.content)
 
             CHANNEL_AGENT_RUNS -> {
                 _agentRuns.value = parseAgentRuns(event.payload)
