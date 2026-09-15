@@ -90,8 +90,16 @@ class ConnectionService : Service() {
             // A started service that never reaches the foreground is killed by the
             // system anyway, and an ongoing notification for something not running
             // would be a lie. Stand down cleanly instead.
+            hold.reachedForeground()
             stopSelf()
             return START_NOT_STICKY
+        }
+
+        // Asked to stop while this start was still on its way. Stopping then would have
+        // crashed the app, so it waited until now, when it is safe.
+        if (hold.reachedForeground()) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
 
         // Not restarted with a null intent if the system kills us: without the host
@@ -194,16 +202,61 @@ class ConnectionService : Service() {
                 } else {
                     context.startService(intent)
                 }
-            }.onFailure { Log.w(TAG, "could not start the connection service", it) }
+            }.onSuccess { hold.startRequested() }
+                .onFailure { Log.w(TAG, "could not start the connection service", it) }
             // Swallowed on purpose. A refused start means the app is backgrounded and
             // the process may be killed later — which is the situation this improves,
             // not one it is required for. Crashing the app over it would be worse
             // than the problem.
         }
 
+        /**
+         * Stop the service, or have it stop itself once a start still on its way lands.
+         *
+         * Stopping a service that was started with `startForegroundService` before it has
+         * called `startForeground` crashes the app: Android kills the process with
+         * `ForegroundServiceDidNotStartInTimeException`. The emulator did exactly that,
+         * 8 ms after a start, when the app relaunched and its connection state settled.
+         */
         fun stop(context: Context) {
-            context.stopService(Intent(context, ConnectionService::class.java))
+            if (hold.stopRequested()) context.stopService(Intent(context, ConnectionService::class.java))
         }
+
+        /** Touched only on the main thread: the view model's collector and `onStartCommand`. */
+        private val hold = ForegroundHold()
+    }
+}
+
+/**
+ * Tracks starts of a foreground service that have not reached the foreground yet, so a
+ * stop never lands in between. Pure, so the rule can be tested without Android.
+ */
+class ForegroundHold {
+    private var pendingStarts = 0
+    private var stopWhenStarted = false
+
+    /** A start was accepted by the system and its `onStartCommand` is on its way. */
+    fun startRequested() {
+        pendingStarts++
+        stopWhenStarted = false
+    }
+
+    /**
+     * A start reached the foreground (or gave up trying). True when a stop asked for
+     * in the meantime should happen now.
+     */
+    fun reachedForeground(): Boolean {
+        if (pendingStarts > 0) pendingStarts--
+        if (pendingStarts > 0 || !stopWhenStarted) return false
+        stopWhenStarted = false
+        return true
+    }
+
+    /** True when the service can be stopped right away; otherwise it stops itself later. */
+    fun stopRequested(): Boolean {
+        if (pendingStarts == 0) return true
+        stopWhenStarted = true
+        return false
     }
 }
 
