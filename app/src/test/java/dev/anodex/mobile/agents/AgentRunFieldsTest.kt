@@ -2,6 +2,7 @@ package dev.anodex.mobile.agents
 
 import dev.anodex.mobile.ui.screens.compactTokens
 import dev.anodex.mobile.ui.screens.runOutcomeText
+import dev.anodex.mobile.ui.screens.oneLine
 import dev.anodex.mobile.ui.screens.withoutOutcomeHeading
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -108,5 +109,17 @@ class RunOutcomeTextTest {
     fun `a finished run shows its summary`() {
         assertEquals("Listed the folders.", runOutcomeText(run(AgentRun.Status.DONE, "Listed the folders.", null)))
         assertEquals(null, runOutcomeText(run(AgentRun.Status.DONE, null, null)))
+    }
+
+    @Test
+    fun `a run's account of itself reads as sentences on one line`() {
+        // Seen on the phone after a website run: the list ran together into one sentence.
+        val summary = "Verified by screenshot.\n\n---\n**What this reply did**\n\n" +
+            "- **Changed** `index.html`, `styles.css`\n- **Verified** visually\n- **Plan** all 5 steps complete"
+
+        assertEquals(
+            "Verified by screenshot. Changed index.html, styles.css. Verified visually. Plan all 5 steps complete.",
+            oneLine(summary.withoutOutcomeHeading()),
+        )
     }
 }

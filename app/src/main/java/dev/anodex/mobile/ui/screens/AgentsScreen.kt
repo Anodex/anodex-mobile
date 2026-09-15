@@ -886,10 +886,14 @@ private fun PlanView(plan: Plan) {
  * assistant showed its `**bold**` as asterisks, and a summary opened on a literal
  * `---` rule.
  */
-private fun oneLine(text: String): String = text.lineSequence()
+internal fun oneLine(text: String): String = text.lineSequence()
     .map(::withoutMarkdown)
     .filter { it.isNotBlank() }
-    .joinToString(" ")
+    // Each line ends as a sentence. The desktop's account of a run is a list — "Changed
+    // index.html", "Verified visually", "Plan all 5 steps complete" — and joined with a
+    // bare space it read as one run-on sentence: "…script.js Verified visually — the
+    // screenshot was taken after the last change Looked at 1 search…".
+    .joinToString(" ") { line -> if (line.last() in ".!?:;…") line else "$line." }
 
 
 @Preview(name = "Agents - dark", showBackground = true, heightDp = 760)
