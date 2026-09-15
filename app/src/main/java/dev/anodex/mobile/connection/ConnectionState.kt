@@ -112,7 +112,20 @@ data class ModelStatus(
      * picker would tick both.
      */
     val path: String = "",
+    /**
+     * How many replies the model is running right now. More than one and each is
+     * sharing it, and slower for it. Zero from a computer older than 0.9.13.
+     */
+    val activeReplies: Int = 0,
 ) {
+    /** What a turn's status adds while the model is shared, or null. */
+    val sharingNote: String?
+        get() = when (val others = activeReplies - 1) {
+            in Int.MIN_VALUE..0 -> null
+            1 -> "sharing the model with another job"
+            else -> "sharing the model with $others other jobs"
+        }
+
     /**
      * 0f..1f, or null when there is no honest figure to draw.
      *

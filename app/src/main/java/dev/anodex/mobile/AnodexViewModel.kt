@@ -2358,6 +2358,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             contextConversationId =
                 (state["contextTokensConversationId"] as? JsonPrimitive)?.contentOrNull,
             contextTotalTokens = state.intOrZero("contextSize"),
+            activeReplies = state.intOrZero("activeReplies"),
             // Marks the running model in the picker. Empty is fine — the list simply
             // ticks nothing rather than ticking the wrong row.
             path = (state["model"] as? JsonObject)

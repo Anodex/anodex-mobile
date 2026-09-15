@@ -1799,15 +1799,21 @@ private fun ChatPane(
     // The desktop declines an unanswered prompt after five minutes so a phone that
     // loses signal cannot wedge a generation. Counting down locally is an estimate
     // of that deadline, not the authority on it - the desktop decides.
-    var secondsLeft by remember(approval?.id) { mutableStateOf(APPROVAL_WINDOW_SECONDS) }
+    // Counted from when the prompt arrived, with the time the computer said was left.
+    var secondsLeft by remember(approval?.id) {
+        mutableStateOf(approval?.secondsLeft(System.currentTimeMillis()) ?: APPROVAL_WINDOW_SECONDS)
+    }
     LaunchedEffect(approval?.id) {
-        if (approval == null) return@LaunchedEffect
-        secondsLeft = APPROVAL_WINDOW_SECONDS
-        while (secondsLeft > 0) {
+        val waiting = approval ?: return@LaunchedEffect
+        while (true) {
+            secondsLeft = waiting.secondsLeft(System.currentTimeMillis())
+            if (secondsLeft <= 0) break
             delay(1_000)
-            secondsLeft -= 1
         }
     }
+    // Said while this turn shares the model with other work, which is why it is slower.
+    val connection by viewModel.state.collectAsStateWithLifecycle()
+    val sharingNote = (connection as? ConnectionState.Connected)?.model?.sharingNote
 
     val sharedDraft by viewModel.sharedDraft.collectAsStateWithLifecycle()
     // Pictures on messages read back from the computer are asked for by position on
@@ -1837,6 +1843,7 @@ private fun ChatPane(
             error = error,
             waitingForComputer = waitingForComputer,
             reading = reading,
+            sharingNote = sharingNote,
             onSend = viewModel::sendMessage,
             onStop = chat::stop,
             approval = approval,
