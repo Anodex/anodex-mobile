@@ -102,21 +102,44 @@ object CrashLog {
         val stack = StringWriter().also { error.printStackTrace(PrintWriter(it)) }
         val at = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
 
-        // The device and version are here because the crashes worth catching this way
+        // The device and versions are here because the crashes worth catching this way
         // are the version-dependent ones — a system API that behaves differently on
         // one Android release is exactly what cannot be reproduced from a desk.
+        //
+        // Which build of this app it was is the other half, and it was missing: a
+        // report kept on the phone outlives the update that fixed it, so a crash from
+        // 0.80.4 read exactly like one happening now. Seen on the test phone, where the
+        // launch crash fixed in 0.80.5 was still the "last crash" on 0.80.9.
         file(context).writeText(
-            buildString {
-                appendLine("Anodex Mobile crash")
-                appendLine("when: $at")
-                appendLine("device: ${Build.MANUFACTURER} ${Build.MODEL}")
-                appendLine("android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-                appendLine("thread: $threadName")
-                appendLine()
-                append(stack.toString())
-            }
+            crashReport(
+                at = at,
+                app = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                device = "${Build.MANUFACTURER} ${Build.MODEL}",
+                android = "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+                threadName = threadName,
+                stack = stack.toString(),
+            ),
         )
     }
 
     private fun file(context: Context): File = File(context.filesDir, FILE_NAME)
+}
+
+/** The report itself, apart from the phone it is read on, so its shape can be tested. */
+internal fun crashReport(
+    at: String,
+    app: String,
+    device: String,
+    android: String,
+    threadName: String,
+    stack: String,
+): String = buildString {
+    appendLine("Anodex Mobile crash")
+    appendLine("when: $at")
+    appendLine("app: $app")
+    appendLine("device: $device")
+    appendLine("android: $android")
+    appendLine("thread: $threadName")
+    appendLine()
+    append(stack)
 }
