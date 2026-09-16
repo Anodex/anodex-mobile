@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Brand
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
@@ -25,6 +26,16 @@ import dev.anodex.mobile.ui.theme.Touch
  * built from tokens only, and both clear the 48dp touch floor — the desktop's 26px controls do not
  * port, so visual size and touch target are allowed to differ.
  */
+/**
+ * The button that carries a screen's answer — Allow on an approval, Pair, Retry —
+ * wears the mark: the violet-into-blue diagonal off the app icon, over the lift and
+ * bevel that make it read as a solid. Flat accent did the job and looked like every
+ * other button ever shipped, on a screen where the switches already carried it.
+ *
+ * Two backgrounds rather than one: the diagonal, then the modelling over it. Both go
+ * after [clip] and before [clickable], so the press wash in [AnodexPress] lands on
+ * top of the paint and inside the same rounded shape.
+ */
 @Composable
 fun PrimaryButton(
     label: String,
@@ -36,7 +47,8 @@ fun PrimaryButton(
         modifier = modifier
             .heightIn(min = Touch.minTarget)
             .clip(Radii.md)
-            .background(colors.accent)
+            .background(Brand.gradient(colors))
+            .background(Brand.sheen)
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.x6),
         contentAlignment = Alignment.Center,
