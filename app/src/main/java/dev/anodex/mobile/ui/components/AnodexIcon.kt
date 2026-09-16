@@ -58,11 +58,19 @@ fun AnodexIcon(
             join = StrokeJoin.Round,
         )
         scale(factor, pivot = Offset.Zero) {
-            for (path in paths) {
+            paths.forEachIndexed { index, path ->
                 // A couple of the desktop's glyphs are solid rather than drawn —
                 // stop is a filled square, because at 15dp an outlined one reads as
                 // a button border rather than a symbol.
-                if (icon.filled) drawPath(path, tint) else drawPath(path, tint, style = stroke)
+                if (icon.filled) {
+                    // Per-path opacity, because a glyph can be built from facets
+                    // rather than from one silhouette: the desktop's filled plane
+                    // shades its lower facet so the light reads as coming from
+                    // above. Absent, every sub-path is solid, as before.
+                    drawPath(path, tint, alpha = icon.alphas.getOrElse(index) { 1f })
+                } else {
+                    drawPath(path, tint, style = stroke)
+                }
             }
         }
     }
@@ -77,7 +85,12 @@ private const val STROKE_WIDTH = 2f
  * Split into separate strings exactly as the desktop splits them into separate
  * `<path>` elements, so a diff against `Icon.tsx` is line-for-line.
  */
-enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
+enum class AnodexIcon(
+    val strokes: List<String>,
+    val filled: Boolean = false,
+    /** Per-sub-path opacity for a filled glyph. Empty means every path is solid. */
+    val alphas: List<Float> = emptyList(),
+) {
     /** Speech bubble with the Anodex corner cut. Chats. */
     CHAT(listOf("M3 5a2 2 0 0 1 2-2h11l5 5v7a2 2 0 0 1-2 2H7l-4 4V5z")),
 
@@ -112,6 +125,28 @@ enum class AnodexIcon(val strokes: List<String>, val filled: Boolean = false) {
                 "6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z",
             "m21.854 2.147-10.94 10.939",
         )
+    ),
+
+    /**
+     * The same plane, built as two filled facets, for the composer's send key.
+     *
+     * [SEND] above is a 2-unit stroke on a 24 grid. Drawn at 18dp on top of the
+     * brand gradient that is about a pixel of hairline over a saturated fill, and it
+     * vanishes. This is the desktop's `send-fill`: the fold from the tip runs at
+     * exactly 135 degrees — the angle the mark and the switch knob are both cut on —
+     * and the lower facet is shaded so the light comes from above, as it does on the
+     * knob.
+     *
+     * Both glyphs are kept: the stroked one is still right on a flat surface beside
+     * other stroked icons, which is where the desktop kept it too.
+     */
+    SEND_FILL(
+        listOf(
+            "M21.4 2.6 2.8 9.4l7.8 4z",
+            "M21.4 2.6 10.6 13.4l4 7.8z",
+        ),
+        filled = true,
+        alphas = listOf(1f, 0.78f),
     ),
 
     /**

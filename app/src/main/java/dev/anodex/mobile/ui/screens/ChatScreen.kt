@@ -95,6 +95,7 @@ import dev.anodex.mobile.ui.components.ToolRow
 import dev.anodex.mobile.ui.components.arrival
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Brand
 import dev.anodex.mobile.ui.theme.Elevation
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.ui.theme.Radii
@@ -2078,24 +2079,29 @@ private const val COMPOSER_MAX_LINES = 6
 private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val colors = AnodexTheme.colors
 
-    val background = when {
-        sending -> colors.dangerSoft
-        enabled -> colors.accent
-        // Present but plainly inert, rather than absent. A control that vanishes
-        // when the field is empty takes the layout with it.
-        else -> colors.bgSurface2
-    }
     val foreground = when {
         sending -> colors.dangerInk
         enabled -> colors.textOnAccent
         else -> colors.textFaint
     }
 
+    // The most-pressed control in the app, so it is the one that most has to look
+    // like this app: ready to send, it wears the mark. Stopping it is danger, and an
+    // empty field leaves it present but plainly inert — a control that vanishes when
+    // there is nothing to send takes the layout with it.
+    val paint = Modifier.run {
+        when {
+            sending -> background(colors.dangerSoft)
+            enabled -> background(Brand.gradient(colors)).background(Brand.sheen)
+            else -> background(colors.bgSurface2)
+        }
+    }
+
     Box(
         modifier = Modifier
             .size(Touch.minTarget)
             .clip(CircleShape)
-            .background(background)
+            .then(paint)
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = if (sending) "Stop" else "Send" },
         contentAlignment = Alignment.Center,
@@ -2104,8 +2110,12 @@ private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) 
         // plane in `Icon.tsx`; this drew an arrow instead, with a comment claiming it
         // was the desktop's — which it never was, and nothing catches a wrong comment
         // next to a wrong drawing.
+        //
+        // The filled plane, because this one sits on the gradient: the stroked plane
+        // is a hairline at this size and disappears into a saturated fill. The
+        // desktop made the same swap, and for the same reason.
         AnodexIcon(
-            icon = if (sending) AnodexIcon.STOP else AnodexIcon.SEND,
+            icon = if (sending) AnodexIcon.STOP else AnodexIcon.SEND_FILL,
             size = if (sending) 15.dp else 18.dp,
             tint = foreground,
             contentDescription = null,

@@ -119,4 +119,41 @@ class AnodexIconTest {
             }
         }
     }
+
+    @Test
+    fun `the filled plane is two facets folded on the mark's own diagonal`() {
+        // `send-fill` in Icon.tsx. The composer's key sits on the brand gradient,
+        // where the stroked plane above is a hairline and disappears.
+        assertEquals(
+            listOf(
+                "M21.4 2.6 2.8 9.4l7.8 4z",
+                "M21.4 2.6 10.6 13.4l4 7.8z",
+            ),
+            AnodexIcon.SEND_FILL.strokes,
+        )
+        assertTrue(AnodexIcon.SEND_FILL.filled)
+        // The lower facet is the shaded one, so the light reads as coming from above.
+        assertEquals(listOf(1f, 0.78f), AnodexIcon.SEND_FILL.alphas)
+    }
+
+    @Test
+    fun `the stroked plane stays, for flat surfaces beside other stroked icons`() {
+        // The desktop kept both for the same reason: Push and Run now are 13-14px on
+        // a flat surface, where a solid mark would outweigh its neighbours.
+        assertTrue(AnodexIcon.SEND.strokes.isNotEmpty())
+        assertTrue(!AnodexIcon.SEND.filled)
+    }
+
+    @Test
+    fun `only a filled glyph carries per-path opacity`() {
+        for (icon in AnodexIcon.entries) {
+            if (icon.alphas.isEmpty()) continue
+            assertTrue("${icon.name} sets alphas but is not filled", icon.filled)
+            assertEquals(
+                "${icon.name} has an alpha per sub-path",
+                icon.strokes.size,
+                icon.alphas.size,
+            )
+        }
+    }
 }
