@@ -140,6 +140,16 @@ enum class AnodexIcon(
      * Both glyphs are kept: the stroked one is still right on a flat surface beside
      * other stroked icons, which is where the desktop kept it too.
      */
+    /** The desktop's bin, lid and two staves, path for path. */
+    TRASH(
+        listOf(
+            "M3 6h18",
+            "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6",
+            "M10 11v6M14 11v6",
+            "M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2",
+        )
+    ),
+
     SEND_FILL(
         listOf(
             "M21.4 2.6 2.8 9.4l7.8 4z",

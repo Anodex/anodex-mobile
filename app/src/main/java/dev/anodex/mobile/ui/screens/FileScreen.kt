@@ -17,6 +17,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.ui.components.AnodexIcon
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.EmptyState
 import dev.anodex.mobile.ui.components.EmptyTone
 import dev.anodex.mobile.ui.components.ScreenScaffold
@@ -46,9 +51,19 @@ fun FileScreen(
     loading: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Move this file to the computer's Recycle Bin. Null where there is no
+     * socket to ask — previews, and the file viewer opened from history.
+     */
+    onDelete: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+
+    // Asked before it happens, and only ever once. The risk on a phone is not a
+    // stranger holding it, it is a thumb on a six-inch screen — so the guard is
+    // against the accident, not against the person.
+    var confirming by rememberSaveable { mutableStateOf(false) }
 
     // Split rather than ellipsised. A path is too long for a phone header, and
     // clipping the end removes the filename — the only part that identifies which
@@ -70,6 +85,26 @@ fun FileScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 AnodexIcon(AnodexIcon.CHEVRON_LEFT, size = 20.dp, tint = colors.textMuted, contentDescription = "Back")
+            }
+        },
+        trailing = if (onDelete == null) {
+            null
+        } else {
+            {
+                Box(
+                    modifier = Modifier
+                        .size(Touch.minTarget)
+                        .clip(Radii.md)
+                        .clickable(role = Role.Button) { confirming = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnodexIcon(
+                        AnodexIcon.TRASH,
+                        size = 20.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Delete this file",
+                    )
+                }
             }
         },
     ) { topInset ->
@@ -118,6 +153,23 @@ fun FileScreen(
                     ),
             )
         }
+    }
+
+    if (confirming && onDelete != null) {
+        ConfirmDialog(
+            title = "Delete ${path.substringAfterLast('/')}?",
+            // Says where it goes rather than asking whether you are sure. The
+            // computer moves it to the Recycle Bin, so the honest answer to
+            // "what if I am wrong" is "walk to the desk" — and a person can
+            // weigh that in a second, which is not true of "are you sure?".
+            body = "It moves to the Recycle Bin on your computer, so you can put it back from there.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                confirming = false
+                onDelete()
+            },
+            onDismiss = { confirming = false },
+        )
     }
 }
 
