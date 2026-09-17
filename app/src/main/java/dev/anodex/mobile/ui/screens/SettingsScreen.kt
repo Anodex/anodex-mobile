@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +53,7 @@ import dev.anodex.mobile.profile.UsageProfile
 import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexSwitch
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.ConfirmDialog
@@ -299,7 +301,7 @@ fun SettingsScreen(
     }
 }
 
-/** The six doors, each saying what is behind it. */
+/** The nine doors, each saying what is behind it. */
 @Composable
 private fun SettingsIndex(
     hostName: String?,
@@ -310,7 +312,7 @@ private fun SettingsIndex(
     onOpen: (SettingsSection) -> Unit,
 ) {
     SectionBody {
-        Box(Modifier.heightIn(min = Spacing.x2, max = Spacing.x2))
+        SettingsHeader(hostName = hostName, hostStatus = hostStatus)
 
         Group {
             SettingsSection.entries.forEachIndexed { index, entry ->
@@ -328,10 +330,73 @@ private fun SettingsIndex(
                             if (updateAvailable) "Update available" else installedVersion
                         else -> entry.summary
                     },
+                    tint = sectionTint(index, SettingsSection.entries.size),
                     onClick = { onOpen(entry) },
                 )
             }
         }
+    }
+}
+
+/**
+ * The mark, and what this phone is attached to.
+ *
+ * Settings opened on a column of grey cards that could have belonged to any app.
+ * Everywhere else Anodex says whose app it is in the first inch of the screen --
+ * the composer, the drawer, the pairing flow -- and this was the one place that
+ * did not.
+ *
+ * It names the host as well, because Settings on a phone that drives a computer in
+ * another room is not only about the phone, and which computer is a fact worth
+ * having before you start changing things.
+ */
+@Composable
+private fun SettingsHeader(hostName: String?, hostStatus: String) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = Spacing.x3, bottom = Spacing.x4, start = Spacing.x1),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+    ) {
+        AnodexMark(size = 36.dp)
+        Column {
+            Text("Anodex", style = type.title, color = colors.text)
+            Text(
+                text = hostName?.let { "$it \u00b7 $hostStatus" } ?: hostStatus,
+                style = type.meta,
+                color = colors.textMuted,
+            )
+        }
+    }
+}
+
+/**
+ * Where a section sits on the mark's own gradient.
+ *
+ * Nine flat grey glyphs in a column is what made this screen read as dead: nothing
+ * on it was Anodex's, and nothing told one door from another at a glance. Giving
+ * each a colour fixes both -- but a set of unrelated colours is somebody else's
+ * settings screen, and this app has a gradient of its own already.
+ *
+ * So the index walks it. Cyan at the top, through blue, to violet at the bottom --
+ * the same ramp the mark is cut from, which makes the colour carry the brand
+ * rather than decorate a list. A section's colour is its position, so it stays put
+ * as long as the order does, and a row becomes findable by where its colour sits
+ * rather than only by reading every label.
+ */
+@Composable
+private fun sectionTint(index: Int, count: Int): Color {
+    val colors = AnodexTheme.colors
+    // Halfway is the mark's blue, which is where the desktop's gradient turns.
+    val position = index.toFloat() / (count - 1).coerceAtLeast(1)
+    return if (position < 0.5f) {
+        lerp(colors.accentCyan, colors.accent, position * 2f)
+    } else {
+        lerp(colors.accent, colors.accentViolet, (position - 0.5f) * 2f)
     }
 }
 
@@ -1062,6 +1127,12 @@ private fun SettingsRow(
     label: String,
     value: String? = null,
     trailing: String? = null,
+    /**
+     * The colour this row's glyph is carried in. Null keeps the plain grey, which
+     * is right everywhere the icon labels a setting rather than opening a door --
+     * inside a section there is nothing to tell apart at a glance.
+     */
+    tint: Color? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
@@ -1076,7 +1147,22 @@ private fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
-        AnodexIcon(icon, tint = colors.textMuted)
+        if (tint == null) {
+            AnodexIcon(icon, tint = colors.textMuted)
+        } else {
+            // A chip, not a bare coloured glyph. At 20dp a thin stroked icon in a
+            // saturated colour reads as a rendering fault; the wash behind it is
+            // what gives the colour enough area to be read as a colour.
+            Box(
+                modifier = Modifier
+                    .size(CHIP)
+                    .clip(Radii.md)
+                    .background(tint.copy(alpha = CHIP_WASH)),
+                contentAlignment = Alignment.Center,
+            ) {
+                AnodexIcon(icon, size = 18.dp, tint = tint)
+            }
+        }
 
         Column(Modifier.weight(1f)) {
             Text(
@@ -1231,3 +1317,9 @@ private fun PreviewSettings() {
         )
     }
 }
+
+/** Large enough for the wash to read as a colour, small enough to stay a row. */
+private val CHIP = 32.dp
+
+/** The same 14% the diff rows use, so tinted surfaces agree across the app. */
+private const val CHIP_WASH = 0.14f
