@@ -855,6 +855,7 @@ private fun ConnectedScaffold(
             content = openFileContent,
             loading = openFileContent == null,
             onClose = viewModel::closeWorkspaceFile,
+            onDelete = openFile?.let { path -> { viewModel.deleteWorkspaceFile(path) } },
             modifier = Modifier.safeDrawingPadding(),
         )
         return

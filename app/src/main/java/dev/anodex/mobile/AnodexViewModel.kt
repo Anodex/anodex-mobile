@@ -1116,6 +1116,42 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _openFileContent.value = null
     }
 
+    /**
+     * Move the open file to the computer's Recycle Bin.
+     *
+     * The only thing the phone does to a project that is not reading it, and the
+     * screen asks first. The desktop's handler uses `shell.trashItem`, so the
+     * file lands somewhere a person can get it back from — which is why this is
+     * a confirmation and not a locked door.
+     *
+     * Closes the reader on the way out. Leaving a file on screen after deleting
+     * it shows content that is no longer at that path, which is the same
+     * dishonesty [openWorkspaceFile] refuses a cache for.
+     */
+    fun deleteWorkspaceFile(relativePath: String) {
+        val client = workspace
+        if (client == null) {
+            _workspaceError.value = "Not connected to your computer."
+            return
+        }
+
+        closeWorkspaceFile()
+
+        viewModelScope.launch {
+            // Guarded for the same reason the read is: the socket can die while
+            // the call is in flight, and `failPending` would otherwise take the
+            // process down rather than the request.
+            val failure = runCatching { client.trash(relativePath) }
+                .getOrElse { it.message ?: "Lost the connection mid-delete." }
+            if (failure != null) {
+                _workspaceError.value = failure
+                return@launch
+            }
+            // The listing still has the file in it until it is asked again.
+            refreshWorkspaceFiles()
+        }
+    }
+
     private val _newerVersion = MutableStateFlow<String?>(null)
 
     /**

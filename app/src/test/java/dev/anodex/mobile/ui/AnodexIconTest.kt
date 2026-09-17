@@ -30,6 +30,23 @@ class AnodexIconTest {
     }
 
     @Test
+    fun `trash is the desktop's bin`() {
+        // The newest copy across the seam, and the one attached to the only
+        // destructive thing the phone can do — so a glyph that drifted into
+        // something else here would be a person tapping a shape they did not
+        // read, on the one control where that matters.
+        assertEquals(
+            listOf(
+                "M3 6h18",
+                "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6",
+                "M10 11v6M14 11v6",
+                "M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2",
+            ),
+            AnodexIcon.TRASH.strokes,
+        )
+    }
+
+    @Test
     fun `bot is the hexagonal head with antenna and two eyes`() {
         assertEquals(
             listOf(

@@ -33,9 +33,14 @@ sealed interface FileContent {
  * now*, and without an answer the phone can report that work happened but not what
  * the work was.
  *
- * Read-only, and not because writing is hard. A file editor on a phone, against a
- * repository on somebody's computer, with no diff and no undo, is a way to lose
- * work rather than a way to do it.
+ * Reading, and one deliberate act of removal.
+ *
+ * Not an editor, and not because writing is hard: a file editor on a phone,
+ * against a repository on somebody's computer, with no diff and no undo, is a
+ * way to lose work rather than a way to do it. Deleting is different in the one
+ * way that matters — the computer moves the file to the Recycle Bin rather than
+ * destroying it, so the worst case is a trip to the desk rather than lost work.
+ * The phone asks before it does it.
  */
 class Workspace(private val socket: AnodexSocket) {
 
@@ -87,6 +92,23 @@ class Workspace(private val socket: AnodexSocket) {
         }
     }
 
+    /**
+     * Move a file to the computer's Recycle Bin.
+     *
+     * Named for what the computer actually does, not for the button that calls
+     * it. `workspace:delete-path` is `shell.trashItem`, so this is recoverable
+     * at the desk — which is the whole reason it is offered from a phone at all,
+     * and the reason the confirmation can say where the file goes instead of
+     * asking whether the user is sure.
+     */
+    suspend fun trash(relativePath: String): String? {
+        val result = socket.invoke(CHANNEL_DELETE, listOf(JsonPrimitive(relativePath))) as? JsonObject
+            ?: return "The computer did not answer."
+        if (result["ok"]?.jsonPrimitive?.contentOrNull() == "true") return null
+        return (result["error"] as? JsonObject)?.get("message")?.jsonPrimitive?.contentOrNull()
+            ?: "That file could not be deleted."
+    }
+
     private fun sizeOf(element: JsonElement?): String? {
         val bytes = (element as? JsonPrimitive)?.contentOrNull()?.toDoubleOrNull() ?: return null
         return when {
@@ -99,6 +121,7 @@ class Workspace(private val socket: AnodexSocket) {
     private companion object {
         const val CHANNEL_LIST = "workspace:list-files"
         const val CHANNEL_READ = "workspace:read-file-content"
+        const val CHANNEL_DELETE = "workspace:delete-path"
     }
 }
 
