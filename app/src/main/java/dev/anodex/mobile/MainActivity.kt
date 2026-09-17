@@ -860,7 +860,7 @@ private fun ConnectedScaffold(
             diff = openDiffContent,
             loading = openDiffContent == null,
             onClose = viewModel::closeTurnDiff,
-            onOpenFile = { viewModel.openWorkspaceFile(openDiff.orEmpty()) },
+            onOpenFile = { viewModel.openWorkspaceFile(openDiff.orEmpty(), viewModel.chatProjectId()) },
             modifier = Modifier.safeDrawingPadding(),
         )
         return
@@ -1870,7 +1870,9 @@ private fun ChatPane(
             approvalSecondsRemaining = secondsLeft,
             onApprove = { chat.respondToApproval(approved = true) },
             onDeny = { chat.respondToApproval(approved = false) },
-            onOpenFile = viewModel::openWorkspaceFile,
+            // The conversation's project, not the active one: a phone reads
+            // chats belonging to projects it is not currently browsing.
+            onOpenFile = { path -> viewModel.openWorkspaceFile(path, viewModel.chatProjectId()) },
             onShowDiff = viewModel::openTurnDiff,
             hostLine = hostLine,
             userName = userName,

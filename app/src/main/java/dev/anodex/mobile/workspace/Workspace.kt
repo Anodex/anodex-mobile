@@ -66,9 +66,16 @@ class Workspace(private val socket: AnodexSocket) {
      */
     suspend fun listFiles(): List<WorkspaceFile> = parseWorkspaceFiles(socket.invoke(CHANNEL_LIST))
 
-    suspend fun read(relativePath: String): FileContent {
+    /**
+     * @param projectId the project this path belongs to. Worth sending even
+     *   though the computer has an answer without it: that answer is the
+     *   *active* project, and a phone reading a conversation it scrolled to is
+     *   frequently not looking at the active one. Null keeps the old behaviour
+     *   for the screens that have no project in hand.
+     */
+    suspend fun read(relativePath: String, projectId: String? = null): FileContent {
         val result = runCatching {
-            socket.invoke(CHANNEL_READ, listOf(JsonPrimitive(relativePath)))
+            socket.invoke(CHANNEL_READ, arguments(relativePath, projectId))
         }.getOrNull() as? JsonObject
             ?: return FileContent.Failed("Your computer didn't answer.")
 
@@ -101,13 +108,26 @@ class Workspace(private val socket: AnodexSocket) {
      * and the reason the confirmation can say where the file goes instead of
      * asking whether the user is sure.
      */
-    suspend fun trash(relativePath: String): String? {
-        val result = socket.invoke(CHANNEL_DELETE, listOf(JsonPrimitive(relativePath))) as? JsonObject
+    suspend fun trash(relativePath: String, projectId: String? = null): String? {
+        val result = socket.invoke(CHANNEL_DELETE, arguments(relativePath, projectId)) as? JsonObject
             ?: return "The computer did not answer."
         if (result["ok"]?.jsonPrimitive?.contentOrNull() == "true") return null
         return (result["error"] as? JsonObject)?.get("message")?.jsonPrimitive?.contentOrNull()
             ?: "That file could not be deleted."
     }
+
+    /**
+     * A path, and the project it is in when that is known.
+     *
+     * The trailing argument is left off entirely rather than sent as null, so a
+     * phone talking to an older computer sends exactly the frame it always did.
+     */
+    private fun arguments(relativePath: String, projectId: String?): List<JsonElement> =
+        if (projectId == null) {
+            listOf(JsonPrimitive(relativePath))
+        } else {
+            listOf(JsonPrimitive(relativePath), JsonPrimitive(projectId))
+        }
 
     private fun sizeOf(element: JsonElement?): String? {
         val bytes = (element as? JsonPrimitive)?.contentOrNull()?.toDoubleOrNull() ?: return null
