@@ -277,9 +277,19 @@ enum class AnodexIcon(
             "M21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21",
         ),
     ),
+    /**
+     * The desktop's `paperclip`, which this had been a redraw of.
+     *
+     * Every coordinate was slightly different — a 5.5 radius where the desktop
+     * has 6, a 3.7 where it has 4 — with nothing saying the change was meant.
+     * `DesktopContractTest` found it by reading the desktop's own file; no test
+     * on either side could see it before that, because both sides only ever
+     * checked themselves.
+     */
     PAPERCLIP(
         listOf(
-            "M21 11.5l-8.8 8.8a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9 9a1.8 1.8 0 0 1-2.6-2.6l8.3-8.3",
+            "M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 " +
+                "5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48",
         )
     ),
 
@@ -370,13 +380,33 @@ enum class AnodexIcon(
     ),
 
     /**
-     * A pulse line. The desktop's `activity`.
+     * A pulse line, and the dot it ends on. The desktop's `activity`.
      *
      * Diagnostics, where the question is whether anything is wrong rather than what
      * something is — which is what `INFO` says, and why three rows of this menu were
      * wearing the same glyph.
+     *
+     * The dot had been missing here. On the desktop it is a filled `<circle r="1.8">`
+     * and this app had only the trace, so the icon read as a plain ECG — the
+     * difference `DesktopContractTest` found by counting shapes.
+     *
+     * A zero-length stroke, which round caps render as a point — the same idiom
+     * `ALERT` uses for its dot, and for the same reason: this app strokes its
+     * glyphs and has no fill, so a small circle drawn here comes out as a ring
+     * with a hole in it rather than as a dot. That was tried first and looked
+     * wrong at 64dp.
+     *
+     * The cost is stated rather than hidden: this dot is radius 1, against the
+     * desktop's filled 1.8. It reads correctly at the sizes this app draws icons
+     * at, and it is the deliberate difference the contract test asks to be
+     * written down.
      */
-    ACTIVITY(listOf("M2 12h4l3 6 4-12 2.5 6H19")),
+    ACTIVITY(
+        listOf(
+            "M2 12h4l3 6 4-12 2.5 6H19",
+            "M20.5 12h.01",
+        )
+    ),
 
     /**
      * A warning triangle. The desktop's `alert`.

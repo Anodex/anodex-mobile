@@ -114,6 +114,16 @@ android {
         buildConfig = true
     }
 
+    // The desktop's design contract, on the unit tests' classpath.
+    //
+    // `protocol/anodex-design.json` is generated in the desktop repository and copied here
+    // by `tools/sync-design-contract.sh`. Pointing the test source set at it rather than
+    // keeping a second copy under `src/test/resources` means there is exactly one file to
+    // notice going stale, and `git status` is what notices.
+    sourceSets.getByName("test") {
+        resources.srcDir(rootProject.file("protocol"))
+    }
+
     testOptions {
         // Compose needs real Android resources to inflate, and Robolectric needs
         // to be allowed to hand them over. Without this every UI test fails on

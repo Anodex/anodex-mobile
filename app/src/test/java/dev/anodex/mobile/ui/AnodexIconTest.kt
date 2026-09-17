@@ -90,7 +90,17 @@ class AnodexIconTest {
 
     @Test
     fun `activity and alert are the desktop's, path for path`() {
-        assertEquals(listOf("M2 12h4l3 6 4-12 2.5 6H19"), AnodexIcon.ACTIVITY.strokes)
+        // This assertion used to be one path, and it passed — while the icon was
+        // missing the dot the desktop's ends on. A hand-typed expectation can only
+        // ever confirm what somebody typed; `DesktopContractTest` reads the
+        // desktop's own file and is what caught it.
+        assertEquals(
+            listOf(
+                "M2 12h4l3 6 4-12 2.5 6H19",
+                "M20.5 12h.01",
+            ),
+            AnodexIcon.ACTIVITY.strokes,
+        )
         assertEquals(
             listOf(
                 "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
