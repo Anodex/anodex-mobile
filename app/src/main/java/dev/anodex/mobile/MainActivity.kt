@@ -106,6 +106,7 @@ import dev.anodex.mobile.ui.screens.AgentsScreen
 import dev.anodex.mobile.ui.screens.ChatScreen
 import dev.anodex.mobile.ui.screens.ConversationsScreen
 import dev.anodex.mobile.ui.screens.EmailPane
+import dev.anodex.mobile.ui.screens.DiffScreen
 import dev.anodex.mobile.ui.screens.FileScreen
 import dev.anodex.mobile.ui.screens.HostScreen
 import dev.anodex.mobile.ui.screens.ManualPairScreen
@@ -747,6 +748,8 @@ private fun ConnectedScaffold(
     val newerVersion by viewModel.newerVersion.collectAsStateWithLifecycle()
     val openFile by viewModel.openFile.collectAsStateWithLifecycle()
     val openFileContent by viewModel.openFileContent.collectAsStateWithLifecycle()
+    val openDiff by viewModel.openDiff.collectAsStateWithLifecycle()
+    val openDiffContent by viewModel.openDiffContent.collectAsStateWithLifecycle()
     val unreadEmail by viewModel.unreadEmail.collectAsStateWithLifecycle()
     val conversationsError by viewModel.conversationsError.collectAsStateWithLifecycle()
     val personalityState by viewModel.personalities.collectAsStateWithLifecycle()
@@ -846,6 +849,21 @@ private fun ConnectedScaffold(
             choosingProject -> choosingProject = false
             else -> destination = AppDestination.CHAT
         }
+    }
+
+    // Before the file reader, so opening the file from a diff lands on top of it
+    // and closing that file comes back to the diff rather than to the transcript.
+    if (openDiff != null && openFile == null) {
+        BackHandler { viewModel.closeTurnDiff() }
+        DiffScreen(
+            path = openDiff.orEmpty(),
+            diff = openDiffContent,
+            loading = openDiffContent == null,
+            onClose = viewModel::closeTurnDiff,
+            onOpenFile = { viewModel.openWorkspaceFile(openDiff.orEmpty()) },
+            modifier = Modifier.safeDrawingPadding(),
+        )
+        return
     }
 
     if (openFile != null) {
@@ -1853,6 +1871,7 @@ private fun ChatPane(
             onApprove = { chat.respondToApproval(approved = true) },
             onDeny = { chat.respondToApproval(approved = false) },
             onOpenFile = viewModel::openWorkspaceFile,
+            onShowDiff = viewModel::openTurnDiff,
             hostLine = hostLine,
             userName = userName,
             dueLine = dueLine,

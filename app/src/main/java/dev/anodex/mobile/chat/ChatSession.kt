@@ -3,6 +3,7 @@ package dev.anodex.mobile.chat
 import dev.anodex.mobile.transport.AnodexSocket
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.workspace.ChangedFile
+import dev.anodex.mobile.workspace.TurnDiff
 import dev.anodex.mobile.workspace.Checkpoints
 import java.util.UUID
 import kotlin.time.Duration.Companion.hours
@@ -975,11 +976,34 @@ class ChatSession(
         }
     }
 
+    /**
+     * What changed inside one of the files [recordChangedFiles] listed.
+     *
+     * Takes the *reply* id, because that is what the transcript on screen is made
+     * of — and translates it here, beside [assistantIdFor], because the desktop
+     * records checkpoints against the user message that started the turn. That
+     * translation written anywhere else is a second copy of the same rule, and the
+     * copy nobody looks at is the one that goes wrong.
+     *
+     * Best effort, like the listing it belongs to: a turn with no checkpoint is the
+     * ordinary answer, not a failure worth putting on screen.
+     */
+    suspend fun diffOf(replyId: String, path: String): TurnDiff? {
+        val project = projectId ?: return null
+        return runCatching {
+            checkpoints.diffOf(project, conversationId, userIdFor(replyId), path)
+        }.getOrNull()
+    }
+
     private val checkpoints = Checkpoints(socket)
 
-    private fun assistantIdFor(messageId: String) = "$messageId:reply"
+    private fun assistantIdFor(messageId: String) = "$messageId$REPLY_SUFFIX"
+
+    private fun userIdFor(replyId: String) = replyId.removeSuffix(REPLY_SUFFIX)
 
     private companion object {
+        /** What this app adds to a user message id to name the answer to it. */
+        const val REPLY_SUFFIX = ":reply"
         const val CHANNEL_SEND = "chat:send"
         const val CHANNEL_BRANCH_FOR_EDIT = "conversations:branch-for-edit"
         const val CHANNEL_STREAM = "chat:stream"
