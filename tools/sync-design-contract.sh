@@ -23,6 +23,16 @@ if [ ! -f "$source_file" ]; then
     exit 1
 fi
 
-cp "$source_file" "$(dirname "$0")/../protocol/anodex-design.json"
+target="$(dirname "$0")/../protocol/anodex-design.json"
+cp "$source_file" "$target"
+
+# `.gitattributes` pins this file to LF so the copy stays byte-identical to the
+# desktop's on Windows too. Without it git rewrites the line endings on checkout
+# and the two files differ in 895 places while agreeing on every value, which
+# makes "is this still the desktop's?" unanswerable by comparing them.
+if ! cmp -s "$source_file" "$target"; then
+    echo "warning: the copy differs from the source byte for byte" >&2
+fi
+
 echo "copied $source_file"
 echo "run ./gradlew :app:testDebugUnitTest --tests '*DesktopContractTest*' to see what moved"

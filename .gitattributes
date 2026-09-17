@@ -1,0 +1,7 @@
+# The design contract is a copy of a file generated in the desktop repository,
+# and the only way to ask "is this still the desktop's?" is to compare the two.
+# Git's autocrlf answers no on Windows even when every byte of content agrees —
+# 895 line endings differ and nothing else does — which turns the one check that
+# matters into a false positive, the same shape of mistake the contract itself
+# was built to stop.
+protocol/*.json text eol=lf
