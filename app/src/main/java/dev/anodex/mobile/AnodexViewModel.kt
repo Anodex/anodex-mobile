@@ -1151,15 +1151,26 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
+        // Read before closing. `closeWorkspaceFile` clears this, and the call
+        // below runs after it — so taking it inside the coroutine always found
+        // null, the computer was asked about no project at all, and every delete
+        // from a chat came back "no workspace folder is selected".
+        val project = _openFileProject.value
+
         closeWorkspaceFile()
 
         viewModelScope.launch {
             // Guarded for the same reason the read is: the socket can die while
             // the call is in flight, and `failPending` would otherwise take the
             // process down rather than the request.
-            val failure = runCatching { client.trash(relativePath, _openFileProject.value) }
+            val failure = runCatching { client.trash(relativePath, project) }
                 .getOrElse { it.message ?: "Lost the connection mid-delete." }
             if (failure != null) {
+                // Said where the person is, not only on the Workspace screen. A
+                // delete started from a chat closed the reader and left the file
+                // where it was, with nothing on screen either way — the screen
+                // going away read as success.
+                _notice.value = failure
                 _workspaceError.value = failure
                 return@launch
             }
