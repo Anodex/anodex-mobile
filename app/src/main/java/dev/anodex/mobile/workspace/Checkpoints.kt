@@ -116,6 +116,44 @@ class Checkpoints(private val socket: AnodexSocket) {
     }
 
     /**
+     * Which turns in this conversation changed files, in one request.
+     *
+     * [changedBy] answers for a single turn and is what a live turn uses, because
+     * a live turn has exactly one answer to collect. History is the other shape:
+     * a conversation reopened from the computer has every turn at once and no
+     * record of any of them, because `changedFiles` is filled as a turn ends and
+     * nothing refills it. That left the diff reachable only for turns somebody
+     * watched happen — the opposite of the point, for a screen whose whole job is
+     * checking a run you were not in the room for.
+     *
+     * One call rather than one per turn. The computer already keeps this list per
+     * project; asking it once and filtering to this conversation costs a single
+     * frame, where asking `inspect` per assistant message costs one per turn and
+     * grows with the transcript.
+     *
+     * Paths only, which is what the list carries. Sizes and the kind of change
+     * come from [diffOf] when somebody opens one — and not knowing them is why a
+     * restored row shows no byte count rather than a wrong one.
+     */
+    suspend fun changedByTurn(projectId: String, conversationId: String): Map<String, List<String>> {
+        val answer = socket.invoke(CHANNEL_LIST, listOf(JsonPrimitive(projectId))) as? JsonObject
+            ?: return emptyMap()
+        if (answer["ok"]?.jsonPrimitive?.contentOrNull == "false") return emptyMap()
+        val entries = answer["value"] as? JsonArray ?: return emptyMap()
+
+        return entries.filterIsInstance<JsonObject>()
+            .filter { it["conversationId"]?.jsonPrimitive?.contentOrNull == conversationId }
+            .mapNotNull { entry ->
+                val messageId = entry["messageId"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val paths = (entry["changedFiles"] as? JsonArray)
+                    .orEmpty()
+                    .mapNotNull { it.jsonPrimitive.contentOrNull }
+                if (paths.isEmpty()) null else messageId to paths
+            }
+            .toMap()
+    }
+
+    /**
      * What changed inside one of those files.
      *
      * Null when the turn has no checkpoint at all, which is the ordinary answer
@@ -153,6 +191,7 @@ class Checkpoints(private val socket: AnodexSocket) {
 
     private companion object {
         const val CHANNEL_INSPECT = "checkpoints:inspect"
+        const val CHANNEL_LIST = "checkpoints:list"
         const val CHANNEL_DIFF = "checkpoints:diff-file"
     }
 }

@@ -962,6 +962,50 @@ class ChatSession(
      * Best effort. A turn that wrote nothing has no checkpoint at all, which is the
      * ordinary case rather than a failure worth putting on screen.
      */
+    /**
+     * Fill in what earlier turns changed, for a conversation read off the computer.
+     *
+     * [recordChangedFiles] fills this as a turn ends, and until now it was the only
+     * thing that ever did — so reopening the app emptied every row and took the
+     * diff behind it out of reach. A screen whose purpose is checking a run you
+     * were not present for cannot be reachable only while you are present.
+     *
+     * One request for the whole conversation, and it only ever adds: a turn this
+     * phone watched already carries sizes and the kind of each change, which the
+     * list does not have, so anything already recorded is left exactly as it is.
+     */
+    private fun fillChangedFilesFromHistory() {
+        val project = projectId ?: return
+
+        scope.launch {
+            val byTurn = runCatching { checkpoints.changedByTurn(project, conversationId) }
+                .getOrDefault(emptyMap())
+            if (byTurn.isEmpty()) return@launch
+
+            _messages.value = _messages.value.map { message ->
+                if (message.changedFiles.isNotEmpty()) return@map message
+                // Keyed on the user message that started the turn, which is what the
+                // computer files a checkpoint under — the same translation
+                // `userIdFor` does for the diff.
+                val paths = byTurn[userIdFor(message.id)] ?: return@map message
+                message.copy(
+                    changedFiles = paths.map { path ->
+                        // Paths are all the list carries. A row with no byte count
+                        // says nothing rather than something wrong, and the kind of
+                        // change arrives with the diff when one is opened.
+                        ChangedFile(
+                            path = path,
+                            kind = null,
+                            beforeSize = 0,
+                            afterSize = 0,
+                            conflicted = false,
+                        )
+                    }
+                )
+            }
+        }
+    }
+
     private suspend fun recordChangedFiles(messageId: String) {
         val project = projectId ?: return
         val changed = runCatching {
@@ -1003,6 +1047,15 @@ class ChatSession(
     }
 
     private val checkpoints = Checkpoints(socket)
+
+    init {
+        // After `checkpoints`, deliberately. Kotlin runs initialisers in
+        // declaration order and does not follow a call into a function body, so
+        // an `init` placed higher compiles and then reads a property that has not
+        // been assigned — surviving only because the work happens to be launched
+        // rather than run. That is luck, not a guarantee.
+        if (initialMessages.isNotEmpty()) fillChangedFilesFromHistory()
+    }
 
     private fun assistantIdFor(messageId: String) = "$messageId$REPLY_SUFFIX"
 
