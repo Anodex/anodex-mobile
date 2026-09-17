@@ -22,8 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +52,7 @@ import dev.anodex.mobile.profile.UsageProfile
 import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.scheduler.relativeTime
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.AnodexSwitch
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.ConfirmDialog
 import dev.anodex.mobile.ui.components.Hairline
@@ -940,20 +939,10 @@ private fun ToggleRow(label: String, detail: String, checked: Boolean, onChange:
             Text(detail, style = type.meta, color = colors.textMuted)
         }
 
-        Switch(
-            checked = checked,
-            // Null, because the row above already handles the tap. A switch with its
-            // own handler inside a clickable row toggles twice when the switch itself
-            // is hit, which reads as the setting refusing to change.
-            onCheckedChange = null,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.textOnAccent,
-                checkedTrackColor = colors.accent,
-                uncheckedThumbColor = colors.textMuted,
-                uncheckedTrackColor = colors.bgElevated,
-                uncheckedBorderColor = colors.border,
-            ),
-        )
+        // No handler of its own: the row above already takes the tap, and a
+        // switch that also handled it toggled twice when the switch itself was
+        // hit, which read as the setting refusing to change.
+        AnodexSwitch(checked = checked)
     }
 }
 

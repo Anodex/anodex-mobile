@@ -80,6 +80,7 @@ import dev.anodex.mobile.scheduler.dueToday
 import dev.anodex.mobile.scheduler.dueTodayLine
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.AnodexMark
+import dev.anodex.mobile.ui.components.AnodexSwitch
 import dev.anodex.mobile.ui.components.AppDestination
 import dev.anodex.mobile.ui.components.AppDrawer
 import dev.anodex.mobile.ui.components.ChatHeader
@@ -1939,6 +1940,21 @@ private fun DesignStateHarness(onExit: () -> Unit) {
                         onClick = advance,
                         modifier = Modifier.padding(top = Spacing.x6),
                     )
+
+                    // The controls themselves, not just the connection states.
+                    // This screen exists so appearance can be checked on a real
+                    // device in both themes, and the one thing it could not show
+                    // was a switch — which lives in Settings, behind a pairing.
+                    // Both positions, because off is half the design and the
+                    // half nobody looks at.
+                    Row(
+                        modifier = Modifier.padding(top = Spacing.x8),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.x6),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AnodexSwitch(checked = false)
+                        AnodexSwitch(checked = true)
+                    }
                 }
             }
         }
