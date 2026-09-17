@@ -226,3 +226,59 @@ class MarkdownTest {
         assertEquals("a\nb", block.text)
     }
 }
+
+class LooseListTest {
+
+    /**
+     * The model writes a detailed list with a blank line between items, which is
+     * ordinary markdown. Seen on a real phone: "List 15 uses of a mutex with
+     * detail" came back as fifteen items every one of which was numbered 1.
+     */
+    @Test
+    fun `a numbered list with blank lines between items is one list`() {
+        val blocks = parseMarkdown(
+            """
+            1. First thing — with a sentence after it.
+
+            2. Second thing — with a sentence after it.
+
+            3. Third thing — with a sentence after it.
+            """.trimIndent()
+        )
+
+        val lists = blocks.filterIsInstance<MarkdownBlock.ListBlock>()
+        assertEquals("one list, not one per item", 1, lists.size)
+        assertEquals(3, lists.first().items.size)
+        assertTrue(lists.first().ordered)
+    }
+
+    @Test
+    fun `a blank line still ends a list when a paragraph follows`() {
+        val blocks = parseMarkdown(
+            """
+            1. First thing
+            2. Second thing
+
+            A paragraph that is not part of the list.
+            """.trimIndent()
+        )
+
+        val lists = blocks.filterIsInstance<MarkdownBlock.ListBlock>()
+        assertEquals(1, lists.size)
+        assertEquals(2, lists.first().items.size)
+        assertEquals(1, blocks.filterIsInstance<MarkdownBlock.Paragraph>().size)
+    }
+
+    @Test
+    fun `a bulleted list that turns numbered is still two lists`() {
+        val blocks = parseMarkdown(
+            """
+            - one
+
+            1. two
+            """.trimIndent()
+        )
+
+        assertEquals(2, blocks.filterIsInstance<MarkdownBlock.ListBlock>().size)
+    }
+}

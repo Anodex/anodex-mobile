@@ -213,8 +213,23 @@ fun parseMarkdown(source: String): List<MarkdownBlock> {
 
             // One kind of list at a time: a bulleted list that turns numbered is two
             // lists, and rendering them as one would renumber the user's content.
+            val pattern = if (ordered) NUMBERED else BULLET
             while (index < lines.size) {
-                val pattern = if (ordered) NUMBERED else BULLET
+                // A blank line between items is ordinary markdown — a "loose" list —
+                // and the model writes one whenever the items are more than a few
+                // words. Breaking on it made every item its own list, and a list of
+                // one item is numbered "1.": asking the phone for fifteen numbered
+                // things returned fifteen number ones.
+                //
+                // Only skipped when the list actually continues. A blank line
+                // followed by anything else still ends the list, so the paragraph
+                // after a list is still a paragraph.
+                if (lines[index].isBlank()) {
+                    val next = lines.drop(index).indexOfFirst { it.isNotBlank() }
+                    if (next < 0 || !pattern.matches(lines[index + next])) break
+                    index += next
+                    continue
+                }
                 val match = pattern.matchEntire(lines[index]) ?: break
                 items += parseInline(match.groupValues[1])
                 index++
