@@ -981,14 +981,35 @@ private fun MessageRow(
                     // code — as plain text that is backticks and asterisks, with
                     // shell commands run together into a paragraph.
                     MarkdownText(message.text, modifier = Modifier.arrival(watchedItFill))
-                } else if (message.streaming && message.tools.isEmpty()) {
-                    // Nothing has arrived yet and nothing is being reported. Without
-                    // this the screen is simply blank, which reads as the app having
-                    // frozen rather than the model having started.
+                }
+
+                // The turn is still going and nothing else on screen is saying so.
+                //
+                // This used to be an `else` on the text above and to require that no
+                // tool had run, which tied the sign of life to what had *arrived*
+                // rather than to whether the turn was still running. Both halves of
+                // that were wrong in the same way, and a multi-step turn on the phone
+                // spent most of itself looking frozen: once the first words landed the
+                // line never came back, so a model thinking between paragraphs showed
+                // a finished-looking reply and nothing else; and after a tool finished,
+                // `tools.isEmpty()` was false for the rest of the turn, so the pause
+                // before the next step showed nothing either. The desktop has always
+                // kept a label at the tail for the whole of a streaming turn.
+                //
+                // `running == null` is the one case still worth suppressing: a running
+                // tool is already reported, above, either as its own row or as the
+                // folded-log line, and this would be the same news twice.
+                val tail = tailActivity(
+                    streaming = message.streaming,
+                    hasText = message.text.isNotEmpty(),
+                    toolRunning = running != null,
+                )
+                if (tail != null) {
                     ThinkingLine(
                         waitingForComputer,
                         reading,
                         sharingNote = sharingNote,
+                        writing = tail == TailActivity.WRITING,
                         // Tapping "Thinking…" opens what is being thought. Not while
                         // waiting or reading, when there is no thinking yet to show.
                         onShowThinking = { thoughtsOpen = true }.takeIf { !thoughtsOpen },
@@ -1753,11 +1774,35 @@ private fun Thoughts(
     }
 }
 
+/**
+ * What the tail of a streaming reply should say it is doing, or null for nothing.
+ *
+ * Its own function because the bug it replaces was this decision and nothing
+ * else, and there is no Compose test here to catch a rendering condition. The
+ * old one was an `else` on "are there words yet" that also required that no tool
+ * had *ever* run, which tied the sign of life to what had arrived rather than to
+ * whether the turn was still going. On a multi-step turn the phone then spent
+ * most of itself looking frozen: the line never returned after the first words,
+ * and never returned after the first tool.
+ */
+internal enum class TailActivity { THINKING, WRITING }
+
+internal fun tailActivity(streaming: Boolean, hasText: Boolean, toolRunning: Boolean): TailActivity? {
+    // Finished. The reply is the point now, not how it got here.
+    if (!streaming) return null
+    // A running tool already says so, as its own row or the folded-log line.
+    // Saying it again here is the same news twice.
+    if (toolRunning) return null
+    return if (hasText) TailActivity.WRITING else TailActivity.THINKING
+}
+
 @Composable
 private fun ThinkingLine(
     waitingForComputer: Boolean = false,
     reading: ReadingProgress? = null,
     sharingNote: String? = null,
+    /** Words are already on screen, so the last thing that happened was writing. */
+    writing: Boolean = false,
     /** Open the thinking. Null when it is already open. */
     onShowThinking: (() -> Unit)? = null,
 ) {
@@ -1800,6 +1845,9 @@ private fun ThinkingLine(
                 // read before the reply starts — said, with how far, rather than
                 // "Thinking…" for all of it.
                 readingLabel != null -> readingLabel
+                // Said differently once there are words, because "Thinking…" under a
+                // half-written paragraph reads as the answer having stopped.
+                writing -> "Writing…"
                 else -> "Thinking…"
             }.let { label ->
                 // Not while queued: a turn waiting for the model is not yet sharing it.
