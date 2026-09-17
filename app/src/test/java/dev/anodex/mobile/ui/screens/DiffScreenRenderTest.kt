@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.workspace.DiffRow
 import dev.anodex.mobile.workspace.TurnDiff
+import dev.anodex.mobile.workspace.TurnDiffResult
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,24 +29,26 @@ class DiffScreenRenderTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun diff(
+    private fun ready(
         rows: List<DiffRow>,
         added: Int = 0,
         removed: Int = 0,
         binary: Boolean = false,
         truncated: Boolean = false,
         kind: String = "modified",
-    ) = TurnDiff(
-        path = "src/sim/useDragBody.ts",
-        kind = kind,
-        binary = binary,
-        added = added,
-        removed = removed,
-        rows = rows,
-        truncated = truncated,
+    ) = TurnDiffResult.Ready(
+        TurnDiff(
+            path = "src/sim/useDragBody.ts",
+            kind = kind,
+            binary = binary,
+            added = added,
+            removed = removed,
+            rows = rows,
+            truncated = truncated,
+        )
     )
 
-    private fun show(value: TurnDiff?, loading: Boolean = false) {
+    private fun show(value: TurnDiffResult?, loading: Boolean = false) {
         compose.setContent {
             AnodexTheme(darkTheme = true) {
                 DiffScreen(
@@ -62,7 +65,7 @@ class DiffScreenRenderTest {
     @Test
     fun `both sides of a change are on screen`() {
         show(
-            diff(
+            ready(
                 rows = listOf(
                     DiffRow(DiffRow.Kind.REMOVED, "const basis = cameraBasis()"),
                     DiffRow(DiffRow.Kind.ADDED, "const basis = useRef(cameraBasis())"),
@@ -77,7 +80,7 @@ class DiffScreenRenderTest {
 
     @Test
     fun `the counts are in the chrome, before any scrolling`() {
-        show(diff(rows = listOf(DiffRow(DiffRow.Kind.ADDED, "one")), added = 12, removed = 3))
+        show(ready(rows = listOf(DiffRow(DiffRow.Kind.ADDED, "one")), added = 12, removed = 3))
         compose.onNodeWithText("+12").assertIsDisplayed()
         compose.onNodeWithText("−3").assertIsDisplayed()
     }
@@ -86,7 +89,7 @@ class DiffScreenRenderTest {
     fun `a collapsed run says how much it is hiding`() {
         // A gap that does not say its size is a diff pretending the file is
         // shorter than it is.
-        show(diff(rows = listOf(DiffRow(DiffRow.Kind.GAP, "", collapsed = 12))))
+        show(ready(rows = listOf(DiffRow(DiffRow.Kind.GAP, "", collapsed = 12))))
         compose.onNodeWithText("12 unchanged lines", substring = true).assertIsDisplayed()
     }
 
@@ -96,7 +99,7 @@ class DiffScreenRenderTest {
         // complete, and a person decides what to do with a change they have only
         // seen part of.
         show(
-            diff(
+            ready(
                 rows = listOf(DiffRow(DiffRow.Kind.ADDED, "one")),
                 added = 4000,
                 removed = 4000,
@@ -109,7 +112,7 @@ class DiffScreenRenderTest {
 
     @Test
     fun `a binary file says what it is rather than drawing nothing`() {
-        show(diff(rows = emptyList(), binary = true, kind = "created"))
+        show(ready(rows = emptyList(), binary = true, kind = "created"))
         compose.onNodeWithText("not a text file", substring = true).assertIsDisplayed()
     }
 
@@ -121,7 +124,29 @@ class DiffScreenRenderTest {
 
     @Test
     fun `the file as it stands now is one tap away`() {
-        show(diff(rows = listOf(DiffRow(DiffRow.Kind.ADDED, "one"))))
+        show(ready(rows = listOf(DiffRow(DiffRow.Kind.ADDED, "one"))))
         compose.onNodeWithContentDescription("Open the file as it is now").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a diff that will never arrive says so instead of waiting`() {
+        // The bug this replaced. Every failure — an old computer that has never
+        // heard of the request, a socket that died mid-read, a checkpoint since
+        // thrown away — came back as null, and null was also "not here yet". The
+        // screen drew "Reading from your computer" and stayed there for ever.
+        show(TurnDiffResult.Failed("Lost the connection to your computer."))
+
+        compose.onNodeWithText("Could not read what changed", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Lost the connection", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Reading from your computer", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the computer's own reason is what is shown`() {
+        // Not a house phrase over the top of it. "That turn did not change that
+        // file" and "no workspace folder is selected" are different problems with
+        // different answers, and the computer is the half that knows which.
+        show(TurnDiffResult.Failed("That turn did not change that file."))
+        compose.onNodeWithText("did not change that file", substring = true).assertIsDisplayed()
     }
 }

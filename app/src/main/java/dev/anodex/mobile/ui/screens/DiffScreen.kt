@@ -34,6 +34,7 @@ import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.workspace.DiffRow
 import dev.anodex.mobile.workspace.TurnDiff
+import dev.anodex.mobile.workspace.TurnDiffResult
 
 /**
  * What one turn changed inside one file.
@@ -55,7 +56,7 @@ import dev.anodex.mobile.workspace.TurnDiff
 @Composable
 fun DiffScreen(
     path: String,
-    diff: TurnDiff?,
+    diff: TurnDiffResult?,
     loading: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -66,6 +67,7 @@ fun DiffScreen(
     val type = AnodexTheme.type
 
     val directory = path.substringBeforeLast('/', missingDelimiterValue = "")
+    val ready = (diff as? TurnDiffResult.Ready)?.diff
 
     ScreenScaffold(
         title = path.substringAfterLast('/'),
@@ -110,7 +112,7 @@ fun DiffScreen(
                 }
             }
         },
-        beneath = if (diff == null) null else ({ DiffSummary(diff) }),
+        beneath = ready?.let { { DiffSummary(it) } },
     ) { topInset ->
         when {
             loading || diff == null -> EmptyState(
@@ -120,16 +122,35 @@ fun DiffScreen(
                 modifier = Modifier.padding(top = topInset),
             )
 
+            // The state this screen did not have, and the one it needed most: a
+            // diff that is never going to arrive looked exactly like one that had
+            // not arrived yet, so the screen sat on "Reading from your computer"
+            // for ever whenever anything went wrong.
+            diff is TurnDiffResult.Failed -> EmptyState(
+                headline = "Could not read what changed",
+                detail = diff.reason,
+                tone = EmptyTone.PROBLEM,
+                icon = AnodexIcon.FOLDER,
+                modifier = Modifier.padding(top = topInset),
+            )
+
             // Not a failure. An image or a compiled file changed, and the honest
             // report is which one it was, not an empty screen.
-            diff.binary -> EmptyState(
+            ready == null -> EmptyState(
+                headline = "Nothing to show here",
+                detail = "That change could not be read.",
+                icon = AnodexIcon.FOLDER,
+                modifier = Modifier.padding(top = topInset),
+            )
+
+            ready.binary -> EmptyState(
                 headline = "Nothing to show here",
                 detail = "This is not a text file, so there is no diff to draw.",
                 icon = AnodexIcon.FOLDER,
                 modifier = Modifier.padding(top = topInset),
             )
 
-            diff.rows.isEmpty() -> EmptyState(
+            ready.rows.isEmpty() -> EmptyState(
                 headline = "Nothing changed inside it",
                 detail = "The file was touched, but its contents came out the same.",
                 icon = AnodexIcon.FOLDER,
@@ -140,9 +161,9 @@ fun DiffScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = topInset + Spacing.x2, bottom = Spacing.x6),
             ) {
-                items(diff.rows) { row -> DiffLine(row, colors) }
+                items(ready.rows) { row -> DiffLine(row, colors) }
 
-                if (diff.truncated) {
+                if (ready.truncated) {
                     item {
                         Text(
                             text = "This change is too big to show in full. " +
@@ -252,22 +273,38 @@ private fun PreviewDiff() {
     AnodexTheme(darkTheme = true) {
         DiffScreen(
             path = "src/sim/useDragBody.ts",
-            diff = TurnDiff(
-                path = "src/sim/useDragBody.ts",
-                kind = "modified",
-                binary = false,
-                added = 2,
-                removed = 1,
-                rows = listOf(
-                    DiffRow(DiffRow.Kind.GAP, "", collapsed = 12),
-                    DiffRow(DiffRow.Kind.UNCHANGED, "export function useDragBody(body: Body) {"),
-                    DiffRow(DiffRow.Kind.REMOVED, "  const basis = cameraBasis()"),
-                    DiffRow(DiffRow.Kind.ADDED, "  const basis = useRef(cameraBasis())"),
-                    DiffRow(DiffRow.Kind.ADDED, "  // pinned at drag start"),
-                    DiffRow(DiffRow.Kind.UNCHANGED, "  return useCallback(() => {"),
-                ),
-                truncated = false,
+            diff = TurnDiffResult.Ready(
+                TurnDiff(
+                    path = "src/sim/useDragBody.ts",
+                    kind = "modified",
+                    binary = false,
+                    added = 2,
+                    removed = 1,
+                    rows = listOf(
+                        DiffRow(DiffRow.Kind.GAP, "", collapsed = 12),
+                        DiffRow(DiffRow.Kind.UNCHANGED, "export function useDragBody(body: Body) {"),
+                        DiffRow(DiffRow.Kind.REMOVED, "  const basis = cameraBasis()"),
+                        DiffRow(DiffRow.Kind.ADDED, "  const basis = useRef(cameraBasis())"),
+                        DiffRow(DiffRow.Kind.ADDED, "  // pinned at drag start"),
+                        DiffRow(DiffRow.Kind.UNCHANGED, "  return useCallback(() => {"),
+                    ),
+                    truncated = false,
+                )
             ),
+            loading = false,
+            onClose = {},
+            onOpenFile = {},
+        )
+    }
+}
+
+@Preview(name = "Diff - could not load", showBackground = true, backgroundColor = 0xFF0C0C0C)
+@Composable
+private fun PreviewDiffFailed() {
+    AnodexTheme(darkTheme = true) {
+        DiffScreen(
+            path = "src/sim/useDragBody.ts",
+            diff = TurnDiffResult.Failed("Lost the connection to your computer."),
             loading = false,
             onClose = {},
             onOpenFile = {},

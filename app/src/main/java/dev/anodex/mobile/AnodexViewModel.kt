@@ -95,7 +95,7 @@ import dev.anodex.mobile.widget.WidgetConnection
 import dev.anodex.mobile.widget.WidgetRecent
 import dev.anodex.mobile.widget.WidgetState
 import dev.anodex.mobile.workspace.FileContent
-import dev.anodex.mobile.workspace.TurnDiff
+import dev.anodex.mobile.workspace.TurnDiffResult
 import dev.anodex.mobile.workspace.Workspace
 import dev.anodex.mobile.workspace.WorkspaceFile
 import kotlinx.coroutines.CancellationException
@@ -1158,8 +1158,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** The file whose turn-diff is on screen, or null when none is. */
     val openDiff: StateFlow<String?> = _openDiff.asStateFlow()
 
-    private val _openDiffContent = MutableStateFlow<TurnDiff?>(null)
-    val openDiffContent: StateFlow<TurnDiff?> = _openDiffContent.asStateFlow()
+    private val _openDiffContent = MutableStateFlow<TurnDiffResult?>(null)
+
+    /** Null while the computer is still being asked. Never null to mean failure. */
+    val openDiffContent: StateFlow<TurnDiffResult?> = _openDiffContent.asStateFlow()
 
     /**
      * Show what one turn changed inside one file.

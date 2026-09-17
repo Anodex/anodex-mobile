@@ -36,6 +36,24 @@ data class DiffRow(
 }
 
 /**
+ * What came back when a turn's diff was asked for.
+ *
+ * Shaped like [FileContent] rather than returning a nullable, and for the reason
+ * that type gives: a screen cannot tell a null that means "still asking" from a
+ * null that means "this will never arrive". The first version of this returned
+ * `TurnDiff?`, and every failure on the phone — an old desktop that has never
+ * heard of the channel, a socket that died mid-read, a checkpoint that has since
+ * been thrown away — drew the same "Reading from your computer..." and stayed
+ * there.
+ */
+sealed interface TurnDiffResult {
+    data class Ready(val diff: TurnDiff) : TurnDiffResult
+
+    /** Said out loud on the screen. The reason is the computer's own where it gave one. */
+    data class Failed(val reason: String) : TurnDiffResult
+}
+
+/**
  * What changed inside one file, in one turn.
  *
  * The counts are the whole truth even when [rows] is cut short: they are taken
@@ -108,7 +126,7 @@ class Checkpoints(private val socket: AnodexSocket) {
         conversationId: String,
         messageId: String,
         path: String,
-    ): TurnDiff? {
+    ): TurnDiffResult {
         val request = buildJsonObject {
             put("projectId", projectId)
             put("conversationId", conversationId)
@@ -116,11 +134,10 @@ class Checkpoints(private val socket: AnodexSocket) {
             put("path", path)
         }
 
-        val answer = socket.invoke(CHANNEL_DIFF, listOf(request)) as? JsonObject ?: return null
-        if (answer["ok"]?.jsonPrimitive?.contentOrNull == "false") return null
-        val value = answer["value"] as? JsonObject ?: return null
+        val answer = socket.invoke(CHANNEL_DIFF, listOf(request)) as? JsonObject
+            ?: return TurnDiffResult.Failed("Your computer did not answer.")
 
-        return turnDiffFrom(value, fallbackPath = path)
+        return turnDiffResultFrom(answer, fallbackPath = path)
     }
 
     private fun JsonObject.asChangedFile(): ChangedFile? {
@@ -193,3 +210,28 @@ private fun JsonObject.asRow(): DiffRow = DiffRow(
     text = this["text"]?.jsonPrimitive?.contentOrNull.orEmpty(),
     collapsed = this["count"]?.jsonPrimitive?.intOrNull ?: 0,
 )
+
+/**
+ * A whole answer, envelope and all.
+ *
+ * Its own function for the same reason [turnDiffFrom] is, and with more cause: the
+ * bug this shape replaced lived here, in the failure path, which had nothing that
+ * could run it. Everything that went wrong came back as a null the screen could not
+ * tell from "not here yet", so it drew "Reading from your computer..." for ever.
+ */
+internal fun turnDiffResultFrom(answer: JsonObject, fallbackPath: String): TurnDiffResult {
+    if (answer["ok"]?.jsonPrimitive?.contentOrNull == "false") {
+        val message = (answer["error"] as? JsonObject)?.get("message")?.jsonPrimitive?.contentOrNull
+        // The computer's own sentence where it gave one: "that turn did not change
+        // that file" and "no workspace folder is selected" are different problems
+        // with different answers, and this end does not know which.
+        return TurnDiffResult.Failed(message ?: "That change could not be read.")
+    }
+
+    // `ok` carrying nothing is the answer for a turn there is no longer a
+    // checkpoint for. Not a fault, and not a diff either.
+    val value = answer["value"] as? JsonObject
+        ?: return TurnDiffResult.Failed("Your computer no longer has a record of that turn.")
+
+    return TurnDiffResult.Ready(turnDiffFrom(value, fallbackPath = fallbackPath))
+}
