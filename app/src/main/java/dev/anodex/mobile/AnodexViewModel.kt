@@ -95,6 +95,7 @@ import dev.anodex.mobile.widget.WidgetConnection
 import dev.anodex.mobile.widget.WidgetRecent
 import dev.anodex.mobile.widget.WidgetState
 import dev.anodex.mobile.workspace.FileContent
+import dev.anodex.mobile.workspace.TurnDiff
 import dev.anodex.mobile.workspace.Workspace
 import dev.anodex.mobile.workspace.WorkspaceFile
 import kotlinx.coroutines.CancellationException
@@ -1150,6 +1151,41 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // The listing still has the file in it until it is asked again.
             refreshWorkspaceFiles()
         }
+    }
+
+    private val _openDiff = MutableStateFlow<String?>(null)
+
+    /** The file whose turn-diff is on screen, or null when none is. */
+    val openDiff: StateFlow<String?> = _openDiff.asStateFlow()
+
+    private val _openDiffContent = MutableStateFlow<TurnDiff?>(null)
+    val openDiffContent: StateFlow<TurnDiff?> = _openDiffContent.asStateFlow()
+
+    /**
+     * Show what one turn changed inside one file.
+     *
+     * The list of changed files answers *which*; this answers *what*, which is the
+     * question that decides whether a run done while you were away is worth
+     * keeping. Takes the reply id straight off the message on screen — the session
+     * knows how to turn that into the id the computer files checkpoints under.
+     */
+    fun openTurnDiff(replyId: String, path: String) {
+        val session = _chat.value ?: return
+        _openDiff.value = path
+        _openDiffContent.value = null
+
+        viewModelScope.launch {
+            val diff = session.diffOf(replyId, path)
+            // Still the file the user asked for? They can close the screen while the
+            // computer is answering, and a diff arriving into a closed screen would
+            // reopen it on the file they just left.
+            if (_openDiff.value == path) _openDiffContent.value = diff
+        }
+    }
+
+    fun closeTurnDiff() {
+        _openDiff.value = null
+        _openDiffContent.value = null
     }
 
     private val _newerVersion = MutableStateFlow<String?>(null)

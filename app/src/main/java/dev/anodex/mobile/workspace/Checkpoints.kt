@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
@@ -24,6 +25,33 @@ data class ChangedFile(
     val sizeDelta: Long get() = afterSize - beforeSize
 }
 
+/** One line of a diff, as the computer drew it. */
+data class DiffRow(
+    val kind: Kind,
+    val text: String,
+    /** How many unchanged lines were collapsed here. Only set on [Kind.GAP]. */
+    val collapsed: Int = 0,
+) {
+    enum class Kind { UNCHANGED, ADDED, REMOVED, BLANK, GAP }
+}
+
+/**
+ * What changed inside one file, in one turn.
+ *
+ * The counts are the whole truth even when [rows] is cut short: they are taken
+ * before the cut, so a phone never under-reports the size of a change.
+ */
+data class TurnDiff(
+    val path: String,
+    val kind: String,
+    /** Nothing to draw, and the reason is worth saying: a PNG is not a failure. */
+    val binary: Boolean,
+    val added: Int,
+    val removed: Int,
+    val rows: List<DiffRow>,
+    val truncated: Boolean,
+)
+
 /**
  * What a turn actually changed on the computer.
  *
@@ -33,13 +61,15 @@ data class ChangedFile(
  * is a fact.
  *
  * Read-only from a phone, deliberately. The computer also knows how to put these
- * files back, and that is refused here: undoing an afternoon of work needs a diff
- * in front of you, and a filename and a byte count is not that.
+ * files back, and that is not offered here: undoing an afternoon of work needs a
+ * diff in front of you.
  *
- * File contents are stripped on the way out — a checkpoint holds the whole before
- * and after of everything it touched, and one turn that rewrote a large file would
- * be a frame too big to send. Opening a file is a separate request, against the
- * file as it now stands.
+ * [diffOf] is the first half of that sentence being made true. `inspect` strips
+ * file contents on the way out — a checkpoint holds the whole before and after of
+ * everything it touched, and one turn that rewrote a large file would be a frame
+ * too big to send — which left the phone able to say *that* a file changed and
+ * never *what*. A diff is smaller than either side of it, so the computer draws
+ * one and sends that instead.
  */
 class Checkpoints(private val socket: AnodexSocket) {
 
@@ -67,6 +97,32 @@ class Checkpoints(private val socket: AnodexSocket) {
         return files.filterIsInstance<JsonObject>().mapNotNull { it.asChangedFile() }
     }
 
+    /**
+     * What changed inside one of those files.
+     *
+     * Null when the turn has no checkpoint at all, which is the ordinary answer
+     * for a turn that read files and wrote none — not a fault worth reporting.
+     */
+    suspend fun diffOf(
+        projectId: String,
+        conversationId: String,
+        messageId: String,
+        path: String,
+    ): TurnDiff? {
+        val request = buildJsonObject {
+            put("projectId", projectId)
+            put("conversationId", conversationId)
+            put("messageId", messageId)
+            put("path", path)
+        }
+
+        val answer = socket.invoke(CHANNEL_DIFF, listOf(request)) as? JsonObject ?: return null
+        if (answer["ok"]?.jsonPrimitive?.contentOrNull == "false") return null
+        val value = answer["value"] as? JsonObject ?: return null
+
+        return turnDiffFrom(value, fallbackPath = path)
+    }
+
     private fun JsonObject.asChangedFile(): ChangedFile? {
         val path = this["path"]?.jsonPrimitive?.contentOrNull ?: return null
         return ChangedFile(
@@ -80,6 +136,7 @@ class Checkpoints(private val socket: AnodexSocket) {
 
     private companion object {
         const val CHANNEL_INSPECT = "checkpoints:inspect"
+        const val CHANNEL_DIFF = "checkpoints:diff-file"
     }
 }
 
@@ -104,3 +161,35 @@ fun describeDelta(delta: Long): String? {
         else -> "%s%.1f MB".format(sign, magnitude / (1024.0 * 1024))
     }
 }
+
+/**
+ * A diff as the computer sent it.
+ *
+ * Its own function, away from the socket, because this is where a change made on
+ * the desktop lands: a renamed field or a new row type arrives here first, and a
+ * mapping that can be run on a literal is a mapping that can be tested.
+ */
+internal fun turnDiffFrom(value: JsonObject, fallbackPath: String): TurnDiff = TurnDiff(
+    path = value["path"]?.jsonPrimitive?.contentOrNull ?: fallbackPath,
+    kind = value["kind"]?.jsonPrimitive?.contentOrNull ?: "modified",
+    binary = value["binary"]?.jsonPrimitive?.contentOrNull == "true",
+    added = value["added"]?.jsonPrimitive?.intOrNull ?: 0,
+    removed = value["removed"]?.jsonPrimitive?.intOrNull ?: 0,
+    rows = (value["rows"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().map { it.asRow() },
+    truncated = value["truncated"]?.jsonPrimitive?.contentOrNull == "true",
+)
+
+private fun JsonObject.asRow(): DiffRow = DiffRow(
+    kind = when (this["type"]?.jsonPrimitive?.contentOrNull) {
+        "added" -> DiffRow.Kind.ADDED
+        "removed" -> DiffRow.Kind.REMOVED
+        "blank" -> DiffRow.Kind.BLANK
+        "gap" -> DiffRow.Kind.GAP
+        // Anything the desktop invents later draws as context rather than
+        // vanishing. A row this phone does not recognise is still a line of the
+        // file, and dropping it silently would misreport the change.
+        else -> DiffRow.Kind.UNCHANGED
+    },
+    text = this["text"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+    collapsed = this["count"]?.jsonPrimitive?.intOrNull ?: 0,
+)

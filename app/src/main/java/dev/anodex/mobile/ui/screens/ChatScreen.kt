@@ -137,6 +137,8 @@ fun ChatScreen(
     onDeny: () -> Unit = {},
     /** Opens a file a tool touched. Null in previews and where there is no socket. */
     onOpenFile: ((String) -> Unit)? = null,
+    /** Show what a turn changed inside one file: (reply id, path). */
+    onShowDiff: ((String, String) -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
     hostLine: String? = null,
     /** What the computer is doing later today, if anything. Null on a quiet day. */
@@ -531,6 +533,7 @@ fun ChatScreen(
                         MessageRow(
                             message = if (runInstruction) message.copy(text = runGoal!!) else message,
                             onOpenFile = onOpenFile,
+                            onShowDiff = onShowDiff,
                             onRetry = onRetryMessage,
                             onContinue = onContinue?.takeIf {
                                 canContinue(message, isNewest = index == messages.lastIndex)
@@ -695,6 +698,8 @@ fun ChatScreen(
 private fun MessageRow(
     message: ChatMessage,
     onOpenFile: ((String) -> Unit)? = null,
+    /** Show what a turn changed inside one file: (reply id, path). */
+    onShowDiff: ((String, String) -> Unit)? = null,
     onRetry: ((String) -> Unit)? = null,
     /** Present only on the reply that can be continued. */
     onContinue: (() -> Unit)? = null,
@@ -1021,7 +1026,11 @@ private fun MessageRow(
                 // actually changed on disk — the half worth trusting a run on when
                 // you are not in the room to look.
                 if (message.changedFiles.isNotEmpty()) {
-                    ChangedFiles(message.changedFiles, onOpenFile)
+                    ChangedFiles(
+                        files = message.changedFiles,
+                        onOpenFile = onOpenFile,
+                        onShowDiff = onShowDiff?.let { show -> { path -> show(message.id, path) } },
+                    )
                 }
 
                 if (!message.streaming && message.text.isNotEmpty()) {
@@ -1573,10 +1582,14 @@ private suspend fun LazyListState.showEndOf(index: Int, smooth: Boolean = true) 
  *
  * Read-only from here. The computer knows how to put these back, and that is
  * deliberately not offered on a phone — undoing an afternoon of work wants a diff
- * in front of you, and a filename and a byte count is not that.
+ * in front of you. Tapping a file now gives you one.
  */
 @Composable
-private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit)?) {
+private fun ChangedFiles(
+    files: List<ChangedFile>,
+    onOpenFile: ((String) -> Unit)?,
+    onShowDiff: ((String) -> Unit)?,
+) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     var expanded by rememberSaveable(files.size) { mutableStateOf(false) }
@@ -1624,10 +1637,14 @@ private fun ChangedFiles(files: List<ChangedFile>, onOpenFile: ((String) -> Unit
                     .fillMaxWidth()
                     .heightIn(min = Touch.minTarget)
                     .then(
-                        if (onOpenFile != null) {
-                            Modifier.clickable { onOpenFile(file.path) }
-                        } else {
-                            Modifier
+                        // The diff, not the file. Standing in front of a list of
+                        // files a turn changed, the question is what it did to
+                        // them — the file as it stands now is one tap further on,
+                        // from the diff's own header.
+                        when {
+                            onShowDiff != null -> Modifier.clickable { onShowDiff(file.path) }
+                            onOpenFile != null -> Modifier.clickable { onOpenFile(file.path) }
+                            else -> Modifier
                         },
                     ),
                 verticalAlignment = Alignment.CenterVertically,

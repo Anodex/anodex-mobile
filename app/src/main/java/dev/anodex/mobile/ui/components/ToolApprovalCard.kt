@@ -29,6 +29,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.DiffLine
+import dev.anodex.mobile.ui.theme.DiffTone
+import dev.anodex.mobile.ui.theme.diffInk
 import dev.anodex.mobile.chat.FileDiff
 import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.chat.diffLines
@@ -244,11 +246,7 @@ private fun DiffView(diff: FileDiff) {
                     DiffLine.Kind.KEPT -> "  ${line.text}"
                 },
                 style = type.mono,
-                color = when (line.kind) {
-                    DiffLine.Kind.ADDED -> colors.accentGreenInk
-                    DiffLine.Kind.REMOVED -> colors.dangerInk
-                    DiffLine.Kind.KEPT -> colors.textFaint
-                },
+                color = colors.diffInk(line.kind.tone()),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -327,4 +325,10 @@ private fun PreviewDestructive() {
             )
         }
     }
+}
+
+private fun DiffLine.Kind.tone(): DiffTone = when (this) {
+    DiffLine.Kind.ADDED -> DiffTone.ADDED
+    DiffLine.Kind.REMOVED -> DiffTone.REMOVED
+    DiffLine.Kind.KEPT -> DiffTone.CONTEXT
 }
