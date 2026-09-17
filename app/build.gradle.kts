@@ -115,6 +115,10 @@ android {
     }
 
     testOptions {
+        // Compose needs real Android resources to inflate, and Robolectric needs
+        // to be allowed to hand them over. Without this every UI test fails on
+        // resource lookup rather than on anything it meant to assert.
+        unitTests.isIncludeAndroidResources = true
         unitTests.all {
             // A test task that runs zero tests still reports BUILD SUCCESSFUL, which is the exact
             // shape of a check that silently stopped checking anything. Print each test so the
@@ -151,6 +155,10 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
 }
