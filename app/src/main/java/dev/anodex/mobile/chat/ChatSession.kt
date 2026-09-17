@@ -3,7 +3,7 @@ package dev.anodex.mobile.chat
 import dev.anodex.mobile.transport.AnodexSocket
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.workspace.ChangedFile
-import dev.anodex.mobile.workspace.TurnDiff
+import dev.anodex.mobile.workspace.TurnDiffResult
 import dev.anodex.mobile.workspace.Checkpoints
 import java.util.UUID
 import kotlin.time.Duration.Companion.hours
@@ -988,11 +988,18 @@ class ChatSession(
      * Best effort, like the listing it belongs to: a turn with no checkpoint is the
      * ordinary answer, not a failure worth putting on screen.
      */
-    suspend fun diffOf(replyId: String, path: String): TurnDiff? {
-        val project = projectId ?: return null
+    suspend fun diffOf(replyId: String, path: String): TurnDiffResult {
+        val project = projectId
+            ?: return TurnDiffResult.Failed("This turn did not run inside a project.")
+
         return runCatching {
             checkpoints.diffOf(project, conversationId, userIdFor(replyId), path)
-        }.getOrNull()
+        }.getOrElse {
+            // Guarded for the same reason every other call on this socket is: it
+            // can die mid-request, and `failPending` resumes the call with the
+            // failure rather than the answer.
+            TurnDiffResult.Failed(it.message ?: "Lost the connection to your computer.")
+        }
     }
 
     private val checkpoints = Checkpoints(socket)

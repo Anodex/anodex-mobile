@@ -133,4 +133,65 @@ class TurnDiffWireTest {
         assertEquals("modified", diff.kind)
         assertEquals(0, diff.added)
     }
+
+    private fun envelope(payload: String) =
+        turnDiffResultFrom(Json.parseToJsonElement(payload) as JsonObject, fallbackPath = "a.ts")
+
+    @Test
+    fun `a refusal carries the computer's own reason`() {
+        // The path that had nothing running it, and where the bug was: this used
+        // to come back as a null the screen could not tell from "not here yet".
+        val result = envelope(
+            """
+            {
+              "ok": false,
+              "error": {
+                "code": "checkpoint.no-file",
+                "message": "That turn did not change that file."
+              }
+            }
+            """.trimIndent()
+        )
+
+        assertTrue(result is TurnDiffResult.Failed)
+        assertEquals(
+            "That turn did not change that file.",
+            (result as TurnDiffResult.Failed).reason,
+        )
+    }
+
+    @Test
+    fun `a refusal with no message still says something`() {
+        val result = envelope("""{ "ok": false }""")
+        assertTrue(result is TurnDiffResult.Failed)
+        assertTrue((result as TurnDiffResult.Failed).reason.isNotBlank())
+    }
+
+    @Test
+    fun `a turn with no checkpoint left is a failure, not a silence`() {
+        // `ok(null)` from the desktop. It is not a fault — but it is not a diff
+        // either, and a screen given nothing to say waits for ever.
+        val result = envelope("""{ "ok": true, "value": null }""")
+        assertTrue(result is TurnDiffResult.Failed)
+        assertTrue((result as TurnDiffResult.Failed).reason.contains("no longer"))
+    }
+
+    @Test
+    fun `an answer that is nothing at all is a failure`() {
+        // An older desktop that has never heard of this request. The phone is the
+        // half that updates first, so it is the half that meets this.
+        val result = envelope("""{}""")
+        assertTrue(result is TurnDiffResult.Failed)
+    }
+
+    @Test
+    fun `a good answer comes through as ready`() {
+        val result = envelope(
+            """{ "ok": true, "value": { "path": "a.ts", "kind": "modified", "binary": false,
+                 "added": 1, "removed": 0, "truncated": false,
+                 "rows": [{ "type": "added", "text": "one" }] } }"""
+        )
+        assertTrue(result is TurnDiffResult.Ready)
+        assertEquals(1, (result as TurnDiffResult.Ready).diff.added)
+    }
 }
