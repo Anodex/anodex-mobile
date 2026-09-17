@@ -1087,9 +1087,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * rewritten twice since, and stale source presented as current is worse than
      * none.
      */
-    fun openWorkspaceFile(relativePath: String) {
+    fun openWorkspaceFile(relativePath: String, projectId: String? = null) {
         _openFile.value = relativePath
         _openFileContent.value = null
+        _openFileProject.value = projectId
 
         val client = workspace
         if (client == null) {
@@ -1107,7 +1108,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // good ones, on a desktop that stopped answering, while a file was open.
             // The branch three lines above already knew how to say "not connected";
             // the read path simply never reached it.
-            _openFileContent.value = runCatching { client.read(relativePath) }
+            _openFileContent.value = runCatching { client.read(relativePath, projectId) }
                 .getOrElse { FileContent.Failed(it.message ?: "Lost the connection mid-read.") }
         }
     }
@@ -1115,7 +1116,21 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun closeWorkspaceFile() {
         _openFile.value = null
         _openFileContent.value = null
+        _openFileProject.value = null
     }
+
+    /**
+     * The project the open file was opened out of.
+     *
+     * Kept beside the path because the computer has two answers to "where do
+     * this project's files live" and only one of them is right here: asked
+     * without a project it answers about the *active* one, and a phone reading a
+     * conversation it scrolled to is often not looking at the active one. The
+     * file reader and the delete both have to mean the same project as whatever
+     * put the file on screen, so they read it from here rather than each
+     * deciding.
+     */
+    private val _openFileProject = MutableStateFlow<String?>(null)
 
     /**
      * Move the open file to the computer's Recycle Bin.
@@ -1142,7 +1157,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Guarded for the same reason the read is: the socket can die while
             // the call is in flight, and `failPending` would otherwise take the
             // process down rather than the request.
-            val failure = runCatching { client.trash(relativePath) }
+            val failure = runCatching { client.trash(relativePath, _openFileProject.value) }
                 .getOrElse { it.message ?: "Lost the connection mid-delete." }
             if (failure != null) {
                 _workspaceError.value = failure
@@ -1171,6 +1186,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * keeping. Takes the reply id straight off the message on screen — the session
      * knows how to turn that into the id the computer files checkpoints under.
      */
+    /** The project the conversation on screen ran in, for calls that must agree with it. */
+    fun chatProjectId(): String? = _chat.value?.projectId
+
     fun openTurnDiff(replyId: String, path: String) {
         val session = _chat.value ?: return
         _openDiff.value = path
