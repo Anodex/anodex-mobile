@@ -44,7 +44,7 @@ enum class SettingsSection(
     MEMORY(
         label = "Memory",
         icon = AnodexIcon.MEMORY,
-        summary = "What Anodex remembers, at the computer",
+        summary = "What Anodex remembers, and what you tell it to",
     ),
     AI_MODELS(
         label = "AI & Models",

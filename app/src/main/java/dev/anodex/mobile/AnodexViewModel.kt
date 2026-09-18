@@ -631,7 +631,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _memories = MutableStateFlow<List<MemoryEntry>>(emptyList())
 
-    /** What the computer remembers. Read only — nothing here can write one. */
+    /** What the computer remembers, which this phone can now add to and correct. */
     val memories: StateFlow<List<MemoryEntry>> = _memories.asStateFlow()
 
     private val _memoryLoading = MutableStateFlow(false)
