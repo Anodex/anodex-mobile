@@ -220,12 +220,20 @@ internal fun wrapMailHtml(
                which is the case it was added for: a long unbroken URL. */
             overflow-wrap: break-word;
           }
-          /* Held to the screen, not reflowed. `max-width` alone is enough to stop
-             a 700px layout scrolling sideways; forcing `width: auto` on top of it
-             also discarded the sender's column widths and squeezed cells below
-             their contents. Seen on a real newsletter, where it was the other half
-             of the stacked-letters bug. */
+          /* Held to the screen. `max-width` alone is not enough: it cannot shrink
+             a table below the width its own contents demand, so a 600px
+             newsletter kept its width and ran off the right edge with half of
+             every headline missing. `width: auto` is what actually makes it
+             reflow, and it goes back.
+             
+             It was removed once, on the theory that it caused a masthead to stack
+             one letter per line. It did not -- `word-break` did, by splitting
+             inside words the moment a column got tight. That is the line that
+             needed narrowing, and `overflow-wrap` above is the narrower version.
+             Both were changed at once and the wrong one got the blame; the
+             overflow that came back was worse than the bug being fixed. */
           img, table, pre { max-width: 100% !important; }
+          table { width: auto !important; }
           img { height: auto; }
           a { color: #4F8CFF; }
           /* An image the reader has not asked for takes no space and draws no
