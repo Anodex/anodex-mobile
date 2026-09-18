@@ -64,6 +64,7 @@ import dev.anodex.mobile.ui.components.PersonalityAvatar
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.TextInputDialog
+import dev.anodex.mobile.settings.PermissionMode
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.sectionInk
 import dev.anodex.mobile.ui.theme.sectionTint
@@ -109,6 +110,20 @@ fun SettingsScreen(
     onRefreshDevices: () -> Unit = {},
     onRenameDevice: (deviceId: String, name: String) -> Unit = { _, _ -> },
     onUnpairDevice: (deviceId: String) -> Unit = {},
+    /**
+     * How much the computer may do without asking, or null until it has answered.
+     *
+     * Shown and settable from here. It was neither for a long time, on the stated
+     * grounds that `settings:` is denied to a phone -- which is not the rule and
+     * has not been. See `AgentSettings`.
+     */
+    permissionMode: PermissionMode? = null,
+    permissionBusy: Boolean = false,
+    onSetPermissionMode: (PermissionMode) -> Unit = {},
+    /** Write a new memory. Null leaves the screen read-only, as it used to be. */
+    onRememberMemory: ((String) -> Unit)? = null,
+    /** Correct one that is wrong -- the reason the list is worth having on a phone. */
+    onRewordMemory: ((MemoryEntry, String) -> Unit)? = null,
     /** Whose Anodex this is, read from the computer. Null until it answers. */
     user: UserProfile? = null,
     /** Lifetime activity, as the computer counts it. Null until it answers. */
@@ -236,6 +251,8 @@ fun SettingsScreen(
                     loading = memoryLoading,
                     error = memoryError,
                     onForget = onForgetMemory,
+                    onRemember = onRememberMemory,
+                    onReword = onRewordMemory,
                 )
 
                 SettingsSection.APPEARANCE -> AppearanceSection(
@@ -264,6 +281,9 @@ fun SettingsScreen(
                     activeModelPath = activeModelPath,
                     loadingModelPath = loadingModelPath,
                     onLoadModel = onLoadModel,
+                    permissionMode = permissionMode,
+                    permissionBusy = permissionBusy,
+                    onSetPermissionMode = onSetPermissionMode,
                 )
 
                 SettingsSection.NOTIFICATIONS -> NotificationsSection(
@@ -604,11 +624,46 @@ private fun AiAndModelsSection(
     activeModelPath: String?,
     loadingModelPath: String?,
     onLoadModel: (String) -> Unit,
+    /** The computer's permission mode, or null until it has answered. */
+    permissionMode: PermissionMode? = null,
+    permissionBusy: Boolean = false,
+    onSetPermissionMode: (PermissionMode) -> Unit = {},
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     SectionBody {
+        SectionLabel("What Anodex may do on its own")
+
+        Group {
+            PermissionMode.entries.forEachIndexed { index, mode ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = mode.label,
+                    detail = mode.detail,
+                    // Null rather than a default. A phone that has not heard from
+                    // the computer must not tick the safest option: that is the one
+                    // claim somebody would act on without checking, and being wrong
+                    // about it means believing it will ask when it will not.
+                    selected = mode == permissionMode,
+                    onClick = { if (!permissionBusy) onSetPermissionMode(mode) },
+                )
+            }
+        }
+
+        // The unread state goes here rather than as a row inside the card. Drawn up
+        // there it read as a fourth option, which is the one thing this list must
+        // not do -- the options are the choice and everything else is about it.
+        Footnote(
+            if (permissionMode == null) {
+                "Waiting for your computer. Nothing is ticked until it answers, " +
+                    "because a guess here would be a guess about whether it asks first."
+            } else {
+                "This is the same setting as on the computer, and changing it here " +
+                    "changes it there. Destructive actions ask no matter which you pick."
+            },
+        )
+
         SectionLabel("How Anodex answers")
 
         Group {

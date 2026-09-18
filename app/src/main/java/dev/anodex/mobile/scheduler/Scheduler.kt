@@ -185,7 +185,51 @@ class Scheduler(private val socket: AnodexSocket) {
         socket.invoke(CHANNEL_CREATE, listOf(request))
     }
 
+    /**
+     * Stop a task from ever running again.
+     *
+     * The phone could make one of these and never remove it: `scheduler:create`,
+     * `list`, `run-now` and `parse-when` were called from here and `delete` and
+     * `update` were not, although both are open to a paired phone. A job made on
+     * the phone ran on somebody's computer on its schedule for ever, and the only
+     * way to stop it was to walk to the desk -- which is exactly the asymmetry the
+     * phone exists to remove. Found by making one and not being able to remove it.
+     */
+    suspend fun delete(id: String) {
+        socket.invoke(CHANNEL_DELETE, listOf(JsonPrimitive(id)))
+    }
+
+    /**
+     * Pause or resume, without losing the task.
+     *
+     * The useful middle between running for ever and deleting: a daily job you do
+     * not want this week is not a job you want to rewrite next week.
+     *
+     * Only `enabled` is sent. The desktop strips `enabledTools` from any remote
+     * edit anyway -- granting tools to a task is granting tools, whichever door it
+     * comes through -- and sending a field this screen does not show would be the
+     * phone having an opinion about something it cannot display.
+     */
+    suspend fun setEnabled(id: String, enabled: Boolean) {
+        val patch = buildJsonObject { put("enabled", enabled) }
+        socket.invoke(CHANNEL_UPDATE, listOf(JsonPrimitive(id), patch))
+    }
+
+    /** Change what a task says, keeping its schedule and its history. */
+    suspend fun rename(id: String, name: String) {
+        val patch = buildJsonObject { put("name", name) }
+        socket.invoke(CHANNEL_UPDATE, listOf(JsonPrimitive(id), patch))
+    }
+
+    /** Change what it asks for, keeping when it asks. */
+    suspend fun reprompt(id: String, prompt: String) {
+        val patch = buildJsonObject { put("prompt", prompt) }
+        socket.invoke(CHANNEL_UPDATE, listOf(JsonPrimitive(id), patch))
+    }
+
     private companion object {
+        const val CHANNEL_DELETE = "scheduler:delete"
+        const val CHANNEL_UPDATE = "scheduler:update"
         const val CHANNEL_LIST = "scheduler:list"
         const val CHANNEL_RUN_NOW = "scheduler:run-now"
         const val CHANNEL_PARSE_WHEN = "scheduler:parse-when"

@@ -2,6 +2,7 @@ package dev.anodex.mobile.chat
 
 import dev.anodex.mobile.transport.AnodexSocket
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -265,6 +266,12 @@ class Conversations(private val socket: AnodexSocket) {
             persona = (this["persona"] as? JsonObject)?.asPersona(),
             attachments = parseRemoteAttachments(this["attachments"]),
             hasThinking = this["hasThinking"]?.jsonPrimitive?.contentOrNull() == "true",
+            // Read back so a conversation held at the computer shows its sources
+            // here too. The desktop has recorded these on every turn for months;
+            // this phone simply never looked, so history arrived with `[S1]` in the
+            // text and nothing to point it at.
+            webSources = parseWebSources(this["webSources"]),
+            webSearchAttempted = this["webSearchAttempted"]?.jsonPrimitive?.contentOrNull() == "true",
             // A reply the computer recorded as ending in an error kept what it had done.
             // Desktop 0.9.14 says so as `endedEarly`; the error text stays over there.
             endedEarly = role != "user" && (
@@ -413,4 +420,28 @@ internal fun parseAttachmentPreview(element: kotlinx.serialization.json.JsonElem
     } ?: return null
     val base64 = fields["base64"]?.jsonPrimitive?.contentOrNull() ?: return null
     return runCatching { java.util.Base64.getDecoder().decode(base64) }.getOrNull()?.takeIf { it.isNotEmpty() }
+}
+
+/**
+ * The sources recorded against a stored turn.
+ *
+ * Defensive in the same way as everything else read off the wire: an entry with
+ * no id or no url is dropped rather than rendered as a link to nowhere, and a
+ * missing title falls back to the url, which is a worse label than the page's own
+ * and a much better one than an empty row.
+ */
+private fun parseWebSources(element: JsonElement?): List<WebSource> {
+    val list = element as? JsonArray ?: return emptyList()
+    return list.mapNotNull { entry ->
+        val o = entry as? JsonObject ?: return@mapNotNull null
+        val id = o["id"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
+        val url = o["url"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
+        WebSource(
+            id = id,
+            title = o["title"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() } ?: url,
+            url = url,
+            snippet = o["snippet"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() },
+            verified = o["verified"]?.jsonPrimitive?.contentOrNull() == "true",
+        )
+    }
 }

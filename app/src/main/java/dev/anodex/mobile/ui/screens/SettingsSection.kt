@@ -9,12 +9,21 @@ import dev.anodex.mobile.ui.components.AnodexIcon
  * split and people move between the two — a setting that lives under "AI & Models"
  * on the computer should not be three rows below the version number on the phone.
  *
- * Two of these do not have anything to change yet, and say so rather than being
- * hidden. A section that exists on the computer and is simply missing here reads as
- * the phone being unfinished; one that explains where the setting lives reads as an
- * answer. `settings:` and `memory:` are both denied to a phone deliberately — see
- * `channelPolicy.ts` — so opening them is a decision about the protocol, not an
- * afternoon's UI work.
+ * Sections that cannot change anything yet say so rather than being hidden. A
+ * section that exists on the computer and is simply missing here reads as the phone
+ * being unfinished; one that explains where the setting lives reads as an answer.
+ *
+ * What that note used to say was that `settings:` and `memory:` are "denied to a
+ * phone deliberately — see `channelPolicy.ts`", and that opening them was a
+ * decision about the protocol. Checked against the desktop on 2026-09-17: it is
+ * not true, and may never have been. `decideRemoteChannel` refuses three things —
+ * editing the connection, the terminal, and critical thinking — plus a handful of
+ * native pickers that would open a window on an empty desk. `settings:get`,
+ * `settings:update` and every `memory:` channel are allowed.
+ *
+ * So these are not protocol decisions waiting on a negotiation. They are screens
+ * nobody has written yet, and the difference matters: the first reads as a rule
+ * and stops people, the second reads as a list and gets done.
  */
 enum class SettingsSection(
     val label: String,

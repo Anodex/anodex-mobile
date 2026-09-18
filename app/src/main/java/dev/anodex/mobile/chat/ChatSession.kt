@@ -1,6 +1,7 @@
 package dev.anodex.mobile.chat
 
 import dev.anodex.mobile.transport.AnodexSocket
+import dev.anodex.mobile.transport.contentOrNullish
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.workspace.ChangedFile
 import dev.anodex.mobile.workspace.TurnDiffResult
@@ -110,9 +111,48 @@ data class ChatMessage(
      * continued rather than only asked again.
      */
     val endedEarly: Boolean = false,
+    /**
+     * The pages this answer stood on, in the order the model first met them.
+     *
+     * The computer sends these with every turn and this phone threw them away.
+     * `chat:send` answers with `webSources`, the desktop's renderer turns `[S1]`
+     * into a link to the first of them and lists the rest under the reply -- and
+     * the phone neither read the field nor saved it. So a turn made here was
+     * stored with markers in the text and no sources behind them, and then the
+     * *desktop* drew that conversation with dead numbers too, because it was
+     * faithfully rendering what the phone had written. Found on 2026-09-17 in the
+     * owner's own transcripts: 915 assistant messages, 3 carrying `[S..]` markers,
+     * and not one of those three carrying a source.
+     */
+    val webSources: List<WebSource> = emptyList(),
+    /**
+     * A web tool ran for this turn.
+     *
+     * Kept apart from the list being empty, because the two mean opposite things.
+     * No sources and no attempt is an ordinary answer. No sources *after* an
+     * attempt means the model looked, found nothing, and answered from training
+     * data anyway -- which a confident reply gives the reader no way to detect.
+     */
+    val webSearchAttempted: Boolean = false,
 ) {
     enum class Role { USER, ASSISTANT }
 }
+
+/**
+ * One page an answer stood on.
+ *
+ * [id] is the marker the model writes in the text -- `S1`, `S2` -- minted per turn
+ * by the computer's `WebSourceRegistry` and stable for that turn. [verified] means
+ * the page was actually fetched rather than only appearing in a result list, which
+ * is the difference between a source and a lead and is worth showing as such.
+ */
+data class WebSource(
+    val id: String,
+    val title: String,
+    val url: String,
+    val snippet: String? = null,
+    val verified: Boolean = false,
+)
 
 /**
  * Who a reply was written by.
@@ -420,6 +460,11 @@ class ChatSession(
                 // sent as it was written unless somebody had it open.
                 thinkingFromResult(result)?.let { setThinking(assistantIdFor(messageId), it) }
                 if (endedEarlyFromResult(result)) markEndedEarly(assistantIdFor(messageId))
+                setWebSources(
+                    assistantIdFor(messageId),
+                    webSourcesFromResult(result),
+                    webSearchAttemptedFromResult(result),
+                )
                 answered = true
             } catch (e: CancellationException) {
                 // Only ours is worth reporting. A cancellation from the scope going
@@ -848,6 +893,19 @@ class ChatSession(
     }
 
     /**
+     * Attach a finished turn's sources to its reply.
+     *
+     * Both fields together, because "no sources" and "no sources after looking"
+     * are different statements and storing only the list collapses them.
+     */
+    private fun setWebSources(id: String, sources: List<WebSource>, attempted: Boolean) {
+        if (sources.isEmpty() && !attempted) return
+        _messages.value = _messages.value.map {
+            if (it.id == id) it.copy(webSources = sources, webSearchAttempted = attempted) else it
+        }
+    }
+
+    /**
      * Write the turn back to the computer.
      *
      * `chat:send` generates a reply; it does not save one. The desktop's own
@@ -889,6 +947,35 @@ class ChatSession(
                                 )
                                 put("content", turn.text)
                                 put("createdAt", now)
+
+                                // The pages the reply stood on, in the desktop's own
+                                // shape. Left out until now, which is how a turn made
+                                // on the phone came to be stored with `[S1]` in the
+                                // text and nothing behind it -- and why the *desktop*
+                                // then drew that conversation with dead numbers as
+                                // well, since it renders what is saved. Both fields,
+                                // because an empty list after an attempt is the
+                                // reader's warning that the answer came from training
+                                // data, and dropping it as "falsy" loses that.
+                                if (turn.webSources.isNotEmpty()) {
+                                    put(
+                                        "webSources",
+                                        buildJsonArray {
+                                            for (source in turn.webSources) {
+                                                add(
+                                                    buildJsonObject {
+                                                        put("id", source.id)
+                                                        put("title", source.title)
+                                                        put("url", source.url)
+                                                        source.snippet?.let { put("snippet", it) }
+                                                        put("verified", source.verified)
+                                                    },
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                                if (turn.webSearchAttempted) put("webSearchAttempted", true)
 
                                 // Recorded with the message, so months later it is
                                 // still possible to tell which personality wrote a
@@ -1221,7 +1308,47 @@ internal fun keepWhatOnlyThisPhoneHas(had: ChatMessage?, computer: ChatMessage):
         thinking = had.thinking,
         hasThinking = had.thinking == null && computer.hasThinking,
         endedEarly = had.endedEarly || computer.endedEarly,
+        // The computer's list when it has one, this phone's otherwise. A
+        // conversation saved before sources were recorded comes back without
+        // them, and taking the computer's empty list on faith would blank the
+        // sources of a reply somebody is looking straight at -- the same mistake
+        // that made this whole feature look broken, one layer further in.
+        webSources = computer.webSources.ifEmpty { had.webSources },
+        webSearchAttempted = computer.webSearchAttempted || had.webSearchAttempted,
     )
+}
+
+/**
+ * The sources on `chat:send`'s answer, in or out of its `{ ok, value }`.
+ *
+ * Both shapes, like [thinkingFromResult] below and for the same reason: this
+ * channel has been seen answering either way, and reading only one of them
+ * returns nothing, which is indistinguishable from a turn that used no sources.
+ */
+internal fun webSourcesFromResult(element: JsonElement?): List<WebSource> {
+    val fields = (element as? JsonObject)?.let { (it["value"] as? JsonObject) ?: it }
+    val list = fields?.get("webSources") as? JsonArray ?: return emptyList()
+    return list.mapNotNull { entry ->
+        val o = entry as? JsonObject ?: return@mapNotNull null
+        val id = (o["id"] as? JsonPrimitive)?.contentOrNullish() ?: return@mapNotNull null
+        val url = (o["url"] as? JsonPrimitive)?.contentOrNullish() ?: return@mapNotNull null
+        WebSource(
+            id = id,
+            // The host is a worse title than the page's own and a much better one
+            // than an empty row, which is what a missing title used to draw.
+            title = (o["title"] as? JsonPrimitive)?.contentOrNullish()?.takeIf { it.isNotBlank() }
+                ?: url,
+            url = url,
+            snippet = (o["snippet"] as? JsonPrimitive)?.contentOrNullish()?.takeIf { it.isNotBlank() },
+            verified = (o["verified"] as? JsonPrimitive)?.contentOrNullish() == "true",
+        )
+    }
+}
+
+/** Whether a web tool ran this turn, which is not the same as whether it found anything. */
+internal fun webSearchAttemptedFromResult(element: JsonElement?): Boolean {
+    val fields = (element as? JsonObject)?.let { (it["value"] as? JsonObject) ?: it }
+    return (fields?.get("webSearchAttempted") as? JsonPrimitive)?.contentOrNullish() == "true"
 }
 
 /** The thinking on `chat:send`'s answer — the turn result, in or out of its `{ ok, value }`. */

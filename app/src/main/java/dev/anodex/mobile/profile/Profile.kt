@@ -77,9 +77,12 @@ data class UsageProfile(
 /**
  * Reads the profile and the usage numbers from the computer.
  *
- * `settings:get-profile` exists specifically for this: the rest of `settings:` is
- * denied to a phone, because that blob carries the permission mode and the model
- * directory. A name and an avatar carry neither.
+ * `settings:get-profile` exists for this rather than `settings:get`. The reason
+ * used to be given as `settings:` being denied to a phone; it is not, and the
+ * real one is better: a screen that wants a name should ask for a name, not for a
+ * blob carrying every provider key path, every MCP server and the model
+ * directory. Parsing all of that here would start a second definition of the
+ * settings shape to keep in step with the desktop's by hand.
  */
 class ProfileReader(private val socket: AnodexSocket) {
 

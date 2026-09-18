@@ -56,6 +56,7 @@ import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
+import dev.anodex.mobile.email.EmailDrafter
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
@@ -71,6 +72,10 @@ import dev.anodex.mobile.pairing.PairedHostStore
 import dev.anodex.mobile.pairing.PairingPayload
 import dev.anodex.mobile.pairing.humanFingerprintOf
 import dev.anodex.mobile.profile.ProfileReader
+import dev.anodex.mobile.settings.AgentSettings
+import dev.anodex.mobile.ui.screens.MailDraft
+import dev.anodex.mobile.ui.screens.addressList
+import dev.anodex.mobile.settings.PermissionMode
 import dev.anodex.mobile.profile.UsageProfile
 import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.scheduler.ParsedWhen
@@ -665,6 +670,68 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * to forget sitting on screen while a round trip completes reads as the tap
      * having done nothing.
      */
+    /**
+     * Write a new memory from the phone.
+     *
+     * Global rather than scoped to the open project. Somebody typing a sentence
+     * into a list they reached from Settings is stating something about
+     * themselves, not about whichever project happens to be selected -- and a
+     * memory silently attached to a project is the kind of wrongness that is hard
+     * to see later, because the text reads the same either way.
+     *
+     * No optimistic row. The computer assigns the id and the timestamps, and a
+     * placeholder would have to be reconciled with the real entry a moment later
+     * or be left behind as a duplicate if the write failed.
+     */
+    fun rememberMemory(text: String) {
+        val client = memoryClient ?: return
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+
+        viewModelScope.launch {
+            runCatching { client.remember(trimmed, projectId = null) }
+                .onSuccess { entry ->
+                    if (entry == null) {
+                        _memoryError.value = "Your computer did not save that."
+                    } else {
+                        _memories.value = listOf(entry) + _memories.value
+                    }
+                }
+                .onFailure { _memoryError.value = it.message ?: "Your computer did not save that." }
+        }
+    }
+
+    /**
+     * Correct the wording of one that is wrong.
+     *
+     * Optimistic, unlike creating: the entry already exists and its id is known, so
+     * the row can show the new text immediately and be put back if the computer
+     * refuses. The same shape as `forgetMemory` below and for the same reason --
+     * a correction that appears not to have taken gets typed again.
+     */
+    fun rewordMemory(entry: MemoryEntry, text: String) {
+        val client = memoryClient ?: return
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || trimmed == entry.text) return
+
+        val before = _memories.value
+        _memories.value = before.map { if (it.id == entry.id) it.copy(text = trimmed) else it }
+
+        viewModelScope.launch {
+            runCatching { client.reword(entry, trimmed) }
+                .onSuccess { updated ->
+                    if (updated == null) {
+                        _memories.value = before
+                        _memoryError.value = "Your computer would not change it."
+                    }
+                }
+                .onFailure {
+                    _memories.value = before
+                    _memoryError.value = it.message ?: "Your computer would not change it."
+                }
+        }
+    }
+
     fun forgetMemory(entry: MemoryEntry) {
         val client = memoryClient ?: return
         val before = _memories.value
@@ -804,6 +871,47 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     _tasksError.value = it.message ?: "Your computer would not run it."
                 }
             _taskRunning.value = null
+            refreshTasks()
+        }
+    }
+
+    /**
+     * Delete a scheduled task.
+     *
+     * The other half of `createTask`, missing until now: a job made from the phone
+     * ran on the owner's computer on its schedule for ever, and the only way to
+     * stop it was to walk to the desk. Found the way these things are found -- by
+     * making one to test the scheduler and then being unable to remove it.
+     *
+     * The list is re-read rather than edited here. A task is gone when the computer
+     * says it is gone, and a row removed optimistically would hide a delete that
+     * did not happen while the job kept firing.
+     */
+    fun deleteTask(id: String) {
+        val client = schedulerClient
+        if (client == null) {
+            _tasksError.value = "Not connected to your computer."
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching { client.delete(id) }
+                .onFailure { _tasksError.value = it.message ?: "Your computer would not delete it." }
+            refreshTasks()
+        }
+    }
+
+    /** Pause or resume one, keeping it and its run history. */
+    fun setTaskEnabled(id: String, enabled: Boolean) {
+        val client = schedulerClient
+        if (client == null) {
+            _tasksError.value = "Not connected to your computer."
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching { client.setEnabled(id, enabled) }
+                .onFailure { _tasksError.value = it.message ?: "Your computer would not change it." }
             refreshTasks()
         }
     }
@@ -1010,6 +1118,54 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _personalityBusy = MutableStateFlow(false)
     val personalityBusy: StateFlow<Boolean> = _personalityBusy.asStateFlow()
+
+    private var agentSettings: AgentSettings? = null
+
+    private val _permissionMode = MutableStateFlow<PermissionMode?>(null)
+
+    /**
+     * How much the computer may do without asking.
+     *
+     * Null until it has answered, and null again if the read fails -- not "ask".
+     * A tick beside the safest option on a screen that could not reach the
+     * computer is the one wrong claim here somebody would act on without
+     * checking: it says "it will ask me" when it may not.
+     */
+    val permissionMode: StateFlow<PermissionMode?> = _permissionMode.asStateFlow()
+
+    private val _permissionBusy = MutableStateFlow(false)
+    val permissionBusy: StateFlow<Boolean> = _permissionBusy.asStateFlow()
+
+    /** Re-read the permission mode. Called whenever Settings opens, like the personalities. */
+    fun refreshPermissionMode() {
+        val client = agentSettings ?: return
+        viewModelScope.launch {
+            _permissionMode.value = runCatching { client.permissionMode() }.getOrNull()
+        }
+    }
+
+    /**
+     * Change what the computer may do on its own.
+     *
+     * Global, like the personality: it moves for whoever is at the computer too,
+     * which is why the footnote on the screen says so. What comes back is the
+     * computer's own answer rather than the requested value, so a rejected change
+     * leaves the phone showing what is really in force -- on this setting the
+     * difference between "it will ask" and "it will not" is the whole point.
+     */
+    fun setPermissionMode(mode: PermissionMode) {
+        val client = agentSettings ?: return
+        _permissionBusy.value = true
+
+        viewModelScope.launch {
+            runCatching { client.setPermissionMode(mode) }
+                .onSuccess { _permissionMode.value = it }
+                .onFailure {
+                    _notice.value = it.message ?: "Could not change what Anodex may do."
+                }
+            _permissionBusy.value = false
+        }
+    }
 
     /**
      * The personality in force right now, as a reply should be stamped with it.
@@ -1656,6 +1812,172 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _openThread.value = null
     }
 
+    private val _shownImages = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+
+    /**
+     * Remote images the reader has asked to see, by message id then by original URL.
+     *
+     * Per message rather than per session. Agreeing to load one sender's pictures
+     * is not agreeing to load the next sender's, and a single flag would make it
+     * so -- quietly, on the message after the one somebody was looking at.
+     */
+    val shownImages: StateFlow<Map<String, Map<String, String>>> = _shownImages.asStateFlow()
+
+    /**
+     * Fetch the remote images in one message, because the reader asked.
+     *
+     * The computer fetches them, not the phone. That is not a convenience: the
+     * request reaches the sender's server from the machine that already holds the
+     * mailbox, so asking to see a picture does not also tell a stranger where the
+     * phone is.
+     */
+    fun showRemoteImages(note: EmailNote, urls: List<String>) {
+        val client = emailClient ?: return
+        if (urls.isEmpty()) return
+
+        viewModelScope.launch {
+            runCatching { client.loadRemoteImages(urls) }
+                .onSuccess { loaded ->
+                    _shownImages.value = _shownImages.value + (note.id to loaded)
+                }
+                .onFailure { _emailError.value = it.message ?: "Those images would not load." }
+        }
+    }
+
+    private val _pendingLink = MutableStateFlow<String?>(null)
+
+    /**
+     * A link tapped in a message, waiting to be looked at before it is followed.
+     *
+     * Never opened on the tap. What a link says and where it goes are different
+     * strings in an email more often than anywhere else, and this is the surface
+     * where that difference is the whole attack. The full URL is shown and the
+     * person decides.
+     */
+    val pendingLink: StateFlow<String?> = _pendingLink.asStateFlow()
+
+    fun openLink(url: String) {
+        _pendingLink.value = url
+    }
+
+    fun dismissLink() {
+        _pendingLink.value = null
+    }
+
+    /** The browser intent for a link the person has looked at and accepted. */
+    fun linkIntent(url: String): android.content.Intent =
+        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    private var drafter: EmailDrafter? = null
+
+    private val _mailDraft = MutableStateFlow<MailDraft?>(null)
+
+    /** The message being written, or null when nothing is. */
+    val mailDraft: StateFlow<MailDraft?> = _mailDraft.asStateFlow()
+
+    private val _mailSending = MutableStateFlow(false)
+    val mailSending: StateFlow<Boolean> = _mailSending.asStateFlow()
+
+    private val _mailDrafting = MutableStateFlow(false)
+    val mailDrafting: StateFlow<Boolean> = _mailDrafting.asStateFlow()
+
+    private val _mailDrafted = MutableStateFlow<String?>(null)
+
+    /** What Anodex wrote, waiting to be put in the body field. */
+    val mailDrafted: StateFlow<String?> = _mailDrafted.asStateFlow()
+
+    private val _mailError = MutableStateFlow<String?>(null)
+    val mailError: StateFlow<String?> = _mailError.asStateFlow()
+
+    /**
+     * Start writing one.
+     *
+     * The draft is held here rather than in the screen so that leaving the compose
+     * window and coming back does not lose it -- Android rebuilds the composable
+     * freely, and an email somebody has half written is exactly the thing not to
+     * throw away on a configuration change.
+     */
+    fun startMail(draft: MailDraft) {
+        _mailDrafted.value = null
+        _mailError.value = null
+        _mailDraft.value = draft
+    }
+
+    fun closeMail() {
+        _mailDraft.value = null
+        _mailDrafted.value = null
+        _mailError.value = null
+    }
+
+    /** Have Anodex write the body. What comes back is a draft, never a sent message. */
+    fun draftMail(draft: MailDraft, instruction: String) {
+        val client = drafter ?: return
+        _mailDrafting.value = true
+        _mailError.value = null
+        // Keep whatever is typed, so a failed draft does not also lose the fields.
+        _mailDraft.value = draft
+
+        viewModelScope.launch {
+            runCatching {
+                client.draft(
+                    instruction = instruction,
+                    replyingTo = draft.inReplyTo,
+                    to = addressList(draft.to),
+                    subject = draft.subject,
+                )
+            }
+                .onSuccess { written ->
+                    if (written == null) {
+                        _mailError.value = "Anodex did not write anything."
+                    } else {
+                        _mailDrafted.value = written
+                    }
+                }
+                .onFailure { _mailError.value = it.message ?: "Anodex could not write that." }
+            _mailDrafting.value = false
+        }
+    }
+
+    /**
+     * Send it.
+     *
+     * The compose window stays open until the computer says it went. A screen that
+     * closes on tap and fails afterwards loses the message and tells somebody it
+     * was sent, which is the worst of the three outcomes available here.
+     */
+    fun sendMail(draft: MailDraft) {
+        val client = emailClient ?: return
+        _mailSending.value = true
+        _mailError.value = null
+
+        viewModelScope.launch {
+            runCatching {
+                client.send(
+                    to = addressList(draft.to),
+                    subject = draft.subject,
+                    body = draft.body,
+                    cc = addressList(draft.cc),
+                    inReplyTo = draft.inReplyTo?.id,
+                    threadId = draft.threadId,
+                )
+            }
+                .onSuccess { sent ->
+                    if (sent) {
+                        _mailDraft.value = null
+                        _mailDrafted.value = null
+                        _notice.value = "Sent."
+                        // The thread it joined now has one more message in it.
+                        refreshEmail()
+                    } else {
+                        _mailError.value = "Your computer would not send it."
+                    }
+                }
+                .onFailure { _mailError.value = it.message ?: "Your computer would not send it." }
+            _mailSending.value = false
+        }
+    }
+
     private val _agentsError = MutableStateFlow<String?>(null)
 
     /** Why a run could not be started, or the list could not be read. */
@@ -2281,12 +2603,14 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 projectClient = Projects(candidate)
                 agentClient = Agents(candidate)
                 emailClient = Email(candidate)
+                drafter = EmailDrafter(candidate)
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
                 uploads = Uploads(candidate, getApplication<Application>().contentResolver)
                 schedulerClient = Scheduler(candidate)
                 memoryClient = Memory(candidate)
                 profileReader = ProfileReader(candidate)
+                agentSettings = AgentSettings(candidate)
                 // What the computer is still waiting on, asked again on every connection:
                 // an approval asked while this phone was away, or before the app restarted,
                 // was sent to nobody who is here now. Asked rather than pushed, because

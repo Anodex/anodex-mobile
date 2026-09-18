@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
@@ -905,6 +906,14 @@ private fun ConnectedScaffold(
             running = runningId == openTask.id,
             error = tasksError,
             onRunNow = { viewModel.runTaskNow(openTask.id) },
+            onSetEnabled = { on -> viewModel.setTaskEnabled(openTask.id, on) },
+            onDelete = {
+                viewModel.deleteTask(openTask.id)
+                // Back to the list: the screen this was showing no longer exists,
+                // and leaving it up would draw a task that has been deleted.
+                openTaskId = null
+            },
+            onClose = { openTaskId = null },
             modifier = Modifier.safeDrawingPadding(),
         )
         return
@@ -963,8 +972,16 @@ private fun ConnectedScaffold(
     }
 
     // Settings is where personalities are chosen, so the list is read fresh on the
-    // way in rather than trusted from whenever the connection came up.
-    LaunchedEffect(showingSettings) { if (showingSettings) viewModel.refreshPersonalities() }
+    // way in rather than trusted from whenever the connection came up. The
+    // permission mode is read on the same trip and for a stronger reason: it can
+    // be changed at the computer, and a phone showing a stale copy of this one is
+    // saying the computer will ask before running things when it may not.
+    LaunchedEffect(showingSettings) {
+        if (showingSettings) {
+            viewModel.refreshPersonalities()
+            viewModel.refreshPermissionMode()
+        }
+    }
 
     if (showingSettings) {
         val memories by viewModel.memories.collectAsStateWithLifecycle()
@@ -1020,7 +1037,14 @@ private fun ConnectedScaffold(
         var lastCrash by remember { mutableStateOf(CrashLog.lastRecorded(settingsContext)) }
 
         val pairedDevices by viewModel.pairedDevices.collectAsStateWithLifecycle()
+        val permissionMode by viewModel.permissionMode.collectAsStateWithLifecycle()
+        val permissionBusy by viewModel.permissionBusy.collectAsStateWithLifecycle()
         SettingsScreen(
+            permissionMode = permissionMode,
+            onRememberMemory = viewModel::rememberMemory,
+            onRewordMemory = viewModel::rewordMemory,
+            permissionBusy = permissionBusy,
+            onSetPermissionMode = viewModel::setPermissionMode,
             installedVersion = BuildConfig.VERSION_NAME,
             notificationAccess = notificationAccess,
             onOpenNotificationSettings = {
@@ -1786,6 +1810,8 @@ private fun ChatPane(
         return
     }
 
+    val sourceUriHandler = LocalUriHandler.current
+
     if (chat == null) {
         // Reconnecting: the host bar already says so, and replacing the transcript
         // with a spinner would throw away what the user was reading over a
@@ -1845,6 +1871,12 @@ private fun ChatPane(
         },
     ) {
         ChatScreen(
+            // The same handler every other link in a reply already uses, so a
+            // citation tapped in the text and the same citation tapped in the list
+            // beneath it do the same thing. Mail keeps its confirmation, because a
+            // link in somebody else's message is a different proposition from a
+            // page the model found in a search this reader asked for.
+            onOpenSource = { url -> sourceUriHandler.openUri(url) },
             // Only when the connection is what took the screen away. Leaving a chat on
             // purpose mid-turn is not a reason to send what was left in the box later.
             onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },

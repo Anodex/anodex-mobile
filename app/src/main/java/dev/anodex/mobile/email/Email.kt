@@ -27,9 +27,23 @@ data class EmailThread(
 /** One message inside a thread. */
 data class EmailNote(
     val id: String,
+    /** The thread this message belongs to, so a reply joins it instead of starting one. */
+    val threadId: String?,
     val from: String,
     val subject: String,
     val body: String,
+    /**
+     * The sanitized HTML the desktop built, or null when the message had none.
+     *
+     * Already safe by the time it arrives: scripts removed, inline `cid:` images
+     * turned into data URIs, and every remote URL moved to `data-remote-src` so
+     * nothing is fetched until the reader says so. Rendering it is what makes a
+     * message look like a message; [body] is the fallback and what the model reads.
+     */
+    val bodyHtml: String?,
+    /** Everyone it was addressed to, for a reply-all that means all. */
+    val to: List<String>,
+    val cc: List<String>,
     val dateEpochMs: Long,
     val attachmentCount: Int,
 )
@@ -37,11 +51,14 @@ data class EmailNote(
 /**
  * Reading the desktop's mailbox.
  *
- * Read-only, deliberately. Sending mail from a phone that is driving somebody's
- * computer is a different kind of action from reading it — it leaves the machine,
- * it cannot be taken back, and it deserves the desktop's compose surface and its
- * approval step rather than a text field bolted onto a list. What the phone is for
- * here is the thing you actually want away from your desk: seeing what has arrived.
+ * Read and write. It was read-only, on the reasoning that sending mail leaves the
+ * machine and cannot be taken back, so it deserved the desktop's compose surface
+ * rather than a text field bolted onto a list. The first half of that is true and
+ * is why sending asks first; the second turned out to mean "you must be at your
+ * computer to answer an email", which is the opposite of what the phone is for.
+ *
+ * `email:send` and `email:create-draft` were open to a paired phone the whole
+ * time. Nothing was refused; nothing was called.
  *
  * Unlike `conversations:list`, the email channels return the desktop's `Result`
  * wrapper rather than a bare value, so every call here unwraps `{ ok, value }`. The
@@ -113,18 +130,82 @@ class Email(private val socket: AnodexSocket) {
         val id = this["id"]?.jsonPrimitive?.contentOrNull() ?: return null
         return EmailNote(
             id = id,
+            threadId = this["threadId"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() },
             from = this["from"]?.jsonPrimitive?.contentOrNull().orEmpty(),
             subject = this["subject"]?.jsonPrimitive?.contentOrNull().orEmpty(),
-            // The plain-text body, never `bodyHtml`. Rendering sender-controlled HTML
-            // is a whole security surface — remote images, tracking pixels, layout
-            // that fights the app — and none of it is worth it to read a message.
+            // Plain text, which is what the model reads and what this phone falls
+            // back to. The old note here said `bodyHtml` was "a whole security
+            // surface -- remote images, tracking pixels, layout that fights the
+            // app". The first two are handled before it reaches the wire:
+            // `main/email/htmlBody.ts` strips scripts, inlines `cid:` images as
+            // data URIs, and parks every remote URL on `data-remote-src` so it
+            // loads only when the reader asks. Refusing the sanitized output meant
+            // a newsletter arrived as two screens of tracking links, which is the
+            // sender's plain-text part and worse than the HTML by every measure.
             body = this["body"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            bodyHtml = this["bodyHtml"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() },
+            to = (this["to"] as? JsonArray).addresses(),
+            cc = (this["cc"] as? JsonArray).addresses(),
             dateEpochMs = this["date"].asEpochMs(),
             attachmentCount = (this["attachments"] as? JsonArray)?.size ?: 0,
         )
     }
 
+    /**
+     * Send one.
+     *
+     * [accountId] is left off so the desktop uses its primary account, which is
+     * the same choice the desktop's own compose makes. Answering with success or
+     * a message rather than throwing, because "it did not send" is something the
+     * screen has to say out loud -- a compose that closes on failure loses what
+     * was typed, and this is the one action here that cannot be retried from
+     * memory.
+     */
+    suspend fun send(
+        to: List<String>,
+        subject: String,
+        body: String,
+        cc: List<String> = emptyList(),
+        inReplyTo: String? = null,
+        threadId: String? = null,
+    ): Boolean {
+        val request = buildJsonObject {
+            put("to", JsonArray(to.map(::JsonPrimitive)))
+            if (cc.isNotEmpty()) put("cc", JsonArray(cc.map(::JsonPrimitive)))
+            put("subject", JsonPrimitive(subject))
+            put("body", JsonPrimitive(body))
+            // Threading headers, when this is an answer rather than a new message.
+            // Without them a reply arrives as an unrelated message in the
+            // recipient's client, which is the difference between a conversation
+            // and a pile of mail.
+            inReplyTo?.let { put("inReplyTo", JsonPrimitive(it)) }
+            threadId?.let { put("threadId", JsonPrimitive(it)) }
+        }
+
+        // `email:send` answers `ok: true` with a void value, so the wrapper is the
+        // whole answer -- `unwrap()` returning a JSON null is success here, and
+        // testing the value rather than the envelope would read every send as a
+        // failure.
+        val answer = socket.invoke(CHANNEL_SEND, listOf(request)) as? JsonObject ?: return false
+        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+    }
+
+    /** Remote images for a message the reader has asked to see in full. */
+    suspend fun loadRemoteImages(urls: List<String>): Map<String, String> {
+        if (urls.isEmpty()) return emptyMap()
+        val args = listOf(JsonArray(urls.map(::JsonPrimitive)))
+        val answer = socket.invoke(CHANNEL_IMAGES, args).unwrap() as? JsonObject ?: return emptyMap()
+        return answer.mapNotNull { (url, value) ->
+            (value as? JsonPrimitive)?.contentOrNull()?.let { url to it }
+        }.toMap()
+    }
+
+    private fun JsonArray?.addresses(): List<String> =
+        this.orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull() }
+
     private companion object {
+        const val CHANNEL_SEND = "email:send"
+        const val CHANNEL_IMAGES = "email:load-remote-images"
         const val CHANNEL_THREADS = "email:list-threads"
         const val CHANNEL_MESSAGES = "email:get-thread-messages"
         const val CHANNEL_UNREAD = "email:get-unread-thread-count"
