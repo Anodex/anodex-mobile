@@ -134,9 +134,46 @@ data class ChatMessage(
      * data anyway -- which a confident reply gives the reader no way to detect.
      */
     val webSearchAttempted: Boolean = false,
+    /**
+     * Memories the computer recalled and put into this turn's context.
+     *
+     * The other half of the memory screen. Being able to read what Anodex
+     * remembers answers "what does it know"; this answers the sharper question,
+     * "did it use any of it *here*" -- and without it, retrieval is invisible.
+     * A reply shaped by a stored fact and one written without it look identical.
+     */
+    val memoryUsed: List<RecalledMemory> = emptyList(),
+    /**
+     * Past conversations the computer pulled excerpts from for this turn.
+     *
+     * Surfaced automatically when something said before is relevant to what was
+     * just asked -- the "what did we decide about this last week" case. Worth
+     * showing for the same reason as a web source: an answer standing on an
+     * older conversation should say which one.
+     */
+    val recalled: List<RecalledChat> = emptyList(),
 ) {
     enum class Role { USER, ASSISTANT }
 }
+
+/** One stored memory that shaped a reply. */
+data class RecalledMemory(
+    val id: String,
+    /** `identity`, `convention`, `gotcha`, `preference`, `open_task`. */
+    val kind: String,
+    val text: String,
+)
+
+/** One past conversation an answer drew on, and the lines it drew from. */
+data class RecalledChat(
+    val conversationId: String,
+    val title: String,
+    val updatedAtEpochMs: Long,
+    val excerpts: List<RecalledLine>,
+)
+
+/** One line quoted out of an older conversation. */
+data class RecalledLine(val role: String, val text: String)
 
 /**
  * One page an answer stood on.
@@ -464,6 +501,11 @@ class ChatSession(
                     assistantIdFor(messageId),
                     webSourcesFromResult(result),
                     webSearchAttemptedFromResult(result),
+                )
+                setRecalled(
+                    assistantIdFor(messageId),
+                    memoryUsedFromResult(result),
+                    recalledFromResult(result),
                 )
                 answered = true
             } catch (e: CancellationException) {
@@ -905,6 +947,18 @@ class ChatSession(
         }
     }
 
+    /** Attach what the computer recalled for this turn to its reply. */
+    private fun setRecalled(
+        id: String,
+        memories: List<RecalledMemory>,
+        chats: List<RecalledChat>,
+    ) {
+        if (memories.isEmpty() && chats.isEmpty()) return
+        _messages.value = _messages.value.map {
+            if (it.id == id) it.copy(memoryUsed = memories, recalled = chats) else it
+        }
+    }
+
     /**
      * Write the turn back to the computer.
      *
@@ -976,6 +1030,56 @@ class ChatSession(
                                     )
                                 }
                                 if (turn.webSearchAttempted) put("webSearchAttempted", true)
+
+                                // What the computer recalled for this turn, in
+                                // its own shape. Saved for the same reason the
+                                // sources are: a reply reopened tomorrow should
+                                // still be able to say what it was built on.
+                                if (turn.memoryUsed.isNotEmpty()) {
+                                    put(
+                                        "memoryUsed",
+                                        buildJsonArray {
+                                            for (entry in turn.memoryUsed) {
+                                                add(
+                                                    buildJsonObject {
+                                                        put("id", entry.id)
+                                                        put("kind", entry.kind)
+                                                        put("text", entry.text)
+                                                    },
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                                if (turn.recalled.isNotEmpty()) {
+                                    put(
+                                        "transcriptRecallUsed",
+                                        buildJsonArray {
+                                            for (chat in turn.recalled) {
+                                                add(
+                                                    buildJsonObject {
+                                                        put("conversationId", chat.conversationId)
+                                                        put("title", chat.title)
+                                                        put("updatedAt", chat.updatedAtEpochMs)
+                                                        put(
+                                                            "excerpts",
+                                                            buildJsonArray {
+                                                                for (line in chat.excerpts) {
+                                                                    add(
+                                                                        buildJsonObject {
+                                                                            put("role", line.role)
+                                                                            put("text", line.text)
+                                                                        },
+                                                                    )
+                                                                }
+                                                            },
+                                                        )
+                                                    },
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
 
                                 // Recorded with the message, so months later it is
                                 // still possible to tell which personality wrote a
@@ -1315,6 +1419,8 @@ internal fun keepWhatOnlyThisPhoneHas(had: ChatMessage?, computer: ChatMessage):
         // that made this whole feature look broken, one layer further in.
         webSources = computer.webSources.ifEmpty { had.webSources },
         webSearchAttempted = computer.webSearchAttempted || had.webSearchAttempted,
+        memoryUsed = computer.memoryUsed.ifEmpty { had.memoryUsed },
+        recalled = computer.recalled.ifEmpty { had.recalled },
     )
 }
 
@@ -1341,6 +1447,54 @@ internal fun webSourcesFromResult(element: JsonElement?): List<WebSource> {
             url = url,
             snippet = (o["snippet"] as? JsonPrimitive)?.contentOrNullish()?.takeIf { it.isNotBlank() },
             verified = (o["verified"] as? JsonPrimitive)?.contentOrNullish() == "true",
+        )
+    }
+}
+
+/**
+ * Memories the computer recalled for this turn, off `chat:send`'s answer.
+ *
+ * Wrapped or bare, like everything else on this channel. An entry missing its
+ * text is dropped rather than drawn as an empty row -- there would be nothing to
+ * read and no way to tell it from a rendering fault.
+ */
+internal fun memoryUsedFromResult(element: JsonElement?): List<RecalledMemory> {
+    val fields = (element as? JsonObject)?.let { (it["value"] as? JsonObject) ?: it }
+    val list = fields?.get("memoryUsed") as? JsonArray ?: return emptyList()
+    return list.mapNotNull { entry ->
+        val o = entry as? JsonObject ?: return@mapNotNull null
+        val text = (o["text"] as? JsonPrimitive)?.contentOrNullish()?.takeIf { it.isNotBlank() }
+            ?: return@mapNotNull null
+        RecalledMemory(
+            id = (o["id"] as? JsonPrimitive)?.contentOrNullish().orEmpty(),
+            kind = (o["kind"] as? JsonPrimitive)?.contentOrNullish().orEmpty(),
+            text = text,
+        )
+    }
+}
+
+/** Past conversations this turn drew on, off the same answer. */
+internal fun recalledFromResult(element: JsonElement?): List<RecalledChat> {
+    val fields = (element as? JsonObject)?.let { (it["value"] as? JsonObject) ?: it }
+    val list = fields?.get("transcriptRecallUsed") as? JsonArray ?: return emptyList()
+    return list.mapNotNull { entry ->
+        val o = entry as? JsonObject ?: return@mapNotNull null
+        val id = (o["conversationId"] as? JsonPrimitive)?.contentOrNullish() ?: return@mapNotNull null
+        val excerpts = (o["excerpts"] as? JsonArray).orEmpty().mapNotNull { row ->
+            val e = row as? JsonObject ?: return@mapNotNull null
+            val text = (e["text"] as? JsonPrimitive)?.contentOrNullish()?.takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            RecalledLine((e["role"] as? JsonPrimitive)?.contentOrNullish().orEmpty(), text)
+        }
+        // A conversation with no readable excerpt is a title and nothing behind
+        // it, which is worse than not mentioning it.
+        if (excerpts.isEmpty()) return@mapNotNull null
+        RecalledChat(
+            conversationId = id,
+            title = (o["title"] as? JsonPrimitive)?.contentOrNullish()?.takeIf { it.isNotBlank() }
+                ?: "A past conversation",
+            updatedAtEpochMs = (o["updatedAt"] as? JsonPrimitive)?.contentOrNullish()?.toLongOrNull() ?: 0L,
+            excerpts = excerpts,
         )
     }
 }
