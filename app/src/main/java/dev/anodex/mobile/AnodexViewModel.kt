@@ -56,7 +56,10 @@ import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
+import dev.anodex.mobile.email.EmailAttachment
 import dev.anodex.mobile.email.EmailDrafter
+import dev.anodex.mobile.email.SavedAttachment
+import dev.anodex.mobile.email.saveAttachment
 import dev.anodex.mobile.email.MailFlag
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
@@ -2068,6 +2071,70 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     refreshEmail()
                 }
                 .onFailure { _emailError.value = it.message ?: "Your computer would not delete it." }
+        }
+    }
+
+    private val _downloading = MutableStateFlow<String?>(null)
+
+    /** The attachment being fetched, by id, or null when none is. */
+    val downloadingAttachment: StateFlow<String?> = _downloading.asStateFlow()
+
+    /**
+     * Download an attachment onto this phone.
+     *
+     * Asked for here, so it lands here. The computer keeps its save dialog for
+     * somebody sitting at it; from a phone that dialog would open on a machine
+     * in another room and wait for a click nobody is coming to give it.
+     *
+     * Assembled in memory and written once. A mail attachment is bounded by what
+     * a provider will carry -- twenty-five megabytes on most -- and holding one
+     * briefly is simpler than a partly-written file to clean up when a
+     * connection drops mid-download.
+     */
+    fun downloadAttachment(attachment: EmailAttachment) {
+        val client = emailClient ?: return
+        if (_downloading.value != null) return
+        _downloading.value = attachment.id
+
+        viewModelScope.launch {
+            val accountId = _openThreadSummary?.accountId?.takeIf { it.isNotBlank() }
+            runCatching {
+                val bytes = java.io.ByteArrayOutputStream()
+                var offset = 0L
+                var name = attachment.filename
+                var type = attachment.mimeType
+
+                while (true) {
+                    val chunk = client.attachmentChunk(
+                        messageId = attachment.messageId,
+                        attachmentId = attachment.id,
+                        offset = offset,
+                        accountId = accountId,
+                    ) ?: error("Your computer would not read that attachment.")
+
+                    chunk.filename.takeIf { it.isNotBlank() }?.let { name = it }
+                    chunk.mimeType.takeIf { it.isNotBlank() }?.let { type = it }
+
+                    val piece = android.util.Base64.decode(chunk.base64, android.util.Base64.DEFAULT)
+                    bytes.write(piece)
+                    offset += piece.size
+
+                    if (chunk.done) break
+                    // A chunk that advanced nothing and did not finish would loop
+                    // for ever against a computer answering wrongly.
+                    if (piece.isEmpty()) error("That attachment stopped part way.")
+                }
+
+                saveAttachment(getApplication(), name, type) { out -> out.write(bytes.toByteArray()) }
+            }
+                .onSuccess { where ->
+                    _notice.value = when (where) {
+                        is SavedAttachment.ToDownloads -> "Saved ${where.filename} to Downloads."
+                        is SavedAttachment.ToAppFolder -> "Saved to ${where.path}."
+                    }
+                }
+                .onFailure { _emailError.value = it.message ?: "That attachment would not download." }
+            _downloading.value = null
         }
     }
 

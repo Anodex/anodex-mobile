@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.anodex.mobile.AnodexViewModel
 import dev.anodex.mobile.connection.ConnectionState
+import dev.anodex.mobile.email.EmailAttachment
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.MailFlag
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -97,6 +98,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val mailQuery by viewModel.mailQuery.collectAsStateWithLifecycle()
     val mailResults by viewModel.mailResults.collectAsStateWithLifecycle()
     val mailSearching by viewModel.mailSearching.collectAsStateWithLifecycle()
+    val downloadingAttachment by viewModel.downloadingAttachment.collectAsStateWithLifecycle()
 
     // Above the reader, so Back out of a half-written reply lands on the message it
     // answers rather than on the inbox.
@@ -151,6 +153,8 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             onLink = viewModel::openLink,
             onFlag = { action -> viewModel.flagOpenThread(action) },
             onTrash = viewModel::trashOpenThread,
+            onDownload = viewModel::downloadAttachment,
+            downloadingId = downloadingAttachment,
             modifier = modifier,
         )
         return
@@ -451,6 +455,10 @@ private fun ThreadReader(
     onFlag: ((MailFlag) -> Unit)? = null,
     /** Move it to the computer's trash. Null hides the bin. */
     onTrash: (() -> Unit)? = null,
+    /** Download an attachment onto this phone. Null leaves them listed only. */
+    onDownload: ((EmailAttachment) -> Unit)? = null,
+    /** Which attachment is being fetched, so two do not start at once. */
+    downloadingId: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -564,16 +572,50 @@ private fun ThreadReader(
                             color = colors.textFaint,
                         )
                     }
-                    if (note.attachmentCount > 0) {
-                        // Named rather than offered. Downloading someone's attachment
-                        // onto a phone through a socket into their PC is a separate
-                        // decision from reading the message it came with.
-                        Text(
-                            text = "${note.attachmentCount} attachment" +
-                                if (note.attachmentCount == 1) "" else "s",
-                            style = type.meta,
-                            color = colors.textFaint,
-                        )
+                    // Offered, not just counted. This used to say "2 attachments"
+                    // and do nothing about them, which is a label rather than a
+                    // feature -- the reader could see a file existed and had no way
+                    // to reach it without walking to the computer.
+                    for (attachment in note.attachments) {
+                        val busy = downloadingId == attachment.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(Radii.md)
+                                .background(colors.bgSurface)
+                                .let { base ->
+                                    if (onDownload == null || downloadingId != null) base
+                                    else base.clickable { onDownload(attachment) }
+                                }
+                                .padding(Spacing.x3),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+                        ) {
+                            AnodexIcon(
+                                icon = AnodexIcon.PAPERCLIP,
+                                size = 18.dp,
+                                tint = colors.textMuted,
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = attachment.filename,
+                                    style = type.body,
+                                    color = colors.text,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    // The size, because over mobile data it is the
+                                    // whole of the decision.
+                                    text = if (busy) "Downloading…" else fileSize(attachment.size),
+                                    style = type.meta,
+                                    color = colors.textFaint,
+                                )
+                            }
+                            if (onDownload != null && !busy) {
+                                Text("Save", style = type.label, color = colors.accentInk)
+                            }
+                        }
                     }
                     // The message as written, when the desktop sent one. `body` is
                     // the plain-text fallback and is what a message with no HTML
@@ -853,4 +895,19 @@ private fun PreviewInboxUnconfigured() {
     AnodexTheme(darkTheme = true) {
         InboxList(threads = emptyList(), loading = false, configured = false, onOpen = {})
     }
+}
+
+/**
+ * "2.4 MB", the way a file manager says it.
+ *
+ * Rounded rather than exact: the reader is deciding whether to spend the data,
+ * and no such decision turns on the difference between 2,411,724 bytes and 2.4
+ * megabytes.
+ */
+internal fun fileSize(bytes: Long): String = when {
+    bytes <= 0 -> "Unknown size"
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "%.0f KB".format(bytes / 1024.0)
+    bytes < 1024L * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
+    else -> "%.1f GB".format(bytes / (1024.0 * 1024 * 1024))
 }

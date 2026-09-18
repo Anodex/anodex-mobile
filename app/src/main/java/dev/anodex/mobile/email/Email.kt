@@ -1,6 +1,7 @@
 package dev.anodex.mobile.email
 
 import dev.anodex.mobile.transport.AnodexSocket
+import kotlin.time.Duration.Companion.seconds
 import dev.anodex.mobile.transport.unwrap
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -41,6 +42,22 @@ data class EmailThread(
     val attachmentCount: Int,
 )
 
+/**
+ * A file that came with a message.
+ *
+ * The phone kept only a count of these, which was enough to say "2 attachments"
+ * and not enough to do anything about them. The id and the message it belongs to
+ * are what the computer needs to fetch the bytes; the size is what decides
+ * whether somebody wants to over mobile data.
+ */
+data class EmailAttachment(
+    val id: String,
+    val messageId: String,
+    val filename: String,
+    val mimeType: String,
+    val size: Long,
+)
+
 /** One message inside a thread. */
 data class EmailNote(
     val id: String,
@@ -63,6 +80,8 @@ data class EmailNote(
     val cc: List<String>,
     val dateEpochMs: Long,
     val attachmentCount: Int,
+    /** The files themselves, so they can be opened rather than only counted. */
+    val attachments: List<EmailAttachment> = emptyList(),
 )
 
 /**
@@ -190,6 +209,22 @@ class Email(private val socket: AnodexSocket) {
             cc = (this["cc"] as? JsonArray).addresses(),
             dateEpochMs = this["date"].asEpochMs(),
             attachmentCount = (this["attachments"] as? JsonArray)?.size ?: 0,
+            attachments = (this["attachments"] as? JsonArray).orEmpty().mapNotNull { row ->
+                val o = row as? JsonObject ?: return@mapNotNull null
+                val attachmentId = o["id"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
+                EmailAttachment(
+                    id = attachmentId,
+                    // The message that owns it. The provider's fetch needs both,
+                    // and the summary carries its own copy rather than the reader
+                    // having to remember which message a row came from.
+                    messageId = o["messageId"]?.jsonPrimitive?.contentOrNull() ?: id,
+                    filename = o["filename"]?.jsonPrimitive?.contentOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: "attachment",
+                    mimeType = o["mimeType"]?.jsonPrimitive?.contentOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: "application/octet-stream",
+                    size = o["size"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
+                )
+            },
         )
     }
 
@@ -281,6 +316,40 @@ class Email(private val socket: AnodexSocket) {
         return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
     }
 
+    /**
+     * One chunk of an attachment's bytes, starting at [offset].
+     *
+     * Chunked because the socket refuses a response over four megabytes and
+     * base64 costs a third on top -- a single fetch would cap attachments below
+     * the size of a photograph taken on this phone. The computer holds the last
+     * one it read, so a long download is one request to the mail provider rather
+     * than one per chunk.
+     */
+    suspend fun attachmentChunk(
+        messageId: String,
+        attachmentId: String,
+        offset: Long,
+        accountId: String? = null,
+    ): AttachmentChunk? {
+        val request = buildJsonObject {
+            put("messageId", JsonPrimitive(messageId))
+            put("attachmentId", JsonPrimitive(attachmentId))
+            put("offset", JsonPrimitive(offset))
+            accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
+        }
+        val value = socket.invoke(CHANNEL_ATTACHMENT, listOf(request), timeout = 120.seconds)
+            .unwrap() as? JsonObject ?: return null
+
+        return AttachmentChunk(
+            filename = value["filename"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            mimeType = value["mimeType"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            size = value["size"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
+            offset = value["offset"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
+            base64 = value["base64"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            done = value["done"]?.jsonPrimitive?.contentOrNull() == "true",
+        )
+    }
+
     /** Remote images for a message the reader has asked to see in full. */
     suspend fun loadRemoteImages(urls: List<String>): Map<String, String> {
         if (urls.isEmpty()) return emptyMap()
@@ -299,6 +368,7 @@ class Email(private val socket: AnodexSocket) {
         const val CHANNEL_FLAG = "email:apply-flag"
         const val CHANNEL_TRASH = "email:trash"
         const val CHANNEL_SEARCH = "email:search"
+        const val CHANNEL_ATTACHMENT = "email:get-attachment-chunk"
         const val CHANNEL_IMAGES = "email:load-remote-images"
         const val CHANNEL_THREADS = "email:list-threads"
         const val CHANNEL_MESSAGES = "email:get-thread-messages"
@@ -323,3 +393,15 @@ private fun JsonElement?.asInt(): Int =
 
 /** `content` on a JSON null is the string "null", which is never what a caller wants. */
 private fun JsonPrimitive.contentOrNull(): String? = if (this is JsonNull) null else content
+
+/** One piece of an attachment, as the computer hands it over. */
+data class AttachmentChunk(
+    val filename: String,
+    val mimeType: String,
+    /** The whole file's size, so a caller knows how far along it is. */
+    val size: Long,
+    val offset: Long,
+    val base64: String,
+    /** True when this piece reaches the end, so nobody has to do the arithmetic. */
+    val done: Boolean,
+)
