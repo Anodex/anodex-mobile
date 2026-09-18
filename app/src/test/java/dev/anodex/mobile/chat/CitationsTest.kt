@@ -76,3 +76,55 @@ class CitationsTest {
         )
     }
 }
+
+/**
+ * The merge that runs when the computer's transcript arrives over what this phone
+ * already has.
+ *
+ * Its whole job is keeping what only the phone holds — the tool rows, the changed
+ * files, the thinking. Sources belong on that list for a reason the others do not
+ * have: a conversation saved before sources were ever recorded comes back from the
+ * computer without them, so taking its empty list on faith blanks the sources of a
+ * reply somebody is looking straight at.
+ */
+class SyncKeepsSourcesTest {
+
+    private val source = WebSource("S1", "Avalanche coach", "https://nhl.com/avs", verified = true)
+
+    private fun message(text: String, sources: List<WebSource>) = ChatMessage(
+        id = "m1",
+        role = ChatMessage.Role.ASSISTANT,
+        text = text,
+        webSources = sources,
+        webSearchAttempted = sources.isNotEmpty(),
+    )
+
+    @Test
+    fun `an older transcript does not blank what the phone has`() {
+        val merged = keepWhatOnlyThisPhoneHas(
+            had = message("the reply, as this phone has it", listOf(source)),
+            computer = message("the reply, edited at the computer", emptyList()),
+        )
+        assertEquals(listOf(source), merged.webSources)
+        assertEquals("the reply, edited at the computer", merged.text)
+    }
+
+    @Test
+    fun `the computer's own list wins when it has one`() {
+        val newer = WebSource("S1", "Updated", "https://example.com/newer", verified = true)
+        val merged = keepWhatOnlyThisPhoneHas(
+            had = message("old text", listOf(source)),
+            computer = message("new text", listOf(newer)),
+        )
+        assertEquals(listOf(newer), merged.webSources)
+    }
+
+    @Test
+    fun `an unchanged reply keeps the phone's copy whole`() {
+        val merged = keepWhatOnlyThisPhoneHas(
+            had = message("same", listOf(source)),
+            computer = message("same", emptyList()),
+        )
+        assertEquals(listOf(source), merged.webSources)
+    }
+}

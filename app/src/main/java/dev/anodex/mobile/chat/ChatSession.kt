@@ -1308,6 +1308,13 @@ internal fun keepWhatOnlyThisPhoneHas(had: ChatMessage?, computer: ChatMessage):
         thinking = had.thinking,
         hasThinking = had.thinking == null && computer.hasThinking,
         endedEarly = had.endedEarly || computer.endedEarly,
+        // The computer's list when it has one, this phone's otherwise. A
+        // conversation saved before sources were recorded comes back without
+        // them, and taking the computer's empty list on faith would blank the
+        // sources of a reply somebody is looking straight at -- the same mistake
+        // that made this whole feature look broken, one layer further in.
+        webSources = computer.webSources.ifEmpty { had.webSources },
+        webSearchAttempted = computer.webSearchAttempted || had.webSearchAttempted,
     )
 }
 
