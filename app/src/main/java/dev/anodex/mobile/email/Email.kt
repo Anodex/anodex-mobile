@@ -1,6 +1,7 @@
 package dev.anodex.mobile.email
 
 import dev.anodex.mobile.transport.AnodexSocket
+import kotlin.time.Duration.Companion.seconds
 import dev.anodex.mobile.transport.unwrap
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -41,6 +42,22 @@ data class EmailThread(
     val attachmentCount: Int,
 )
 
+/**
+ * A file that came with a message.
+ *
+ * The phone kept only a count of these, which was enough to say "2 attachments"
+ * and not enough to do anything about them. The id and the message it belongs to
+ * are what the computer needs to fetch the bytes; the size is what decides
+ * whether somebody wants to over mobile data.
+ */
+data class EmailAttachment(
+    val id: String,
+    val messageId: String,
+    val filename: String,
+    val mimeType: String,
+    val size: Long,
+)
+
 /** One message inside a thread. */
 data class EmailNote(
     val id: String,
@@ -63,6 +80,8 @@ data class EmailNote(
     val cc: List<String>,
     val dateEpochMs: Long,
     val attachmentCount: Int,
+    /** The files themselves, so they can be opened rather than only counted. */
+    val attachments: List<EmailAttachment> = emptyList(),
 )
 
 /**
@@ -84,9 +103,59 @@ data class EmailNote(
  */
 class Email(private val socket: AnodexSocket) {
 
-    /** The most recent threads in the inbox. Empty when email is not set up at all. */
-    suspend fun threads(limit: Int = 50): List<EmailThread> {
-        val request = buildJsonObject { put("limit", JsonPrimitive(limit)) }
+    /**
+     * Search the mailbox.
+     *
+     * The same shape as [threads] on purpose: the computer answers a search with
+     * thread summaries, so the list that draws an inbox draws results without
+     * knowing which it is showing.
+     *
+     * Works on every account type. `email:search` is `listThreads` with a query
+     * on the far side, and all three providers -- Gmail, Microsoft and plain
+     * IMAP -- implement that one method. Nothing here is written against a
+     * provider's own search syntax, which is what would have made this work on
+     * one account and quietly return nothing on another.
+     */
+    suspend fun search(query: String, limit: Int = 50): List<EmailThread> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return emptyList()
+
+        val request = buildJsonObject {
+            put("query", JsonPrimitive(trimmed))
+            put("limit", JsonPrimitive(limit))
+        }
+        val value = socket.invoke(CHANNEL_SEARCH, listOf(request)).unwrap() as? JsonArray
+        return value.orEmpty().mapNotNull { (it as? JsonObject)?.asThread() }
+    }
+
+    /**
+     * The mailboxes this account has.
+     *
+     * Named by the server, which is why they are shown by their leaf rather than
+     * their path: Gmail's Sent is `[Gmail]/Sent Mail` and an IMAP server's is
+     * often `INBOX.Sent`, and neither is what anybody calls it.
+     */
+    suspend fun mailboxes(): List<MailFolder> {
+        val value = socket.invoke(CHANNEL_MAILBOXES, listOf(JsonNull)).unwrap() as? JsonArray
+        return value.orEmpty().mapNotNull { row ->
+            val o = row as? JsonObject ?: return@mapNotNull null
+            val name = o["name"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
+            MailFolder(
+                name = name,
+                label = friendlyFolderName(name),
+                system = o["system"]?.jsonPrimitive?.contentOrNull() == "true",
+            )
+        }
+    }
+
+    /** The most recent threads in a mailbox. Empty when email is not set up at all. */
+    suspend fun threads(limit: Int = 50, mailbox: String? = null): List<EmailThread> {
+        val request = buildJsonObject {
+            put("limit", JsonPrimitive(limit))
+            // Absent means the inbox, which is what the computer defaults to --
+            // so nothing is sent for it rather than a name this phone guessed.
+            mailbox?.takeIf { it.isNotBlank() }?.let { put("mailbox", JsonPrimitive(it)) }
+        }
         val value = socket.invoke(CHANNEL_THREADS, listOf(request)).unwrap() as? JsonArray
             ?: return emptyList()
 
@@ -165,6 +234,22 @@ class Email(private val socket: AnodexSocket) {
             cc = (this["cc"] as? JsonArray).addresses(),
             dateEpochMs = this["date"].asEpochMs(),
             attachmentCount = (this["attachments"] as? JsonArray)?.size ?: 0,
+            attachments = (this["attachments"] as? JsonArray).orEmpty().mapNotNull { row ->
+                val o = row as? JsonObject ?: return@mapNotNull null
+                val attachmentId = o["id"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
+                EmailAttachment(
+                    id = attachmentId,
+                    // The message that owns it. The provider's fetch needs both,
+                    // and the summary carries its own copy rather than the reader
+                    // having to remember which message a row came from.
+                    messageId = o["messageId"]?.jsonPrimitive?.contentOrNull() ?: id,
+                    filename = o["filename"]?.jsonPrimitive?.contentOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: "attachment",
+                    mimeType = o["mimeType"]?.jsonPrimitive?.contentOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: "application/octet-stream",
+                    size = o["size"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
+                )
+            },
         )
     }
 
@@ -235,6 +320,61 @@ class Email(private val socket: AnodexSocket) {
         return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
     }
 
+    /**
+     * Delete a thread, which means moving it to the account's trash.
+     *
+     * The computer works out which mailbox that is -- Gmail, Microsoft and a
+     * plain IMAP server all call it something different, and a phone carrying
+     * its own list of spellings would be a second list to get wrong. It refuses
+     * rather than guessing when an account has no trash, and says so.
+     *
+     * Recoverable from the desktop this phone is paired to, which is the whole
+     * reason a delete button is safe to put in a pocket. Nothing in this app
+     * expunges anything.
+     */
+    suspend fun trash(threadId: String, accountId: String? = null): Boolean {
+        val request = buildJsonObject {
+            put("threadId", JsonPrimitive(threadId))
+            accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
+        }
+        val answer = socket.invoke(CHANNEL_TRASH, listOf(request)) as? JsonObject ?: return false
+        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+    }
+
+    /**
+     * One chunk of an attachment's bytes, starting at [offset].
+     *
+     * Chunked because the socket refuses a response over four megabytes and
+     * base64 costs a third on top -- a single fetch would cap attachments below
+     * the size of a photograph taken on this phone. The computer holds the last
+     * one it read, so a long download is one request to the mail provider rather
+     * than one per chunk.
+     */
+    suspend fun attachmentChunk(
+        messageId: String,
+        attachmentId: String,
+        offset: Long,
+        accountId: String? = null,
+    ): AttachmentChunk? {
+        val request = buildJsonObject {
+            put("messageId", JsonPrimitive(messageId))
+            put("attachmentId", JsonPrimitive(attachmentId))
+            put("offset", JsonPrimitive(offset))
+            accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
+        }
+        val value = socket.invoke(CHANNEL_ATTACHMENT, listOf(request), timeout = 120.seconds)
+            .unwrap() as? JsonObject ?: return null
+
+        return AttachmentChunk(
+            filename = value["filename"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            mimeType = value["mimeType"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            size = value["size"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
+            offset = value["offset"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
+            base64 = value["base64"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            done = value["done"]?.jsonPrimitive?.contentOrNull() == "true",
+        )
+    }
+
     /** Remote images for a message the reader has asked to see in full. */
     suspend fun loadRemoteImages(urls: List<String>): Map<String, String> {
         if (urls.isEmpty()) return emptyMap()
@@ -251,6 +391,10 @@ class Email(private val socket: AnodexSocket) {
     private companion object {
         const val CHANNEL_SEND = "email:send"
         const val CHANNEL_FLAG = "email:apply-flag"
+        const val CHANNEL_TRASH = "email:trash"
+        const val CHANNEL_SEARCH = "email:search"
+        const val CHANNEL_ATTACHMENT = "email:get-attachment-chunk"
+        const val CHANNEL_MAILBOXES = "email:list-mailboxes"
         const val CHANNEL_IMAGES = "email:load-remote-images"
         const val CHANNEL_THREADS = "email:list-threads"
         const val CHANNEL_MESSAGES = "email:get-thread-messages"
@@ -275,3 +419,38 @@ private fun JsonElement?.asInt(): Int =
 
 /** `content` on a JSON null is the string "null", which is never what a caller wants. */
 private fun JsonPrimitive.contentOrNull(): String? = if (this is JsonNull) null else content
+
+/** One piece of an attachment, as the computer hands it over. */
+data class AttachmentChunk(
+    val filename: String,
+    val mimeType: String,
+    /** The whole file's size, so a caller knows how far along it is. */
+    val size: Long,
+    val offset: Long,
+    val base64: String,
+    /** True when this piece reaches the end, so nobody has to do the arithmetic. */
+    val done: Boolean,
+)
+
+/** One mailbox, as a person would name it. */
+data class MailFolder(
+    /** What the server calls it, which is what a request has to carry. */
+    val name: String,
+    /** What to show: `[Gmail]/Sent Mail` becomes `Sent Mail`. */
+    val label: String,
+    /** Provider-managed, as opposed to a folder somebody made. */
+    val system: Boolean,
+)
+
+/**
+ * `[Gmail]/Sent Mail` becomes `Sent Mail`, `INBOX.Archive` becomes `Archive`.
+ *
+ * The same reduction the desktop makes, and for the same reason: a server's
+ * namespace is not what anybody calls the folder, and showing the path makes a
+ * list of five mailboxes unreadable on a phone.
+ */
+internal fun friendlyFolderName(name: String): String {
+    val withoutNamespace = name.replace(Regex("""^\[[^]]+][/.]?"""), "").trim()
+    val leaf = withoutNamespace.split('/', '.').lastOrNull()?.trim()
+    return leaf?.takeIf { it.isNotBlank() } ?: name
+}

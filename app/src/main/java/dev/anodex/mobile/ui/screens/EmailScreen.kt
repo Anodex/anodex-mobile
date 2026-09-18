@@ -18,6 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.anodex.mobile.AnodexViewModel
 import dev.anodex.mobile.connection.ConnectionState
+import dev.anodex.mobile.email.EmailAttachment
+import androidx.compose.foundation.horizontalScroll
+import dev.anodex.mobile.email.MailFolder
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.MailFlag
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -47,6 +53,7 @@ import dev.anodex.mobile.ui.components.EmptyTone
 import dev.anodex.mobile.ui.components.InlineProblem
 import dev.anodex.mobile.ui.components.ListSkeleton
 import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.SearchField
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -81,7 +88,10 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     // inbox until the user thought to leave the tab and come back.
     val connected by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(connected is ConnectionState.Connected) {
-        if (connected is ConnectionState.Connected) viewModel.refreshEmail()
+        if (connected is ConnectionState.Connected) {
+            viewModel.refreshEmail()
+            viewModel.refreshFolders()
+        }
     }
 
     val draft by viewModel.mailDraft.collectAsStateWithLifecycle()
@@ -90,6 +100,12 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val mailSending by viewModel.mailSending.collectAsStateWithLifecycle()
     val mailError by viewModel.mailError.collectAsStateWithLifecycle()
     val shownImages by viewModel.shownImages.collectAsStateWithLifecycle()
+    val mailQuery by viewModel.mailQuery.collectAsStateWithLifecycle()
+    val mailResults by viewModel.mailResults.collectAsStateWithLifecycle()
+    val mailSearching by viewModel.mailSearching.collectAsStateWithLifecycle()
+    val downloadingAttachment by viewModel.downloadingAttachment.collectAsStateWithLifecycle()
+    val folders by viewModel.mailFolders.collectAsStateWithLifecycle()
+    val openFolder by viewModel.openFolder.collectAsStateWithLifecycle()
 
     // Above the reader, so Back out of a half-written reply lands on the message it
     // answers rather than on the inbox.
@@ -143,13 +159,22 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             onShowImages = viewModel::showRemoteImages,
             onLink = viewModel::openLink,
             onFlag = { action -> viewModel.flagOpenThread(action) },
+            onTrash = viewModel::trashOpenThread,
+            onDownload = viewModel::downloadAttachment,
+            downloadingId = downloadingAttachment,
             modifier = modifier,
         )
         return
     }
 
     InboxList(
-        threads = threads,
+        threads = mailResults ?: threads,
+        searching = mailSearching,
+        // Null means the inbox is showing, which is a different sentence from a
+        // search that matched nothing.
+        isResults = mailResults != null,
+        query = mailQuery,
+        onQueryChange = viewModel::searchMail,
         loading = loading,
         configured = configured,
         error = emailError,
@@ -157,6 +182,9 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         onCompose = { viewModel.startMail(MailDraft()) },
         onSetUnread = viewModel::setThreadUnread,
         onSetStarred = viewModel::setThreadStarred,
+        folders = folders,
+        openFolder = openFolder,
+        onOpenFolder = viewModel::openMailFolder,
         modifier = modifier,
     )
 }
@@ -177,13 +205,46 @@ private fun InboxList(
     onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
     /** Star a thread from the list. */
     onSetStarred: ((EmailThread, Boolean) -> Unit)? = null,
+    /** What is being searched for, and how to change it. Null hides the field. */
+    query: String = "",
+    onQueryChange: ((String) -> Unit)? = null,
+    searching: Boolean = false,
+    /** True when the list is search results rather than the inbox. */
+    isResults: Boolean = false,
+    /** Every mailbox on the account, for switching between them. */
+    folders: List<MailFolder> = emptyList(),
+    /** Which one is showing, or null for the inbox. */
+    openFolder: MailFolder? = null,
+    onOpenFolder: ((MailFolder?) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     ScreenScaffold(
-        title = "Inbox",
+        title = if (isResults) "Search" else openFolder?.label ?: "Inbox",
         modifier = modifier,
+        beneath = if (onQueryChange == null) null else {
+            {
+                SearchField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    placeholder = "Search mail",
+                    modifier = Modifier.padding(top = Spacing.x2),
+                )
+
+                // The folders, as a row that scrolls sideways. A phone has no
+                // room for the sidebar the computer uses, and a dropdown hides
+                // the one thing somebody opened this to change.
+                if (onOpenFolder != null && folders.size > 1) {
+                    FolderStrip(
+                        folders = folders,
+                        open = openFolder,
+                        onOpen = onOpenFolder,
+                        modifier = Modifier.padding(top = Spacing.x2),
+                    )
+                }
+            }
+        },
         // In the header rather than as a button floating over the list. The inbox
         // is read far more often than it is written to, and a control covering the
         // newest row sits on top of what people opened this for.
@@ -204,10 +265,21 @@ private fun InboxList(
                 modifier = emptyModifier,
             )
 
-            loading && threads.isEmpty() -> ListSkeleton(
+            // A search that matched nothing is not an empty mailbox, and it is
+            // certainly not a missing account -- which is what the branches below
+            // would otherwise say to somebody who mistyped a word. First, so it
+            // wins over all of them.
+            isResults && threads.isEmpty() && !searching -> EmptyState(
+                headline = "Nothing matched",
+                detail = "No message in this mailbox contains “$query”.",
+                icon = AnodexIcon.SEARCH,
+                modifier = emptyModifier,
+            )
+
+            (loading || searching) && threads.isEmpty() -> ListSkeleton(
                 rows = 5,
                 lines = 2,
-                caption = "Reading your mail…",
+                caption = if (searching) "Searching…" else "Reading your mail…",
                 modifier = Modifier.padding(listPadding(topInset)),
             )
 
@@ -408,9 +480,19 @@ private fun ThreadReader(
     onLink: ((String) -> Unit)? = null,
     /** Mark, star or archive this thread. Null hides the row. */
     onFlag: ((MailFlag) -> Unit)? = null,
+    /** Move it to the computer's trash. Null hides the bin. */
+    onTrash: (() -> Unit)? = null,
+    /** Download an attachment onto this phone. Null leaves them listed only. */
+    onDownload: ((EmailAttachment) -> Unit)? = null,
+    /** Which attachment is being fetched, so two do not start at once. */
+    downloadingId: String? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+
+    // Armed per thread, so opening a different message does not inherit a
+    // half-pressed delete from the last one.
+    var confirmingTrash by remember(notes.firstOrNull()?.threadId) { mutableStateOf(false) }
 
     ScreenScaffold(
         // The chrome says what you can do; the subject has moved into the message
@@ -430,6 +512,19 @@ private fun ThreadReader(
                     // anything can be undone.
                     HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
                     HeaderAction(AnodexIcon.MAIL, "Mark unread") { onFlag(MailFlag.UNREAD) }
+                    // Delete last, furthest from the two that are undone by
+                    // pressing them again. It asks once: the message is
+                    // recoverable, but only from the trash on the computer, and
+                    // "where did that go" is a worse afternoon than one more tap.
+                    if (onTrash != null) {
+                        HeaderAction(
+                            icon = AnodexIcon.TRASH,
+                            label = if (confirmingTrash) "Tap again to delete" else "Delete",
+                            tint = if (confirmingTrash) colors.dangerInk else colors.textMuted,
+                        ) {
+                            if (confirmingTrash) onTrash() else confirmingTrash = true
+                        }
+                    }
                 }
             }
         },
@@ -504,16 +599,50 @@ private fun ThreadReader(
                             color = colors.textFaint,
                         )
                     }
-                    if (note.attachmentCount > 0) {
-                        // Named rather than offered. Downloading someone's attachment
-                        // onto a phone through a socket into their PC is a separate
-                        // decision from reading the message it came with.
-                        Text(
-                            text = "${note.attachmentCount} attachment" +
-                                if (note.attachmentCount == 1) "" else "s",
-                            style = type.meta,
-                            color = colors.textFaint,
-                        )
+                    // Offered, not just counted. This used to say "2 attachments"
+                    // and do nothing about them, which is a label rather than a
+                    // feature -- the reader could see a file existed and had no way
+                    // to reach it without walking to the computer.
+                    for (attachment in note.attachments) {
+                        val busy = downloadingId == attachment.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(Radii.md)
+                                .background(colors.bgSurface)
+                                .let { base ->
+                                    if (onDownload == null || downloadingId != null) base
+                                    else base.clickable { onDownload(attachment) }
+                                }
+                                .padding(Spacing.x3),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+                        ) {
+                            AnodexIcon(
+                                icon = AnodexIcon.PAPERCLIP,
+                                size = 18.dp,
+                                tint = colors.textMuted,
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = attachment.filename,
+                                    style = type.body,
+                                    color = colors.text,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    // The size, because over mobile data it is the
+                                    // whole of the decision.
+                                    text = if (busy) "Downloading…" else fileSize(attachment.size),
+                                    style = type.meta,
+                                    color = colors.textFaint,
+                                )
+                            }
+                            if (onDownload != null && !busy) {
+                                Text("Save", style = type.label, color = colors.accentInk)
+                            }
+                        }
                     }
                     // The message as written, when the desktop sent one. `body` is
                     // the plain-text fallback and is what a message with no HTML
@@ -667,6 +796,62 @@ private fun addressOf(from: String): String =
 
 
 
+
+/**
+ * The account's mailboxes, as a row of chips.
+ *
+ * Sideways rather than a menu: the computer has a sidebar and a phone does not,
+ * and a dropdown hides the thing somebody opened it to change. Inbox is first
+ * and always present, because it is where this screen starts and the server does
+ * not always list it the way it lists the others.
+ */
+@Composable
+private fun FolderStrip(
+    folders: List<MailFolder>,
+    open: MailFolder?,
+    onOpen: (MailFolder?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        // The inbox chip is this app's own, not a row from the server's list:
+        // `openMailFolder(null)` is what tells the computer "your default", and
+        // sending a name instead would be this phone deciding what INBOX is
+        // called.
+        FolderChip("Inbox", selected = open == null) { onOpen(null) }
+
+        for (folder in folders) {
+            if (folder.label.equals("inbox", ignoreCase = true)) continue
+            FolderChip(folder.label, selected = open?.name == folder.name) { onOpen(folder) }
+        }
+    }
+}
+
+@Composable
+private fun FolderChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+    Text(
+        text = label,
+        style = AnodexTheme.type.label,
+        color = if (selected) colors.accentInk else colors.textMuted,
+        maxLines = 1,
+        modifier = Modifier
+            .heightIn(min = Touch.minTarget)
+            .wrapContentHeight(Alignment.CenterVertically)
+            .clip(Radii.lg)
+            .background(if (selected) colors.accentSoft else colors.bgSurface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x1),
+    )
+}
+
 /**
  * An icon in the header bar, with a finger's worth of target around it.
  *
@@ -675,7 +860,12 @@ private fun addressOf(from: String): String =
  * the screen.
  */
 @Composable
-private fun HeaderAction(icon: AnodexIcon, label: String, onClick: () -> Unit) {
+private fun HeaderAction(
+    icon: AnodexIcon,
+    label: String,
+    tint: Color = AnodexTheme.colors.textMuted,
+    onClick: () -> Unit,
+) {
     Box(
         modifier = Modifier
             .size(Touch.minTarget)
@@ -683,7 +873,7 @@ private fun HeaderAction(icon: AnodexIcon, label: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        AnodexIcon(icon, size = 20.dp, tint = AnodexTheme.colors.textMuted, contentDescription = label)
+        AnodexIcon(icon, size = 20.dp, tint = tint, contentDescription = label)
     }
 }
 
@@ -788,4 +978,19 @@ private fun PreviewInboxUnconfigured() {
     AnodexTheme(darkTheme = true) {
         InboxList(threads = emptyList(), loading = false, configured = false, onOpen = {})
     }
+}
+
+/**
+ * "2.4 MB", the way a file manager says it.
+ *
+ * Rounded rather than exact: the reader is deciding whether to spend the data,
+ * and no such decision turns on the difference between 2,411,724 bytes and 2.4
+ * megabytes.
+ */
+internal fun fileSize(bytes: Long): String = when {
+    bytes <= 0 -> "Unknown size"
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "%.0f KB".format(bytes / 1024.0)
+    bytes < 1024L * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
+    else -> "%.1f GB".format(bytes / (1024.0 * 1024 * 1024))
 }

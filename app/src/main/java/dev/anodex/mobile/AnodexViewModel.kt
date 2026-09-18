@@ -56,7 +56,11 @@ import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
+import dev.anodex.mobile.email.EmailAttachment
 import dev.anodex.mobile.email.EmailDrafter
+import dev.anodex.mobile.email.MailFolder
+import dev.anodex.mobile.email.SavedAttachment
+import dev.anodex.mobile.email.saveAttachment
 import dev.anodex.mobile.email.MailFlag
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
@@ -1787,7 +1791,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     _emailError.value = it.message ?: "Your computer would not answer."
                 }
 
-            runCatching { client.threads() }
+            runCatching { client.threads(mailbox = _openFolder.value?.name) }
                 .onSuccess { _emailThreads.value = it }
                 .onFailure {
                     _emailError.value = it.message ?: "Your computer would not answer."
@@ -1797,6 +1801,104 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Re-read after listing, so acting on mail at the computer is reflected
             // here rather than leaving a badge that outlives what it counted.
             refreshUnreadEmail()
+        }
+    }
+
+    private val _folders = MutableStateFlow<List<MailFolder>>(emptyList())
+
+    /** The mailboxes this account has, for switching between them. */
+    val mailFolders: StateFlow<List<MailFolder>> = _folders.asStateFlow()
+
+    private val _openFolder = MutableStateFlow<MailFolder?>(null)
+
+    /**
+     * Which mailbox is being shown, or null for the inbox.
+     *
+     * Null rather than a folder called "INBOX", because the computer's own
+     * default is "no mailbox named" and sending a name this phone guessed would
+     * be a second opinion about what the inbox is called -- which is exactly the
+     * kind of guess the trash mailbox taught us not to make.
+     */
+    val openFolder: StateFlow<MailFolder?> = _openFolder.asStateFlow()
+
+    /** Read the folder list once the mailbox is reachable. */
+    fun refreshFolders() {
+        val client = emailClient ?: return
+        viewModelScope.launch {
+            runCatching { client.mailboxes() }.onSuccess { _folders.value = it }
+        }
+    }
+
+    /** Show a different mailbox. Null means the inbox. */
+    fun openMailFolder(folder: MailFolder?) {
+        _openFolder.value = folder
+        // A search is about the whole mailbox, not the folder you were in, so
+        // switching folders clears it rather than filtering results nobody asked
+        // to have filtered.
+        _mailQuery.value = ""
+        _mailResults.value = null
+        refreshEmail()
+    }
+
+    private val _mailQuery = MutableStateFlow("")
+
+    /** What is being searched for, or empty for the plain inbox. */
+    val mailQuery: StateFlow<String> = _mailQuery.asStateFlow()
+
+    private val _mailResults = MutableStateFlow<List<EmailThread>?>(null)
+
+    /**
+     * What the search found, or null when nothing is being searched.
+     *
+     * Null and empty are different answers and the screen says different things
+     * about them: null is "showing your inbox", empty is "nothing matched". A
+     * single list with a flag beside it collapses those into one, and the empty
+     * inbox message ends up in front of somebody whose search simply missed.
+     */
+    val mailResults: StateFlow<List<EmailThread>?> = _mailResults.asStateFlow()
+
+    private val _mailSearching = MutableStateFlow(false)
+    val mailSearching: StateFlow<Boolean> = _mailSearching.asStateFlow()
+
+    private var mailSearchJob: Job? = null
+
+    /**
+     * Search the mailbox, a moment after typing stops.
+     *
+     * Debounced because every keystroke would otherwise be a round trip to the
+     * computer and a request to somebody's mail provider. Three hundred
+     * milliseconds is long enough that a typed word is one search and short
+     * enough that the results feel like they belong to the typing.
+     *
+     * The previous search is cancelled rather than left running: results that
+     * arrive after a newer query would overwrite it with an older answer, which
+     * is the bug where a list flickers back to what you searched for before.
+     */
+    fun searchMail(query: String) {
+        _mailQuery.value = query
+        mailSearchJob?.cancel()
+
+        if (query.isBlank()) {
+            _mailResults.value = null
+            _mailSearching.value = false
+            return
+        }
+
+        _mailSearching.value = true
+        mailSearchJob = viewModelScope.launch {
+            delay(MAIL_SEARCH_DELAY_MS)
+            val client = emailClient
+            if (client == null) {
+                _mailSearching.value = false
+                return@launch
+            }
+            runCatching { client.search(query) }
+                .onSuccess { _mailResults.value = it }
+                .onFailure {
+                    _mailResults.value = emptyList()
+                    _emailError.value = it.message ?: "That search did not work."
+                }
+            _mailSearching.value = false
         }
     }
 
@@ -1980,6 +2082,96 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     refreshEmail()
                 }
                 .onFailure { _emailError.value = it.message ?: "Your computer would not change that." }
+        }
+    }
+
+    /**
+     * Delete the thread being read.
+     *
+     * Asks once, like sending does, and for the mirrored reason: this one is
+     * recoverable but only somewhere else, and "where did that message go" is a
+     * worse afternoon than one extra tap.
+     */
+    fun trashOpenThread() {
+        val client = emailClient ?: return
+        val thread = _openThreadSummary ?: return
+
+        viewModelScope.launch {
+            runCatching { client.trash(thread.id, thread.accountId.takeIf { it.isNotBlank() }) }
+                .onSuccess { ok ->
+                    if (!ok) {
+                        _emailError.value = "Your computer would not delete it."
+                        return@onSuccess
+                    }
+                    _notice.value = "Moved to trash."
+                    closeEmailThread()
+                    refreshEmail()
+                }
+                .onFailure { _emailError.value = it.message ?: "Your computer would not delete it." }
+        }
+    }
+
+    private val _downloading = MutableStateFlow<String?>(null)
+
+    /** The attachment being fetched, by id, or null when none is. */
+    val downloadingAttachment: StateFlow<String?> = _downloading.asStateFlow()
+
+    /**
+     * Download an attachment onto this phone.
+     *
+     * Asked for here, so it lands here. The computer keeps its save dialog for
+     * somebody sitting at it; from a phone that dialog would open on a machine
+     * in another room and wait for a click nobody is coming to give it.
+     *
+     * Assembled in memory and written once. A mail attachment is bounded by what
+     * a provider will carry -- twenty-five megabytes on most -- and holding one
+     * briefly is simpler than a partly-written file to clean up when a
+     * connection drops mid-download.
+     */
+    fun downloadAttachment(attachment: EmailAttachment) {
+        val client = emailClient ?: return
+        if (_downloading.value != null) return
+        _downloading.value = attachment.id
+
+        viewModelScope.launch {
+            val accountId = _openThreadSummary?.accountId?.takeIf { it.isNotBlank() }
+            runCatching {
+                val bytes = java.io.ByteArrayOutputStream()
+                var offset = 0L
+                var name = attachment.filename
+                var type = attachment.mimeType
+
+                while (true) {
+                    val chunk = client.attachmentChunk(
+                        messageId = attachment.messageId,
+                        attachmentId = attachment.id,
+                        offset = offset,
+                        accountId = accountId,
+                    ) ?: error("Your computer would not read that attachment.")
+
+                    chunk.filename.takeIf { it.isNotBlank() }?.let { name = it }
+                    chunk.mimeType.takeIf { it.isNotBlank() }?.let { type = it }
+
+                    val piece = android.util.Base64.decode(chunk.base64, android.util.Base64.DEFAULT)
+                    bytes.write(piece)
+                    offset += piece.size
+
+                    if (chunk.done) break
+                    // A chunk that advanced nothing and did not finish would loop
+                    // for ever against a computer answering wrongly.
+                    if (piece.isEmpty()) error("That attachment stopped part way.")
+                }
+
+                saveAttachment(getApplication(), name, type) { out -> out.write(bytes.toByteArray()) }
+            }
+                .onSuccess { where ->
+                    _notice.value = when (where) {
+                        is SavedAttachment.ToDownloads -> "Saved ${where.filename} to Downloads."
+                        is SavedAttachment.ToAppFolder -> "Saved to ${where.path}."
+                    }
+                }
+                .onFailure { _emailError.value = it.message ?: "That attachment would not download." }
+            _downloading.value = null
         }
     }
 
@@ -3941,3 +4133,6 @@ internal fun widgetConnectionFor(state: ConnectionState): WidgetConnection = whe
     is ConnectionState.Reconnecting -> WidgetConnection.RECONNECTING
     is ConnectionState.Offline, ConnectionState.Unpaired -> WidgetConnection.OFFLINE
 }
+
+/** Long enough that a typed word is one search, short enough to feel immediate. */
+private const val MAIL_SEARCH_DELAY_MS = 300L
