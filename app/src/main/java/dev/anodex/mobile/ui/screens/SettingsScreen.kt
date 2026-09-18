@@ -171,6 +171,8 @@ fun SettingsScreen(
     haptics: Boolean = true,
     onSetHaptics: (Boolean) -> Unit = {},
     streamOnMetered: Boolean = false,
+    loadImages: Boolean = true,
+    onSetLoadImages: (Boolean) -> Unit = {},
     onSetStreamOnMetered: (Boolean) -> Unit = {},
     /** What the system will actually let through. */
     notificationAccess: NotificationAccess = NotificationAccess(true, true, true, true),
@@ -269,6 +271,8 @@ fun SettingsScreen(
                     haptics = haptics,
                     onSetHaptics = onSetHaptics,
                     streamOnMetered = streamOnMetered,
+                    loadImages = loadImages,
+                    onSetLoadImages = onSetLoadImages,
                     onSetStreamOnMetered = onSetStreamOnMetered,
                 )
 
@@ -496,6 +500,8 @@ private fun AppearanceSection(
     haptics: Boolean,
     onSetHaptics: (Boolean) -> Unit,
     streamOnMetered: Boolean,
+    loadImages: Boolean,
+    onSetLoadImages: (Boolean) -> Unit,
     onSetStreamOnMetered: (Boolean) -> Unit,
 ) {
     val colors = AnodexTheme.colors
@@ -604,6 +610,18 @@ private fun AppearanceSection(
                 detail = "Off, replies arrive whole when they finish. Wi-Fi is unaffected.",
                 checked = streamOnMetered,
                 onChange = onSetStreamOnMetered,
+            )
+            RowDivider()
+            ToggleRow(
+                label = "Pictures in mail",
+                // What turning it off buys, said plainly, because that is the only
+                // reason anybody would. Your computer does the fetching either
+                // way, so what a sender learns is its address and not where you
+                // are -- which is the part people assume works the other way.
+                detail = "Off, a sender cannot tell you opened their message. " +
+                    "Your computer fetches them, not this phone.",
+                checked = loadImages,
+                onChange = onSetLoadImages,
             )
         }
 

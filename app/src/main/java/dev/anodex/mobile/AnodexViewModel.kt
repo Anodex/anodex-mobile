@@ -75,6 +75,7 @@ import dev.anodex.mobile.pairing.humanFingerprintOf
 import dev.anodex.mobile.profile.ProfileReader
 import dev.anodex.mobile.settings.AgentSettings
 import dev.anodex.mobile.ui.screens.MailDraft
+import dev.anodex.mobile.ui.screens.remoteImageUrls
 import dev.anodex.mobile.ui.screens.addressList
 import dev.anodex.mobile.settings.PermissionMode
 import dev.anodex.mobile.profile.UsageProfile
@@ -1443,6 +1444,14 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     val streamOnMetered: StateFlow<Boolean> = appearance.streamOnMetered
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    /** Whether a message's pictures load without being asked for. See `AppearanceStore`. */
+    val loadImages: StateFlow<Boolean> = appearance.loadImages
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setLoadImages(enabled: Boolean) {
+        viewModelScope.launch { appearance.setLoadImages(enabled) }
+    }
+
     fun setStreamOnMetered(enabled: Boolean) {
         viewModelScope.launch {
             appearance.setStreamOnMetered(enabled)
@@ -1799,7 +1808,14 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             runCatching {
                 client.messages(thread.id, thread.accountId.takeIf { it.isNotBlank() })
             }
-                .onSuccess { _openThread.value = it }
+                .onSuccess { notes ->
+                    _openThread.value = notes
+                    // Fetched here rather than on a tap, when the setting says so.
+                    // The computer does the fetching either way -- see
+                    // `showRemoteImages` -- so this changes who asks, not who is
+                    // exposed.
+                    if (loadImages.value) notes.forEach(::autoLoadImages)
+                }
                 .onFailure {
                     // An empty thread would read as a message with no content, which
                     // is a thing that cannot happen and so gets believed.
@@ -1847,6 +1863,29 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Pull in a message's pictures because the setting says to.
+     *
+     * Separate from `showRemoteImages` so the manual path keeps working when the
+     * setting is off, and so a failure here is quiet: nobody asked, so nobody is
+     * waiting to be told it did not work. The message still reads.
+     */
+    private fun autoLoadImages(note: EmailNote) {
+        val client = emailClient ?: return
+        val html = note.bodyHtml ?: return
+        val urls = remoteImageUrls(html)
+        if (urls.isEmpty()) return
+
+        viewModelScope.launch {
+            runCatching { client.loadRemoteImages(urls) }
+                .onSuccess { loaded ->
+                    if (loaded.isNotEmpty()) {
+                        _shownImages.value = _shownImages.value + (note.id to loaded)
+                    }
+                }
+        }
+    }
+
     private val _pendingLink = MutableStateFlow<String?>(null)
 
     /**
@@ -1886,6 +1925,20 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             val action = if (unread) MailFlag.UNREAD else MailFlag.READ
+            runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
+                .onSuccess { if (!it) restoreThreads(before, "Your computer would not change that.") }
+                .onFailure { restoreThreads(before, it.message ?: "Your computer would not change that.") }
+        }
+    }
+
+    /** Star or unstar from the list, the same optimistic shape as the dot. */
+    fun setThreadStarred(thread: EmailThread, starred: Boolean) {
+        val client = emailClient ?: return
+        val before = _emailThreads.value
+        _emailThreads.value = before.map { if (it.id == thread.id) it.copy(starred = starred) else it }
+
+        viewModelScope.launch {
+            val action = if (starred) MailFlag.STAR else MailFlag.UNSTAR
             runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
                 .onSuccess { if (!it) restoreThreads(before, "Your computer would not change that.") }
                 .onFailure { restoreThreads(before, it.message ?: "Your computer would not change that.") }

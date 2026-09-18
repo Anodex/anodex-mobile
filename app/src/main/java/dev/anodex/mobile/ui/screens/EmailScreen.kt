@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +51,7 @@ import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
+import androidx.compose.foundation.layout.wrapContentSize
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 import java.util.concurrent.TimeUnit
@@ -154,6 +156,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         onOpen = viewModel::openEmailThread,
         onCompose = { viewModel.startMail(MailDraft()) },
         onSetUnread = viewModel::setThreadUnread,
+        onSetStarred = viewModel::setThreadStarred,
         modifier = modifier,
     )
 }
@@ -172,6 +175,8 @@ private fun InboxList(
     onCompose: (() -> Unit)? = null,
     /** Mark a thread read or unread from its dot. */
     onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
+    /** Star a thread from the list. */
+    onSetStarred: ((EmailThread, Boolean) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -254,6 +259,7 @@ private fun InboxList(
                         nowEpochMs = nowEpochMs,
                         onClick = { onOpen(thread) },
                         onSetUnread = onSetUnread,
+                        onSetStarred = onSetStarred,
                     )
                 }
             }
@@ -266,44 +272,30 @@ private fun ThreadRow(
     thread: EmailThread,
     nowEpochMs: Long,
     onClick: () -> Unit,
-    /** Toggle read state from the dot. Null leaves the dot as an indicator only. */
+    /** Toggle read state. Null leaves the dot as an indicator only. */
     onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
+    /** Toggle the star. Null hides it. */
+    onSetStarred: ((EmailThread, Boolean) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
+    // A card per message rather than rows separated by rules.
+    //
+    // The list used to be text on one flat plane, which reads as a document.
+    // Every mail client on a phone draws a card, and the reason is the thumb: a
+    // card says where one message ends and the next begins without a hairline
+    // that disappears at arm's length, and it gives the tap a shape.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = Touch.minTarget)
+            .clip(Radii.lg)
+            .background(if (thread.unread) colors.bgSurface2 else colors.bgSurface)
             .clickable(onClick = onClick)
-            .padding(vertical = Spacing.x2),
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
-        // A dot rather than bolding the whole row. Unread is one bit of information
-        // and it should cost one glyph, not a second typographic weight competing
-        // with the subject for attention.
-        //
-        // It is also the control for that bit. The thing that shows a state is the
-        // obvious thing to tap to change it, and it costs no extra chrome in a list
-        // that is mostly text -- but a 6dp dot is not a target, so the touch area
-        // around it is grown to a finger without the dot itself growing.
-        Box(
-            modifier = Modifier
-                .size(Touch.minTarget)
-                .clip(CircleShape)
-                .let { base ->
-                    if (onSetUnread == null) base else base.clickable { onSetUnread(thread, !thread.unread) }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(if (thread.unread) colors.accent else colors.bgApp)
-            )
-        }
+        SenderAvatar(from = thread.from)
 
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(
@@ -312,7 +304,7 @@ private fun ThreadRow(
             ) {
                 Text(
                     text = senderName(thread.from),
-                    style = type.label.copy(
+                    style = type.body.copy(
                         fontWeight = if (thread.unread) FontWeight.SemiBold else FontWeight.Normal
                     ),
                     color = colors.text,
@@ -323,26 +315,80 @@ private fun ThreadRow(
                 Text(
                     text = relativeTime(thread.updatedAtEpochMs, nowEpochMs),
                     style = type.meta,
-                    color = colors.textFaint,
+                    color = if (thread.unread) colors.text else colors.textFaint,
                     maxLines = 1,
                 )
+
+                // The dot moved to the right, beside the time.
+                //
+                // On the left it was the first thing in the row and competed with
+                // the avatar for the same job. Beside the time it sits with the
+                // other thing that changes per message and leaves the left edge to
+                // say who it is from. Still the control for read state, and still
+                // with a finger's worth of target around six pixels of dot.
+                Box(
+                    modifier = Modifier
+                        .size(Touch.minTarget / 2)
+                        .clip(CircleShape)
+                        .let { base ->
+                            if (onSetUnread == null) base
+                            else base.clickable { onSetUnread(thread, !thread.unread) }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (thread.unread) colors.accent else Color.Transparent)
+                    )
+                }
             }
 
             Text(
                 text = thread.subject,
-                style = type.body,
+                style = type.body.copy(
+                    fontWeight = if (thread.unread) FontWeight.SemiBold else FontWeight.Normal
+                ),
                 color = colors.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
 
-            Text(
-                text = thread.snippet,
-                style = type.meta,
-                color = colors.textMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                Text(
+                    text = thread.snippet,
+                    style = type.meta,
+                    color = colors.textFaint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+
+                if (thread.attachmentCount > 0) {
+                    AnodexIcon(AnodexIcon.PAPERCLIP, size = 14.dp, tint = colors.textFaint)
+                }
+
+                // Starring from the list, which is where somebody decides a
+                // message matters -- after reading the subject and before opening
+                // it. Filled and tinted when set, outline and faint when not, so
+                // the state is legible without reading a label.
+                if (onSetStarred != null) {
+                    Text(
+                        text = if (thread.starred) "★" else "☆",
+                        style = type.body,
+                        color = if (thread.starred) colors.warn else colors.textFaint,
+                        modifier = Modifier
+                            .size(Touch.minTarget / 2)
+                            .wrapContentSize(Alignment.Center)
+                            .clip(CircleShape)
+                            .clickable { onSetStarred(thread, !thread.starred) },
+                    )
+                }
+            }
         }
     }
 }
@@ -367,16 +413,26 @@ private fun ThreadReader(
     val type = AnodexTheme.type
 
     ScreenScaffold(
-        // The subject is the title. It was already the only thing in the old header
-        // besides the way out, and a reader whose title is the thing being read is
-        // the same shape the file reader now uses.
-        title = notes.firstOrNull()?.subject.orEmpty().ifBlank { "No subject" },
+        // The chrome says what you can do; the subject has moved into the message
+        // itself, below, where every other mail client puts it. A subject in a
+        // 20-character title bar is a subject nobody can read, and it was being
+        // truncated on half the mail in this inbox.
+        title = if (notes.size > 1) "${notes.size} messages" else "Message",
         modifier = modifier,
-        // How many, not who from. Every message below already names its own
-        // sender, and on a one-message thread a subtitle naming the sender would
-        // be the same name twice, an inch apart.
-        subtitle = if (notes.size > 1) "${notes.size} messages" else null,
         leading = { SecondaryButton(label = "Back", onClick = onClose) },
+        trailing = if (onFlag == null) null else {
+            {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x1)) {
+                    // Archive and mark-unread, as icons, where the thumb reaches on
+                    // the way out of a message. No bin: mail is archived here and on
+                    // the computer, never deleted, and a bin beside an archive box
+                    // would be two buttons that look alike and differ in whether
+                    // anything can be undone.
+                    HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
+                    HeaderAction(AnodexIcon.MAIL, "Mark unread") { onFlag(MailFlag.UNREAD) }
+                }
+            }
+        },
     ) { topInset ->
         if (loading && notes.isEmpty()) {
             EmptyState(
@@ -401,15 +457,53 @@ private fun ThreadReader(
                 ),
             verticalArrangement = Arrangement.spacedBy(Spacing.x5),
         ) {
+            // The subject, full width and wrapping, above the first message.
+            // This is what a mail client leads with and what the header bar could
+            // not hold: three lines of it here beats twenty characters up there.
+            notes.firstOrNull()?.let { first ->
+                Text(
+                    text = first.subject.ifBlank { "No subject" },
+                    style = type.heading,
+                    color = colors.text,
+                )
+            }
+
             for (note in notes) {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.x1)) {
-                    Text(
-                        text = senderName(note.from),
-                        style = type.bodyEmphasis,
-                        color = colors.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+                    // Who it is from, as a person: circle, name, when. The same
+                    // three things the inbox row shows, so opening a message does
+                    // not change what it is identified by.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+                    ) {
+                        SenderAvatar(from = note.from, size = 36.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = senderName(note.from),
+                                style = type.bodyEmphasis,
+                                color = colors.text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            // Who else received it. "to me" is the ordinary case and
+                            // worth saying, because the case it distinguishes -- a
+                            // message that went to nine other people -- changes how
+                            // somebody answers it.
+                            Text(
+                                text = recipientLine(note.to, note.cc),
+                                style = type.meta,
+                                color = colors.textFaint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Text(
+                            text = relativeTime(note.dateEpochMs, System.currentTimeMillis()),
+                            style = type.meta,
+                            color = colors.textFaint,
+                        )
+                    }
                     if (note.attachmentCount > 0) {
                         // Named rather than offered. Downloading someone's attachment
                         // onto a phone through a socket into their PC is a separate
@@ -571,6 +665,43 @@ private fun forwardDraft(note: EmailNote): MailDraft =
 private fun addressOf(from: String): String =
     from.substringAfter('<').substringBefore('>').ifBlank { from }.trim()
 
+
+
+/**
+ * An icon in the header bar, with a finger's worth of target around it.
+ *
+ * The actions a mail client keeps in the chrome: reachable on the way out of a
+ * message, and small enough that two of them do not become the loudest thing on
+ * the screen.
+ */
+@Composable
+private fun HeaderAction(icon: AnodexIcon, label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(Touch.minTarget)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnodexIcon(icon, size = 20.dp, tint = AnodexTheme.colors.textMuted, contentDescription = label)
+    }
+}
+
+/**
+ * "to me", or who else was on it.
+ *
+ * The distinction worth drawing is between a message addressed to one person and
+ * one addressed to a room, because it changes whether a reply should go to
+ * everybody. Counted rather than listed: nine addresses do not fit on a phone
+ * row and nobody reads them there anyway.
+ */
+internal fun recipientLine(to: List<String>, cc: List<String>): String {
+    val others = to.size + cc.size
+    return when {
+        others <= 1 -> "to me"
+        else -> "to me and ${others - 1} ${if (others == 2) "other" else "others"}"
+    }
+}
 
 /**
  * "Ada Lovelace" out of `Ada Lovelace <ada@example.com>`.

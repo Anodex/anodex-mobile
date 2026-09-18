@@ -135,7 +135,35 @@ class AppearanceStore(private val context: Context) {
         context.appearanceDataStore.edit { it[KEY_STREAM_ON_METERED] = enabled }
     }
 
+    /**
+     * Whether a message's pictures load without being asked for.
+     *
+     * On by default, which is a deliberate choice and worth stating. Fetching a
+     * remote image tells the sender the message was opened, roughly when, and
+     * from which network -- so holding them back is the privacy-preserving
+     * default and was what this app did first.
+     *
+     * It was also, in practice, a mailbox that looked broken: a newsletter is
+     * mostly pictures, and every one of them came through as a blank box with a
+     * button underneath. The owner asked for it to read like the mail client they
+     * already use, which loads them.
+     *
+     * Two things make the default defensible. The computer fetches them, not the
+     * phone, so a sender learns the address of a machine that already holds the
+     * mailbox rather than where the phone is. And this switch turns it off in one
+     * tap, which puts the choice in front of whoever wants it rather than in
+     * front of everybody on every message.
+     */
+    val loadImages: Flow<Boolean> = context.appearanceDataStore.data.map { prefs ->
+        prefs[KEY_LOAD_IMAGES] ?: true
+    }
+
+    suspend fun setLoadImages(enabled: Boolean) {
+        context.appearanceDataStore.edit { it[KEY_LOAD_IMAGES] = enabled }
+    }
+
     private companion object {
+        val KEY_LOAD_IMAGES = booleanPreferencesKey("load_remote_images")
         val KEY_THEME = stringPreferencesKey("theme_mode")
         val KEY_STREAM_ON_METERED = booleanPreferencesKey("stream_on_metered")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")

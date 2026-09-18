@@ -998,6 +998,7 @@ private fun ConnectedScaffold(
         val settingsKeepAwake by viewModel.keepAwake.collectAsStateWithLifecycle()
         val settingsHaptics by viewModel.haptics.collectAsStateWithLifecycle()
         val settingsStreamOnMetered by viewModel.streamOnMetered.collectAsStateWithLifecycle()
+        val settingsLoadImages by viewModel.loadImages.collectAsStateWithLifecycle()
         val archivedChats by viewModel.archivedChats.collectAsStateWithLifecycle()
         val archivedProjects by viewModel.archivedProjects.collectAsStateWithLifecycle()
         val archiveLoading by viewModel.archiveLoading.collectAsStateWithLifecycle()
@@ -1041,6 +1042,8 @@ private fun ConnectedScaffold(
         val permissionBusy by viewModel.permissionBusy.collectAsStateWithLifecycle()
         SettingsScreen(
             permissionMode = permissionMode,
+            loadImages = settingsLoadImages,
+            onSetLoadImages = viewModel::setLoadImages,
             onRememberMemory = viewModel::rememberMemory,
             onRewordMemory = viewModel::rewordMemory,
             permissionBusy = permissionBusy,
