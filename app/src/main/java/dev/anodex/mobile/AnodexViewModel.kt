@@ -2104,6 +2104,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * a round trip before the row moves does not read as a swipe.
      */
     fun archiveThreadFromList(thread: EmailThread) {
+        android.util.Log.i("AnodexSwipe", "archive called for ${thread.id}")
         val client = emailClient ?: return
         val before = _emailThreads.value
         _emailThreads.value = before.filterNot { it.id == thread.id }
@@ -2113,10 +2114,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             val accountId = thread.accountId.takeIf { it.isNotBlank() }
             runCatching { client.flag(thread.id, MailFlag.ARCHIVE, accountId) }
                 .onSuccess { ok ->
+                    android.util.Log.i("AnodexSwipe", "archive answered ok=$ok")
                     if (ok) _archivedFromList.value = thread
                     else restoreThreads(before, "Your computer would not archive that.")
                 }
                 .onFailure {
+                    android.util.Log.i("AnodexSwipe", "archive threw: ${it.message}")
                     restoreThreads(before, it.message ?: "Your computer would not archive that.")
                 }
         }
