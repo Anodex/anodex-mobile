@@ -3,6 +3,7 @@ package dev.anodex.mobile.email
 import dev.anodex.mobile.transport.AnodexSocket
 import kotlin.time.Duration.Companion.seconds
 import dev.anodex.mobile.transport.unwrap
+import dev.anodex.mobile.transport.unwrapOrThrow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -164,13 +165,22 @@ class Email(private val socket: AnodexSocket) {
             .sortedByDescending { it.updatedAtEpochMs }
     }
 
+    /**
+     * Every message in one conversation.
+     *
+     * Throws rather than answering with an empty list when the computer refuses.
+     * The two are not the same thing and the reader above cannot tell them
+     * apart: a thread it was just shown in the inbox coming back with nothing in
+     * it is a failed read, and drawing it as a conversation with no messages is
+     * the app agreeing with a claim nobody made.
+     */
     suspend fun messages(threadId: String, accountId: String?): List<EmailNote> {
         val args = listOf(
             JsonPrimitive(threadId),
             accountId?.let { JsonPrimitive(it) } ?: JsonNull,
         )
-        val value = socket.invoke(CHANNEL_MESSAGES, args).unwrap() as? JsonArray
-            ?: return emptyList()
+        val value = socket.invoke(CHANNEL_MESSAGES, args).unwrapOrThrow("open that conversation")
+            as? JsonArray ?: return emptyList()
 
         return value.filterIsInstance<JsonObject>()
             .mapNotNull { it.asNote() }
@@ -362,8 +372,12 @@ class Email(private val socket: AnodexSocket) {
             put("offset", JsonPrimitive(offset))
             accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
         }
+        // A refusal here is not "no bytes". An older desktop has no such channel
+        // at all, and that answer -- "this version of Anodex has no
+        // email:get-attachment-chunk" -- is the whole explanation, thrown away
+        // by a null. Saving an attachment then did nothing, visibly.
         val value = socket.invoke(CHANNEL_ATTACHMENT, listOf(request), timeout = 120.seconds)
-            .unwrap() as? JsonObject ?: return null
+            .unwrapOrThrow("read that attachment") as? JsonObject ?: return null
 
         return AttachmentChunk(
             filename = value["filename"]?.jsonPrimitive?.contentOrNull().orEmpty(),

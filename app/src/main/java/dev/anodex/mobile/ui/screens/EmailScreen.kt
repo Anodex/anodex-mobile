@@ -79,6 +79,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val emailError by viewModel.emailError.collectAsStateWithLifecycle()
     val openThread by viewModel.openThread.collectAsStateWithLifecycle()
     val threadLoading by viewModel.threadLoading.collectAsStateWithLifecycle()
+    val threadError by viewModel.threadError.collectAsStateWithLifecycle()
 
     // Fetched when the tab is opened rather than on connect: a user who never opens
     // Email should not be making the desktop hit their mail provider.
@@ -150,6 +151,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         ThreadReader(
             notes = openThread.orEmpty(),
             loading = threadLoading,
+            error = threadError,
             onClose = viewModel::closeEmailThread,
             onReply = { note, all ->
                 viewModel.startMail(replyDraft(note, all))
@@ -466,11 +468,13 @@ private fun ThreadRow(
 }
 
 @Composable
-private fun ThreadReader(
+internal fun ThreadReader(
     notes: List<EmailNote>,
     loading: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Why there is nothing to read. Null when the thread simply has not arrived. */
+    error: String? = null,
     /** Answer it. The boolean is reply-all. */
     onReply: ((EmailNote, Boolean) -> Unit)? = null,
     onForward: ((EmailNote) -> Unit)? = null,
@@ -533,6 +537,22 @@ private fun ThreadReader(
             EmptyState(
                 headline = "Opening…",
                 tone = EmptyTone.WAITING,
+                icon = AnodexIcon.MAIL,
+                modifier = Modifier.padding(top = topInset),
+            )
+            return@ScreenScaffold
+        }
+
+        // A thread with nothing in it drew nothing at all: a header bar, a back
+        // button, and a screen of black under it. Two of the five conversations
+        // in a real inbox did this, and the app's silence was the reason it went
+        // unreported -- there was nothing to report but "it doesn't work".
+        if (notes.isEmpty()) {
+            EmptyState(
+                headline = "This conversation would not open",
+                detail = error
+                    ?: "Your computer returned no messages for it.",
+                tone = EmptyTone.PROBLEM,
                 icon = AnodexIcon.MAIL,
                 modifier = Modifier.padding(top = topInset),
             )

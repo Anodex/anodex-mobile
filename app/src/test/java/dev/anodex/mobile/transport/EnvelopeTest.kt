@@ -6,6 +6,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
@@ -67,5 +69,76 @@ class EnvelopeTest {
         assertNull(parse("""{}""").unwrap())
         assertNull(parse("""null""").unwrap())
         assertNull(null.unwrap())
+    }
+}
+
+/**
+ * The same envelope, opened by a caller that cannot afford a silent refusal.
+ *
+ * [unwrap] answers null for a refusal, which suits a caller with a sensible
+ * empty answer and ruins one without. Reading a conversation is the latter: the
+ * mail client turned a null into an empty list of messages, and the reader drew
+ * an empty list of messages as a screen with nothing on it. Two of five
+ * conversations in a real inbox were unopenable for weeks, and neither the phone
+ * nor the computer ever said a word about why.
+ */
+class UnwrapOrThrowTest {
+
+    private fun parse(json: String) = Json.parseToJsonElement(json)
+
+    @Test
+    fun `a success gives up its value, exactly as unwrap does`() {
+        val value = parse("""{"ok":true,"value":[{"id":"m1"}]}""").unwrapOrThrow("open that")
+
+        assertEquals(parse("""[{"id":"m1"}]"""), value)
+    }
+
+    @Test
+    fun `a refusal repeats what the computer said`() {
+        // `err(code, message, detail)` is written for a reader. Inventing a
+        // second sentence about the same failure loses the only one that knows
+        // which mailbox, which provider, which account.
+        try {
+            parse("""{"ok":false,"error":{"code":"email.thread-failed","message":"Could not open that conversation."}}""")
+                .unwrapOrThrow("open that conversation")
+            fail("a refusal must not pass for an answer")
+        } catch (failure: IllegalStateException) {
+            assertEquals("Could not open that conversation.", failure.message)
+        }
+    }
+
+    @Test
+    fun `a refusal with no words still names the act`() {
+        // The channel is not a sentence. "Your computer would not open that
+        // conversation" is, and the caller supplies the verb because only it
+        // knows what it was asking for.
+        try {
+            parse("""{"ok":false}""").unwrapOrThrow("open that conversation")
+            fail("a refusal must not pass for an answer")
+        } catch (failure: IllegalStateException) {
+            assertEquals("Your computer would not open that conversation.", failure.message)
+        }
+    }
+
+    @Test
+    fun `a reply that is not an envelope is a fault, not an absence`() {
+        // Off the wire, so it is not guaranteed to be anything. Every one of
+        // these used to become "no messages in this conversation".
+        for (raw in listOf(""""a string"""", """[1,2]""", """null""")) {
+            try {
+                parse(raw).unwrapOrThrow("open that conversation")
+                fail("$raw must not pass for an answer")
+            } catch (failure: IllegalStateException) {
+                assertTrue(failure.message.orEmpty().contains("unreadable"))
+            }
+        }
+    }
+
+    @Test
+    fun `an empty answer is still an answer`() {
+        // The distinction the whole thing exists for. A folder with nothing in
+        // it is a fact; a refusal is not, and they must not arrive as the same
+        // empty list.
+        assertEquals(parse("""[]"""), parse("""{"ok":true,"value":[]}""").unwrapOrThrow("list that"))
     }
 }

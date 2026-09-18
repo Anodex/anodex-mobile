@@ -431,6 +431,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _threadLoading = MutableStateFlow(false)
     val threadLoading: StateFlow<Boolean> = _threadLoading.asStateFlow()
 
+    /**
+     * Why the open conversation could not be read.
+     *
+     * Its own flow rather than [emailError], because the inbox clears that one
+     * every time it refreshes -- which happens on a timer -- and the reader's
+     * explanation would disappear out from under somebody still looking at it.
+     */
+    private val _threadError = MutableStateFlow<String?>(null)
+    val threadError: StateFlow<String?> = _threadError.asStateFlow()
+
     private var workspace: Workspace? = null
 
     private val _workspaceFiles = MutableStateFlow<List<WorkspaceFile>>(emptyList())
@@ -1905,6 +1915,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun openEmailThread(thread: EmailThread) {
         val client = emailClient ?: return
         _openThreadSummary = thread
+        _threadError.value = null
         viewModelScope.launch {
             _threadLoading.value = true
             runCatching {
@@ -1912,6 +1923,14 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             }
                 .onSuccess { notes ->
                     _openThread.value = notes
+                    // A conversation listed in the inbox a moment ago and then
+                    // read as empty is a failed read, whatever the wire said.
+                    // Drawing it as a message with no content is a claim about
+                    // somebody's mail that this app has no basis for.
+                    if (notes.isEmpty()) {
+                        _threadError.value =
+                            "Your computer listed this conversation but found no messages in it."
+                    }
                     // Fetched here rather than on a tap, when the setting says so.
                     // The computer does the fetching either way -- see
                     // `showRemoteImages` -- so this changes who asks, not who is
@@ -1919,10 +1938,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     if (loadImages.value) notes.forEach(::autoLoadImages)
                 }
                 .onFailure {
-                    // An empty thread would read as a message with no content, which
-                    // is a thing that cannot happen and so gets believed.
+                    // Non-null so the reader opens and can say what happened.
+                    // Closing it instead would drop the reader back to an inbox
+                    // that looks like the tap never landed.
                     _openThread.value = emptyList()
-                    _emailError.value = it.message ?: "That thread would not open."
+                    _threadError.value = it.message ?: "That conversation would not open."
                 }
             _threadLoading.value = false
         }
@@ -1931,6 +1951,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun closeEmailThread() {
         _openThread.value = null
         _openThreadSummary = null
+        _threadError.value = null
     }
 
     private val _shownImages = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
@@ -2170,7 +2191,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                         is SavedAttachment.ToAppFolder -> "Saved to ${where.path}."
                     }
                 }
-                .onFailure { _emailError.value = it.message ?: "That attachment would not download." }
+                // The same strip the success uses, because the reader has no
+                // error surface of its own and this is about a tap that just
+                // happened. Put on `emailError` it went to the inbox, behind the
+                // message being read, and a failed download was indistinguishable
+                // from a tap that did not register.
+                .onFailure { _notice.value = it.message ?: "That attachment would not download." }
             _downloading.value = null
         }
     }
