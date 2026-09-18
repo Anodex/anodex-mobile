@@ -10,6 +10,23 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+/**
+ * What can be done to a thread without destroying it.
+ *
+ * The wire names are the desktop's `EmailFlagAction` and must not be renamed --
+ * they cross the socket. Deleting is not on the list, on the desktop or here:
+ * its own type says so, and that is the property that makes every one of these
+ * safe to offer on a phone in somebody's pocket.
+ */
+enum class MailFlag(val wire: String) {
+    READ("mark_read"),
+    UNREAD("mark_unread"),
+    STAR("star"),
+    UNSTAR("unstar"),
+    ARCHIVE("archive"),
+    UNARCHIVE("unarchive"),
+}
+
 /** One conversation in the mailbox, as the inbox list shows it. */
 data class EmailThread(
     val id: String,
@@ -195,6 +212,29 @@ class Email(private val socket: AnodexSocket) {
         return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
     }
 
+    /**
+     * Mark, star or archive -- the verbs a mailbox needs once you can read it.
+     *
+     * Every action here is reversible by another action here, which is not an
+     * accident: `EmailFlagAction` on the desktop is
+     * `mark_read | mark_unread | star | unstar | archive | unarchive`, and its own
+     * comment says deleting mail is deliberately absent. So nothing on this phone
+     * can destroy a message, only move it out of the way.
+     *
+     * Applied to the whole thread rather than one message. That is what the row
+     * being tapped represents, and marking one message of five as read leaves an
+     * inbox that still says unread with nothing visibly unread in it.
+     */
+    suspend fun flag(threadId: String, action: MailFlag, accountId: String? = null): Boolean {
+        val request = buildJsonObject {
+            put("threadId", JsonPrimitive(threadId))
+            put("action", JsonPrimitive(action.wire))
+            accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
+        }
+        val answer = socket.invoke(CHANNEL_FLAG, listOf(request)) as? JsonObject ?: return false
+        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+    }
+
     /** Remote images for a message the reader has asked to see in full. */
     suspend fun loadRemoteImages(urls: List<String>): Map<String, String> {
         if (urls.isEmpty()) return emptyMap()
@@ -210,6 +250,7 @@ class Email(private val socket: AnodexSocket) {
 
     private companion object {
         const val CHANNEL_SEND = "email:send"
+        const val CHANNEL_FLAG = "email:apply-flag"
         const val CHANNEL_IMAGES = "email:load-remote-images"
         const val CHANNEL_THREADS = "email:list-threads"
         const val CHANNEL_MESSAGES = "email:get-thread-messages"

@@ -32,6 +32,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.anodex.mobile.AnodexViewModel
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.email.EmailNote
+import dev.anodex.mobile.email.MailFlag
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.text.style.TextAlign
 import dev.anodex.mobile.email.EmailThread
 import androidx.compose.ui.platform.LocalContext
 import dev.anodex.mobile.ui.components.ConfirmDialog
@@ -46,6 +49,7 @@ import dev.anodex.mobile.ui.components.ScreenScaffold
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 import java.util.concurrent.TimeUnit
@@ -136,6 +140,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             shownImages = shownImages,
             onShowImages = viewModel::showRemoteImages,
             onLink = viewModel::openLink,
+            onFlag = { action -> viewModel.flagOpenThread(action) },
             modifier = modifier,
         )
         return
@@ -148,6 +153,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         error = emailError,
         onOpen = viewModel::openEmailThread,
         onCompose = { viewModel.startMail(MailDraft()) },
+        onSetUnread = viewModel::setThreadUnread,
         modifier = modifier,
     )
 }
@@ -164,6 +170,8 @@ private fun InboxList(
     nowEpochMs: Long = System.currentTimeMillis(),
     /** Start a new message. Null leaves the inbox read-only, as it was. */
     onCompose: (() -> Unit)? = null,
+    /** Mark a thread read or unread from its dot. */
+    onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -241,7 +249,12 @@ private fun InboxList(
                 }
 
                 items(threads, key = { it.id }) { thread ->
-                    ThreadRow(thread, nowEpochMs) { onOpen(thread) }
+                    ThreadRow(
+                        thread = thread,
+                        nowEpochMs = nowEpochMs,
+                        onClick = { onOpen(thread) },
+                        onSetUnread = onSetUnread,
+                    )
                 }
             }
         }
@@ -249,7 +262,13 @@ private fun InboxList(
 }
 
 @Composable
-private fun ThreadRow(thread: EmailThread, nowEpochMs: Long, onClick: () -> Unit) {
+private fun ThreadRow(
+    thread: EmailThread,
+    nowEpochMs: Long,
+    onClick: () -> Unit,
+    /** Toggle read state from the dot. Null leaves the dot as an indicator only. */
+    onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
+) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
@@ -264,13 +283,27 @@ private fun ThreadRow(thread: EmailThread, nowEpochMs: Long, onClick: () -> Unit
         // A dot rather than bolding the whole row. Unread is one bit of information
         // and it should cost one glyph, not a second typographic weight competing
         // with the subject for attention.
+        //
+        // It is also the control for that bit. The thing that shows a state is the
+        // obvious thing to tap to change it, and it costs no extra chrome in a list
+        // that is mostly text -- but a 6dp dot is not a target, so the touch area
+        // around it is grown to a finger without the dot itself growing.
         Box(
-            Modifier
-                .padding(top = 6.dp)
-                .size(6.dp)
+            modifier = Modifier
+                .size(Touch.minTarget)
                 .clip(CircleShape)
-                .background(if (thread.unread) colors.accent else colors.bgApp)
-        )
+                .let { base ->
+                    if (onSetUnread == null) base else base.clickable { onSetUnread(thread, !thread.unread) }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(if (thread.unread) colors.accent else colors.bgApp)
+            )
+        }
 
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(
@@ -327,6 +360,8 @@ private fun ThreadReader(
     shownImages: Map<String, Map<String, String>> = emptyMap(),
     onShowImages: ((EmailNote, List<String>) -> Unit)? = null,
     onLink: ((String) -> Unit)? = null,
+    /** Mark, star or archive this thread. Null hides the row. */
+    onFlag: ((MailFlag) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -455,6 +490,40 @@ private fun ThreadReader(
                             onClick = { onForward(last) },
                             modifier = Modifier.weight(1f),
                         )
+                    }
+                }
+
+                // Tidying, on its own row and quieter than answering.
+                //
+                // Every one of these is undone by another one of them. The
+                // desktop's `EmailFlagAction` is read/unread, star/unstar and
+                // archive/unarchive, and its own comment says deleting mail is
+                // deliberately absent -- which is the property that makes these
+                // safe to put a finger's width apart on a phone.
+                if (onFlag != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = Spacing.x1),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                    ) {
+                        for (action in listOf(MailFlag.STAR, MailFlag.ARCHIVE, MailFlag.UNREAD)) {
+                            Text(
+                                text = when (action) {
+                                    MailFlag.STAR -> "Star"
+                                    MailFlag.ARCHIVE -> "Archive"
+                                    else -> "Mark unread"
+                                },
+                                style = type.label,
+                                color = colors.textMuted,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = Touch.minTarget)
+                                    .wrapContentHeight(Alignment.CenterVertically)
+                                    .clip(Radii.md)
+                                    .clickable { onFlag(action) }
+                                    .padding(vertical = Spacing.x2),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
             }

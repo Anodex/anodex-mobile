@@ -57,6 +57,7 @@ import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.email.EmailDrafter
+import dev.anodex.mobile.email.MailFlag
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
@@ -1792,6 +1793,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun openEmailThread(thread: EmailThread) {
         val client = emailClient ?: return
+        _openThreadSummary = thread
         viewModelScope.launch {
             _threadLoading.value = true
             runCatching {
@@ -1810,6 +1812,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun closeEmailThread() {
         _openThread.value = null
+        _openThreadSummary = null
     }
 
     private val _shownImages = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
@@ -1868,6 +1871,67 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     fun linkIntent(url: String): android.content.Intent =
         android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /**
+     * Mark a thread read or unread from the list.
+     *
+     * Optimistic, and put back on failure. The dot is the only thing that changes
+     * and the person is looking straight at it; a tap that appears to do nothing
+     * gets tapped again, which on a toggle means ending up where you started.
+     */
+    fun setThreadUnread(thread: EmailThread, unread: Boolean) {
+        val client = emailClient ?: return
+        val before = _emailThreads.value
+        _emailThreads.value = before.map { if (it.id == thread.id) it.copy(unread = unread) else it }
+
+        viewModelScope.launch {
+            val action = if (unread) MailFlag.UNREAD else MailFlag.READ
+            runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
+                .onSuccess { if (!it) restoreThreads(before, "Your computer would not change that.") }
+                .onFailure { restoreThreads(before, it.message ?: "Your computer would not change that.") }
+        }
+    }
+
+    private fun restoreThreads(before: List<EmailThread>, message: String) {
+        _emailThreads.value = before
+        _emailError.value = message
+    }
+
+    /**
+     * Star or archive the thread being read.
+     *
+     * The list is re-read rather than edited: archiving removes a row entirely and
+     * guessing which rows survive is a second opinion about the mailbox. Reading
+     * it back is one call and always right.
+     */
+    fun flagOpenThread(action: MailFlag) {
+        val client = emailClient ?: return
+        val thread = _openThreadSummary ?: return
+
+        viewModelScope.launch {
+            runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
+                .onSuccess { ok ->
+                    if (!ok) {
+                        _emailError.value = "Your computer would not change that."
+                        return@onSuccess
+                    }
+                    _notice.value = when (action) {
+                        MailFlag.STAR -> "Starred."
+                        MailFlag.ARCHIVE -> "Archived."
+                        MailFlag.UNREAD -> "Marked unread."
+                        else -> "Done."
+                    }
+                    // Archiving takes it out of the inbox, so the reader is showing
+                    // something that is no longer there to go back to.
+                    if (action == MailFlag.ARCHIVE) closeEmailThread()
+                    refreshEmail()
+                }
+                .onFailure { _emailError.value = it.message ?: "Your computer would not change that." }
+        }
+    }
+
+    /** Which thread the reader is showing, for actions that address the thread. */
+    private var _openThreadSummary: EmailThread? = null
 
     private var drafter: EmailDrafter? = null
 
