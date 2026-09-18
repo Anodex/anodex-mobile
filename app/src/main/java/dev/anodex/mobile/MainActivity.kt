@@ -905,6 +905,14 @@ private fun ConnectedScaffold(
             running = runningId == openTask.id,
             error = tasksError,
             onRunNow = { viewModel.runTaskNow(openTask.id) },
+            onSetEnabled = { on -> viewModel.setTaskEnabled(openTask.id, on) },
+            onDelete = {
+                viewModel.deleteTask(openTask.id)
+                // Back to the list: the screen this was showing no longer exists,
+                // and leaving it up would draw a task that has been deleted.
+                openTaskId = null
+            },
+            onClose = { openTaskId = null },
             modifier = Modifier.safeDrawingPadding(),
         )
         return

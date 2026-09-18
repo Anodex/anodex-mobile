@@ -875,6 +875,47 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Delete a scheduled task.
+     *
+     * The other half of `createTask`, missing until now: a job made from the phone
+     * ran on the owner's computer on its schedule for ever, and the only way to
+     * stop it was to walk to the desk. Found the way these things are found -- by
+     * making one to test the scheduler and then being unable to remove it.
+     *
+     * The list is re-read rather than edited here. A task is gone when the computer
+     * says it is gone, and a row removed optimistically would hide a delete that
+     * did not happen while the job kept firing.
+     */
+    fun deleteTask(id: String) {
+        val client = schedulerClient
+        if (client == null) {
+            _tasksError.value = "Not connected to your computer."
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching { client.delete(id) }
+                .onFailure { _tasksError.value = it.message ?: "Your computer would not delete it." }
+            refreshTasks()
+        }
+    }
+
+    /** Pause or resume one, keeping it and its run history. */
+    fun setTaskEnabled(id: String, enabled: Boolean) {
+        val client = schedulerClient
+        if (client == null) {
+            _tasksError.value = "Not connected to your computer."
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching { client.setEnabled(id, enabled) }
+                .onFailure { _tasksError.value = it.message ?: "Your computer would not change it." }
+            refreshTasks()
+        }
+    }
+
     fun refreshTasks() {
         val client = schedulerClient
         if (client == null) {

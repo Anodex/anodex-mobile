@@ -25,6 +25,11 @@ import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.InlineProblem
 import dev.anodex.mobile.ui.components.ScreenScaffold
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.StatusDot
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
@@ -54,14 +59,27 @@ fun TaskScreen(
     running: Boolean = false,
     /** Why the last attempt to run it did not work. */
     error: String? = null,
+    /** Leave it in place, stopped. Null hides the control. */
+    onSetEnabled: ((Boolean) -> Unit)? = null,
+    /** Remove it for good. */
+    onDelete: (() -> Unit)? = null,
+    /** Back to the list. This screen had no way out but the system gesture. */
+    onClose: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+
+    var confirmingDelete by rememberSaveable(task.id) { mutableStateOf(false) }
 
     ScreenScaffold(
         title = task.name,
         modifier = modifier,
         subtitle = timingSentence(task),
+        // A way out that is visible. This screen was reachable by tapping a task
+        // and leavable only by the system back gesture, which is invisible and is
+        // not the same thing as an affordance -- on a screen whose one button used
+        // to be "Run it now", the absence of a Back was a trap.
+        leading = onClose?.let { { SecondaryButton(label = "Back", onClick = it) } },
         trailing = { StatusDot(colour = colors.accentInk, running = running) },
     ) { topInset ->
         LazyColumn(
@@ -135,6 +153,56 @@ fun TaskScreen(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            // Below "Run it now", deliberately. The destructive pair sits at the
+            // bottom of the screen rather than beside the thing somebody opened
+            // this to do -- a blind tap near the top of this screen once started a
+            // job on somebody's computer, and the two must not be neighbours.
+            if (onSetEnabled != null) {
+                item(key = "pause") {
+                    AnodexCard(onClick = { onSetEnabled(!task.enabled) }) {
+                        Text(
+                            text = if (task.enabled) "Pause it" else "Start it again",
+                            style = type.bodyEmphasis,
+                            color = colors.text,
+                        )
+                        Text(
+                            // The useful middle. A daily job you do not want this
+                            // week is not a job you want to write again next week.
+                            text = if (task.enabled) {
+                                "Keeps the task and its history, and stops it running."
+                            } else {
+                                "Paused. It will not run until you start it again."
+                            },
+                            style = type.meta,
+                            color = colors.textFaint,
+                        )
+                    }
+                }
+            }
+
+            if (onDelete != null) {
+                item(key = "delete") {
+                    AnodexCard(
+                        onClick = { if (confirmingDelete) onDelete() else confirmingDelete = true },
+                    ) {
+                        Text(
+                            text = if (confirmingDelete) "Tap again to delete" else "Delete it",
+                            style = type.bodyEmphasis,
+                            color = colors.dangerInk,
+                        )
+                        Text(
+                            text = if (confirmingDelete) {
+                                "This cannot be undone from here."
+                            } else {
+                                "Removes the task and its run history from your computer."
+                            },
+                            style = type.meta,
+                            color = colors.textFaint,
+                        )
                     }
                 }
             }
