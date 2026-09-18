@@ -7,6 +7,13 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -53,8 +60,24 @@ fun MailBody(
     val colors = AnodexTheme.colors
     val document = wrapMailHtml(html, images, colors.text.toArgb(), colors.bgApp.toArgb())
 
+    // Measured, because the reader this sits in scrolls.
+    //
+    // A `WebView` inside a vertical scroll is handed an unbounded height, which it
+    // does not cope with: it settles on nothing, or on one screen of a message that
+    // is ten. Either way the reader sees a blank where the mail should be, which is
+    // worse than the plain text this replaced.
+    //
+    // `contentHeight` is read on page-finished rather than asked for in JavaScript,
+    // which stays off. It is in CSS pixels, so it is density-scaled here. Until it
+    // arrives the view keeps a screenful so the layout does not jump from nothing
+    // to full height in one frame.
+    var measured by remember(document) { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+
     AndroidView(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(if (measured > 0.dp) measured else FALLBACK_HEIGHT),
         factory = { context ->
             WebView(context).apply {
                 settings.javaScriptEnabled = false
@@ -67,6 +90,33 @@ fun MailBody(
                 setBackgroundColor(AndroidColor.TRANSPARENT)
 
                 webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        // Re-read, several times, and keep the tallest.
+                        //
+                        // `onPageFinished` is not "laid out": it fires when loading
+                        // ends, and `contentHeight` at that moment is whatever has
+                        // been measured so far. Reading it once produced a message
+                        // cut off mid-way -- the heading, the paragraph and the
+                        // table, and nothing after them -- which is the failure this
+                        // measurement exists to prevent, arrived at from the other
+                        // side.
+                        //
+                        // Taken as a maximum rather than a last value, because a
+                        // reflow can report a smaller intermediate height and a
+                        // message that shrinks after you start reading is worse than
+                        // one that is briefly too tall.
+                        if (view == null) return
+                        for (delay in REMEASURE_DELAYS_MS) {
+                            view.postDelayed({
+                                val content = view.contentHeight
+                                if (content > 0) {
+                                    val height = with(density) { (content * view.scale).toDp() }
+                                    if (height > measured) measured = height
+                                }
+                            }, delay)
+                        }
+                    }
+
                     override fun shouldInterceptRequest(
                         view: WebView?,
                         request: WebResourceRequest?,
@@ -154,6 +204,18 @@ internal fun wrapMailHtml(
         </head><body>$body</body></html>
     """.trimIndent()
 }
+
+/**
+ * When to re-read the height after loading ends.
+ *
+ * Spread rather than repeated on a timer: a short message settles immediately and
+ * a long one with a wide table needs a reflow or two. The last of these is late
+ * enough to catch that and early enough that nobody is still looking at a gap.
+ */
+private val REMEASURE_DELAYS_MS = longArrayOf(0, 120, 400, 1000)
+
+/** Enough to look like a message while the real height is being worked out. */
+private val FALLBACK_HEIGHT = 240.dp
 
 /** How many remote images this message is holding back. */
 internal fun remoteImageCount(html: String): Int =
