@@ -1842,12 +1842,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     /** Show a different mailbox. Null means the inbox. */
     fun openMailFolder(folder: MailFolder?) {
         _openFolder.value = folder
-        // A search is about the whole mailbox, not the folder you were in, so
-        // switching folders clears it rather than filtering results nobody asked
-        // to have filtered.
-        _mailQuery.value = ""
-        _mailResults.value = null
         refreshEmail()
+
+        // A search now means "in this folder", so changing folder with one
+        // running is a question about the new folder rather than a reason to
+        // throw the question away. It used to clear the field, on the reasoning
+        // that a search was about the whole account -- which was true of the
+        // search and is not any more.
+        val running = _mailQuery.value
+        if (running.isBlank()) {
+            _mailResults.value = null
+        } else {
+            searchMail(running)
+        }
     }
 
     private val _mailQuery = MutableStateFlow("")
@@ -1902,7 +1909,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 _mailSearching.value = false
                 return@launch
             }
-            runCatching { client.search(query) }
+            // Scoped to the open folder. Searching everywhere from inside Trash
+            // returned mail from the whole account under a heading that still
+            // said Trash, and on a phone the strip is the only thing saying
+            // where you are.
+            runCatching { client.search(query, mailbox = _openFolder.value?.name) }
                 .onSuccess { _mailResults.value = it }
                 .onFailure {
                     _mailResults.value = emptyList()
