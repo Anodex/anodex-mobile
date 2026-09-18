@@ -80,3 +80,47 @@ class ComposeMailTest {
         assertTrue("the two must not be confusable by value", note.id != note.threadId)
     }
 }
+
+/**
+ * What a phone may do to a mailbox.
+ *
+ * The wire names are the desktop's `EmailFlagAction` and cross the socket, so a
+ * rename here silently stops working rather than failing to compile. Pinned for
+ * the same reason `PermissionMode.EDITS` is pinned to `full`.
+ *
+ * The property worth stating out loud is that the list has no delete on it. Every
+ * action is undone by another action in the same enum -- read/unread,
+ * star/unstar, archive/unarchive -- and that is what makes them safe to offer a
+ * finger's width apart on a phone.
+ */
+class MailFlagTest {
+
+    @Test
+    fun `the wire names are the desktop's`() {
+        assertEquals("mark_read", MailFlag.READ.wire)
+        assertEquals("mark_unread", MailFlag.UNREAD.wire)
+        assertEquals("star", MailFlag.STAR.wire)
+        assertEquals("unstar", MailFlag.UNSTAR.wire)
+        assertEquals("archive", MailFlag.ARCHIVE.wire)
+        assertEquals("unarchive", MailFlag.UNARCHIVE.wire)
+    }
+
+    @Test
+    fun `nothing here destroys a message`() {
+        // If a delete ever appears in this enum it should be a deliberate decision
+        // with its own confirmation, not something that arrived with a batch of
+        // reversible actions.
+        val names = MailFlag.entries.map { it.wire }
+        assertTrue(names.none { it.contains("delete") || it.contains("trash") || it.contains("purge") })
+    }
+
+    @Test
+    fun `every action has its opposite`() {
+        // The property the reader's action row depends on: a mistap is recoverable
+        // without leaving the screen.
+        val wires = MailFlag.entries.map { it.wire }.toSet()
+        for ((a, b) in listOf("mark_read" to "mark_unread", "star" to "unstar", "archive" to "unarchive")) {
+            assertTrue("$a has no opposite", wires.contains(a) && wires.contains(b))
+        }
+    }
+}
