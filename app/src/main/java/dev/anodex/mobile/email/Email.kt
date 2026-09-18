@@ -59,6 +59,27 @@ data class EmailAttachment(
     val size: Long,
 )
 
+/**
+ * What a search puts on the wire.
+ *
+ * Its own function because the mailbox is the part that is easy to leave out and
+ * impossible to see: a search that ignores the open folder returns mail from the
+ * whole account under a heading that still says Trash, which looks like results
+ * rather than like a bug. The desktop had the identical omission, one layer
+ * further in.
+ *
+ * A blank mailbox is left off rather than sent. Absent means the account, which
+ * is what a search from the inbox has always meant -- what you are looking for
+ * is usually the thing that is not in front of you -- and a mailbox named "" is
+ * a folder no server has.
+ */
+internal fun searchRequest(query: String, limit: Int, mailbox: String?): JsonObject =
+    buildJsonObject {
+        put("query", JsonPrimitive(query))
+        put("limit", JsonPrimitive(limit))
+        mailbox?.takeIf { it.isNotBlank() }?.let { put("mailbox", JsonPrimitive(it)) }
+    }
+
 /** One message inside a thread. */
 data class EmailNote(
     val id: String,
@@ -117,14 +138,11 @@ class Email(private val socket: AnodexSocket) {
      * provider's own search syntax, which is what would have made this work on
      * one account and quietly return nothing on another.
      */
-    suspend fun search(query: String, limit: Int = 50): List<EmailThread> {
+    suspend fun search(query: String, limit: Int = 50, mailbox: String? = null): List<EmailThread> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
 
-        val request = buildJsonObject {
-            put("query", JsonPrimitive(trimmed))
-            put("limit", JsonPrimitive(limit))
-        }
+        val request = searchRequest(trimmed, limit, mailbox)
         val value = socket.invoke(CHANNEL_SEARCH, listOf(request)).unwrap() as? JsonArray
         return value.orEmpty().mapNotNull { (it as? JsonObject)?.asThread() }
     }
