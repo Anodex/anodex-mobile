@@ -4,6 +4,8 @@ import androidx.compose.ui.graphics.Color
 import dev.anodex.mobile.ui.theme.AnodexColors
 import dev.anodex.mobile.ui.theme.LightColors
 import dev.anodex.mobile.ui.theme.MidnightColors
+import dev.anodex.mobile.ui.theme.sectionInk
+import dev.anodex.mobile.ui.theme.sectionTint
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.max
@@ -137,6 +139,101 @@ class ContrastTest {
             assertTrue(
                 "$name's ink should be darker than its base, not lighter",
                 luminance(ink) < luminance(base),
+            )
+        }
+    }
+
+    /** As many steps as Settings has sections, which is what the ramp is cut into. */
+    private val sectionCount = 9
+
+    @Test
+    fun `every step of the section ramp is readable as text`() {
+        // Settings gives each section its own step on the mark's gradient and then
+        // writes that section's headings and ticks in it. That turns the logo ramp
+        // into body text, which it was never measured as: `accentViolet` is 3.92:1
+        // on Midnight and 3.43:1 on cream, so the violet end of the list failed in
+        // *both* themes, and dark mode does not hide it. `sectionInk` is the
+        // readable rendition and this is the only thing keeping it readable.
+        for ((theme, colors) in themes()) {
+            for (step in 0 until sectionCount) {
+                val ink = sectionInk(step, sectionCount, colors)
+                for ((groundName, ground) in grounds(colors)) {
+                    val ratio = contrast(ink, ground)
+                    assertTrue(
+                        "$theme: section $step's ink on $groundName is " +
+                            "${"%.2f".format(ratio)}:1, under 4.5",
+                        ratio >= 4.5f,
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a chosen row's tick is readable on the wash under it`() {
+        // The narrowest pairing this change creates, and the one easiest to miss:
+        // a selected row is filled with its section's colour at 12% and the tick on
+        // top is the same section's ink. The wash moves the ground towards the text,
+        // exactly as it does for `dangerSoft` above.
+        for ((theme, colors) in themes()) {
+            for (step in 0 until sectionCount) {
+                val ink = sectionInk(step, sectionCount, colors)
+                val wash = over(sectionTint(step, sectionCount, colors), 0.12f, colors.bgSurface)
+                val ratio = contrast(ink, wash)
+                assertTrue(
+                    "$theme: section $step's tick on its own wash is " +
+                        "${"%.2f".format(ratio)}:1, under 4.5",
+                    ratio >= 4.5f,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `every section chip is visible as a shape`() {
+        // A chip is a 14% wash in the logo's own colour with the section's glyph on
+        // top, and the two cannot be the same value. Drawn in the logo colour the
+        // cyan end measured 1.80:1 on cream — a chip with nothing visible in it,
+        // which is what shipped, because the ramp was only ever looked at in dark
+        // mode. The wash keeps the logo colour, because that is what carries the
+        // brand; the glyph takes the ink.
+        for ((theme, colors) in themes()) {
+            for (step in 0 until sectionCount) {
+                val wash = over(sectionTint(step, sectionCount, colors), 0.14f, colors.bgSurface)
+                val ratio = contrast(sectionInk(step, sectionCount, colors), wash)
+                assertTrue(
+                    "$theme: section $step's glyph on its chip is " +
+                        "${"%.2f".format(ratio)}:1, under 3",
+                    ratio >= 3f,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `violet is the one Midnight ink that had to be re-stepped`() {
+        // The test above says Midnight's inks are its base colours, and lists the
+        // ones that are. Violet is not on that list and this says why rather than
+        // leaving it as an oversight for somebody to tidy away: at 3.92:1 it is the
+        // single logo colour that is unreadable as text even on near-black.
+        assertTrue(MidnightColors.accentVioletInk != MidnightColors.accentViolet)
+        assertTrue(
+            "the re-stepped violet should be lighter than its base on a dark ground",
+            luminance(MidnightColors.accentVioletInk) > luminance(MidnightColors.accentViolet),
+        )
+        assertTrue(
+            "and darker than its base on a pale one",
+            luminance(LightColors.accentVioletInk) < luminance(LightColors.accentViolet),
+        )
+        for ((theme, violet) in listOf(
+            "Midnight" to MidnightColors.accentVioletInk,
+            "Light" to LightColors.accentVioletInk,
+        )) {
+            val base = if (theme == "Midnight") MidnightColors.accentViolet else LightColors.accentViolet
+            val drift = hueDegreesBetween(base, violet)
+            assertTrue(
+                "$theme: violet's ink drifted ${"%.0f".format(drift)}deg of hue from its base",
+                drift <= 12f,
             )
         }
     }

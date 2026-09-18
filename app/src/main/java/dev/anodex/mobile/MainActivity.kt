@@ -1928,6 +1928,18 @@ private fun DesignStateHarness(onExit: () -> Unit) {
     }
     var index by remember { mutableStateOf(0) }
     val advance = { index = (index + 1) % states.size }
+    var showSettings by remember { mutableStateOf(false) }
+
+    if (showSettings) {
+        SettingsScreen(
+            installedVersion = BuildConfig.VERSION_NAME,
+            onClose = { showSettings = false },
+            hostName = "Gort",
+            hostStatus = "Connected",
+            personalities = emptyList(),
+        )
+        return
+    }
 
     Box(Modifier.fillMaxSize().background(colors.bgApp)) {
         when (val state = states[index]) {
@@ -1961,6 +1973,17 @@ private fun DesignStateHarness(onExit: () -> Unit) {
                         label = "Next state",
                         onClick = advance,
                         modifier = Modifier.padding(top = Spacing.x6),
+                    )
+
+                    // Settings, from here, for the same reason the switches are
+                    // below: this screen exists to check appearance on a real
+                    // device, and the largest set of screens in the app was the
+                    // one part of it that could only be reached by pairing first.
+                    // Checking a colour should not require a computer to be on.
+                    SecondaryButton(
+                        label = "Settings",
+                        onClick = { showSettings = true },
+                        modifier = Modifier.padding(top = Spacing.x3),
                     )
 
                     // The controls themselves, not just the connection states.
