@@ -213,10 +213,20 @@ internal fun wrapMailHtml(
             color: ${hex(textArgb)};
             font-family: -apple-system, sans-serif;
             font-size: 15px; line-height: 1.5;
-            word-break: break-word;
+            /* `overflow-wrap`, not `word-break`. The second one splits *inside*
+               words whenever a line is tight, which in a narrow newsletter column
+               turned a masthead reading "Daily" into five stacked letters. This
+               one only breaks a word that could not fit on a line of its own,
+               which is the case it was added for: a long unbroken URL. */
+            overflow-wrap: break-word;
           }
-          img, table, pre { max-width: 100% !important; height: auto; }
-          table { width: auto !important; }
+          /* Held to the screen, not reflowed. `max-width` alone is enough to stop
+             a 700px layout scrolling sideways; forcing `width: auto` on top of it
+             also discarded the sender's column widths and squeezed cells below
+             their contents. Seen on a real newsletter, where it was the other half
+             of the stacked-letters bug. */
+          img, table, pre { max-width: 100% !important; }
+          img { height: auto; }
           a { color: #4F8CFF; }
           /* An image the reader has not asked for takes no space and draws no
              broken-image glyph, which otherwise litters a newsletter with grey
