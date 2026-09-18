@@ -128,9 +128,34 @@ class Email(private val socket: AnodexSocket) {
         return value.orEmpty().mapNotNull { (it as? JsonObject)?.asThread() }
     }
 
-    /** The most recent threads in the inbox. Empty when email is not set up at all. */
-    suspend fun threads(limit: Int = 50): List<EmailThread> {
-        val request = buildJsonObject { put("limit", JsonPrimitive(limit)) }
+    /**
+     * The mailboxes this account has.
+     *
+     * Named by the server, which is why they are shown by their leaf rather than
+     * their path: Gmail's Sent is `[Gmail]/Sent Mail` and an IMAP server's is
+     * often `INBOX.Sent`, and neither is what anybody calls it.
+     */
+    suspend fun mailboxes(): List<MailFolder> {
+        val value = socket.invoke(CHANNEL_MAILBOXES, listOf(JsonNull)).unwrap() as? JsonArray
+        return value.orEmpty().mapNotNull { row ->
+            val o = row as? JsonObject ?: return@mapNotNull null
+            val name = o["name"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
+            MailFolder(
+                name = name,
+                label = friendlyFolderName(name),
+                system = o["system"]?.jsonPrimitive?.contentOrNull() == "true",
+            )
+        }
+    }
+
+    /** The most recent threads in a mailbox. Empty when email is not set up at all. */
+    suspend fun threads(limit: Int = 50, mailbox: String? = null): List<EmailThread> {
+        val request = buildJsonObject {
+            put("limit", JsonPrimitive(limit))
+            // Absent means the inbox, which is what the computer defaults to --
+            // so nothing is sent for it rather than a name this phone guessed.
+            mailbox?.takeIf { it.isNotBlank() }?.let { put("mailbox", JsonPrimitive(it)) }
+        }
         val value = socket.invoke(CHANNEL_THREADS, listOf(request)).unwrap() as? JsonArray
             ?: return emptyList()
 
@@ -369,6 +394,7 @@ class Email(private val socket: AnodexSocket) {
         const val CHANNEL_TRASH = "email:trash"
         const val CHANNEL_SEARCH = "email:search"
         const val CHANNEL_ATTACHMENT = "email:get-attachment-chunk"
+        const val CHANNEL_MAILBOXES = "email:list-mailboxes"
         const val CHANNEL_IMAGES = "email:load-remote-images"
         const val CHANNEL_THREADS = "email:list-threads"
         const val CHANNEL_MESSAGES = "email:get-thread-messages"
@@ -405,3 +431,26 @@ data class AttachmentChunk(
     /** True when this piece reaches the end, so nobody has to do the arithmetic. */
     val done: Boolean,
 )
+
+/** One mailbox, as a person would name it. */
+data class MailFolder(
+    /** What the server calls it, which is what a request has to carry. */
+    val name: String,
+    /** What to show: `[Gmail]/Sent Mail` becomes `Sent Mail`. */
+    val label: String,
+    /** Provider-managed, as opposed to a folder somebody made. */
+    val system: Boolean,
+)
+
+/**
+ * `[Gmail]/Sent Mail` becomes `Sent Mail`, `INBOX.Archive` becomes `Archive`.
+ *
+ * The same reduction the desktop makes, and for the same reason: a server's
+ * namespace is not what anybody calls the folder, and showing the path makes a
+ * list of five mailboxes unreadable on a phone.
+ */
+internal fun friendlyFolderName(name: String): String {
+    val withoutNamespace = name.replace(Regex("""^\[[^]]+][/.]?"""), "").trim()
+    val leaf = withoutNamespace.split('/', '.').lastOrNull()?.trim()
+    return leaf?.takeIf { it.isNotBlank() } ?: name
+}

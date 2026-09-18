@@ -124,3 +124,37 @@ class MailFlagTest {
         }
     }
 }
+
+/**
+ * What a mailbox is called, versus what it is named.
+ *
+ * A server's namespace is not what anybody calls the folder, and showing the
+ * path makes a row of five mailboxes unreadable on a phone. The same reduction
+ * the desktop makes, written down here so the two agree.
+ */
+class FolderNameTest {
+
+    @Test
+    fun `Gmail's namespace is stripped`() {
+        assertEquals("Sent Mail", friendlyFolderName("[Gmail]/Sent Mail"))
+        assertEquals("Trash", friendlyFolderName("[Gmail]/Trash"))
+    }
+
+    @Test
+    fun `an IMAP path is reduced to its leaf`() {
+        assertEquals("Archive", friendlyFolderName("INBOX.Archive"))
+        assertEquals("Receipts", friendlyFolderName("INBOX/Work/Receipts"))
+    }
+
+    @Test
+    fun `a plain name is left alone`() {
+        assertEquals("Deleted Items", friendlyFolderName("Deleted Items"))
+        assertEquals("INBOX", friendlyFolderName("INBOX"))
+    }
+
+    @Test
+    fun `a name that reduces to nothing keeps what it had`() {
+        // Better a path nobody loves than a chip with no label on it.
+        assertEquals("[Gmail]", friendlyFolderName("[Gmail]"))
+    }
+}

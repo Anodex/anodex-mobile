@@ -58,6 +58,7 @@ import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.email.EmailAttachment
 import dev.anodex.mobile.email.EmailDrafter
+import dev.anodex.mobile.email.MailFolder
 import dev.anodex.mobile.email.SavedAttachment
 import dev.anodex.mobile.email.saveAttachment
 import dev.anodex.mobile.email.MailFlag
@@ -1790,7 +1791,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     _emailError.value = it.message ?: "Your computer would not answer."
                 }
 
-            runCatching { client.threads() }
+            runCatching { client.threads(mailbox = _openFolder.value?.name) }
                 .onSuccess { _emailThreads.value = it }
                 .onFailure {
                     _emailError.value = it.message ?: "Your computer would not answer."
@@ -1801,6 +1802,42 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // here rather than leaving a badge that outlives what it counted.
             refreshUnreadEmail()
         }
+    }
+
+    private val _folders = MutableStateFlow<List<MailFolder>>(emptyList())
+
+    /** The mailboxes this account has, for switching between them. */
+    val mailFolders: StateFlow<List<MailFolder>> = _folders.asStateFlow()
+
+    private val _openFolder = MutableStateFlow<MailFolder?>(null)
+
+    /**
+     * Which mailbox is being shown, or null for the inbox.
+     *
+     * Null rather than a folder called "INBOX", because the computer's own
+     * default is "no mailbox named" and sending a name this phone guessed would
+     * be a second opinion about what the inbox is called -- which is exactly the
+     * kind of guess the trash mailbox taught us not to make.
+     */
+    val openFolder: StateFlow<MailFolder?> = _openFolder.asStateFlow()
+
+    /** Read the folder list once the mailbox is reachable. */
+    fun refreshFolders() {
+        val client = emailClient ?: return
+        viewModelScope.launch {
+            runCatching { client.mailboxes() }.onSuccess { _folders.value = it }
+        }
+    }
+
+    /** Show a different mailbox. Null means the inbox. */
+    fun openMailFolder(folder: MailFolder?) {
+        _openFolder.value = folder
+        // A search is about the whole mailbox, not the folder you were in, so
+        // switching folders clears it rather than filtering results nobody asked
+        // to have filtered.
+        _mailQuery.value = ""
+        _mailResults.value = null
+        refreshEmail()
     }
 
     private val _mailQuery = MutableStateFlow("")

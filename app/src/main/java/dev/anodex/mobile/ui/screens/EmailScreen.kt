@@ -36,6 +36,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.anodex.mobile.AnodexViewModel
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.email.EmailAttachment
+import androidx.compose.foundation.horizontalScroll
+import dev.anodex.mobile.email.MailFolder
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.MailFlag
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -86,7 +88,10 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     // inbox until the user thought to leave the tab and come back.
     val connected by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(connected is ConnectionState.Connected) {
-        if (connected is ConnectionState.Connected) viewModel.refreshEmail()
+        if (connected is ConnectionState.Connected) {
+            viewModel.refreshEmail()
+            viewModel.refreshFolders()
+        }
     }
 
     val draft by viewModel.mailDraft.collectAsStateWithLifecycle()
@@ -99,6 +104,8 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val mailResults by viewModel.mailResults.collectAsStateWithLifecycle()
     val mailSearching by viewModel.mailSearching.collectAsStateWithLifecycle()
     val downloadingAttachment by viewModel.downloadingAttachment.collectAsStateWithLifecycle()
+    val folders by viewModel.mailFolders.collectAsStateWithLifecycle()
+    val openFolder by viewModel.openFolder.collectAsStateWithLifecycle()
 
     // Above the reader, so Back out of a half-written reply lands on the message it
     // answers rather than on the inbox.
@@ -175,6 +182,9 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         onCompose = { viewModel.startMail(MailDraft()) },
         onSetUnread = viewModel::setThreadUnread,
         onSetStarred = viewModel::setThreadStarred,
+        folders = folders,
+        openFolder = openFolder,
+        onOpenFolder = viewModel::openMailFolder,
         modifier = modifier,
     )
 }
@@ -201,12 +211,17 @@ private fun InboxList(
     searching: Boolean = false,
     /** True when the list is search results rather than the inbox. */
     isResults: Boolean = false,
+    /** Every mailbox on the account, for switching between them. */
+    folders: List<MailFolder> = emptyList(),
+    /** Which one is showing, or null for the inbox. */
+    openFolder: MailFolder? = null,
+    onOpenFolder: ((MailFolder?) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     ScreenScaffold(
-        title = if (isResults) "Search" else "Inbox",
+        title = if (isResults) "Search" else openFolder?.label ?: "Inbox",
         modifier = modifier,
         beneath = if (onQueryChange == null) null else {
             {
@@ -216,6 +231,18 @@ private fun InboxList(
                     placeholder = "Search mail",
                     modifier = Modifier.padding(top = Spacing.x2),
                 )
+
+                // The folders, as a row that scrolls sideways. A phone has no
+                // room for the sidebar the computer uses, and a dropdown hides
+                // the one thing somebody opened this to change.
+                if (onOpenFolder != null && folders.size > 1) {
+                    FolderStrip(
+                        folders = folders,
+                        open = openFolder,
+                        onOpen = onOpenFolder,
+                        modifier = Modifier.padding(top = Spacing.x2),
+                    )
+                }
             }
         },
         // In the header rather than as a button floating over the list. The inbox
@@ -768,6 +795,62 @@ private fun addressOf(from: String): String =
     from.substringAfter('<').substringBefore('>').ifBlank { from }.trim()
 
 
+
+
+/**
+ * The account's mailboxes, as a row of chips.
+ *
+ * Sideways rather than a menu: the computer has a sidebar and a phone does not,
+ * and a dropdown hides the thing somebody opened it to change. Inbox is first
+ * and always present, because it is where this screen starts and the server does
+ * not always list it the way it lists the others.
+ */
+@Composable
+private fun FolderStrip(
+    folders: List<MailFolder>,
+    open: MailFolder?,
+    onOpen: (MailFolder?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        // The inbox chip is this app's own, not a row from the server's list:
+        // `openMailFolder(null)` is what tells the computer "your default", and
+        // sending a name instead would be this phone deciding what INBOX is
+        // called.
+        FolderChip("Inbox", selected = open == null) { onOpen(null) }
+
+        for (folder in folders) {
+            if (folder.label.equals("inbox", ignoreCase = true)) continue
+            FolderChip(folder.label, selected = open?.name == folder.name) { onOpen(folder) }
+        }
+    }
+}
+
+@Composable
+private fun FolderChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = AnodexTheme.colors
+    Text(
+        text = label,
+        style = AnodexTheme.type.label,
+        color = if (selected) colors.accentInk else colors.textMuted,
+        maxLines = 1,
+        modifier = Modifier
+            .heightIn(min = Touch.minTarget)
+            .wrapContentHeight(Alignment.CenterVertically)
+            .clip(Radii.lg)
+            .background(if (selected) colors.accentSoft else colors.bgSurface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x1),
+    )
+}
 
 /**
  * An icon in the header bar, with a finger's worth of target around it.
