@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +65,8 @@ import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.TextInputDialog
 import dev.anodex.mobile.ui.theme.AnodexTheme
+import dev.anodex.mobile.ui.theme.sectionInk
+import dev.anodex.mobile.ui.theme.sectionTint
 import dev.anodex.mobile.ui.theme.FontScale
 import dev.anodex.mobile.ui.theme.MotionPreference
 import dev.anodex.mobile.ui.theme.Radii
@@ -174,132 +178,173 @@ fun SettingsScreen(
     BackHandler(enabled = section != null) { section = null }
 
     Column(modifier.fillMaxSize().background(colors.bgApp)) {
+        val openTint = section?.let {
+            val at = SettingsSection.entries.indexOf(it)
+            val count = SettingsSection.entries.size
+            SectionColours(
+                shape = sectionTint(at, count, colors),
+                ink = sectionInk(at, count, colors),
+            )
+        }
+
         Header(
             title = section?.label ?: "Settings",
             onBack = { if (section != null) section = null else onClose() },
+            section = section,
+            tint = openTint,
         )
 
-        when (section) {
-            null -> SettingsIndex(
-                hostName = hostName,
-                hostStatus = hostStatus,
-                installedVersion = installedVersion,
-                themeMode = themeMode,
-                updateAvailable = newerVersion != null,
-                onOpen = { section = it },
-            )
-
-            // No longer "at the computer, and nothing else". Editing a profile is
-            // still a setting and still unreachable — `settings:` carries the
-            // permission mode and the model directory — but that was being used to
-            // justify an empty screen, including the numbers the computer already
-            // keeps. `settings:get-profile` is a read and nothing more.
-            SettingsSection.PROFILE -> SectionBody(spacing = Spacing.x5) {
-                ProfileScreen(
-                    user = user,
-                    usage = usage,
-                    loading = profileLoading,
-                    error = profileError,
-                    modifier = Modifier.padding(vertical = Spacing.x4),
-                )
-            }
-
-            // Reading was previously refused here on the grounds that it would put
-            // the contents of every note on a device that gets left on tables. That
-            // argument does not survive contact with the rest of the app: this phone
-            // already shows whole conversations, the mailbox and the project's files,
-            // all of which say considerably more than a memory note does. Memory was
-            // being held to a standard nothing beside it meets.
-            //
-            // What genuinely does not belong here is *writing* one. A memory is fed
-            // into later prompts, so adding one from a phone steers every future
-            // conversation — which is why `memory:create` and `memory:update` are
-            // still denied, and why this screen has no control that would call them.
-            SettingsSection.MEMORY -> MemoryScreen(
-                entries = memories,
-                loading = memoryLoading,
-                error = memoryError,
-                onForget = onForgetMemory,
-            )
-
-            SettingsSection.APPEARANCE -> AppearanceSection(
-                mode = themeMode,
-                onSelect = onSelectTheme,
-                fontScale = fontScale,
-                onSelectFontScale = onSelectFontScale,
-                uiFont = uiFont,
-                onSelectFont = onSelectFont,
-                motion = motion,
-                onSelectMotion = onSelectMotion,
-                keepAwake = keepAwake,
-                onSetKeepAwake = onSetKeepAwake,
-                haptics = haptics,
-                onSetHaptics = onSetHaptics,
-                streamOnMetered = streamOnMetered,
-                onSetStreamOnMetered = onSetStreamOnMetered,
-            )
-
-            SettingsSection.AI_MODELS -> AiAndModelsSection(
-                personalities = personalities,
-                activePersonalityId = activePersonalityId,
-                busy = busy,
-                onSelectPersonality = onSelectPersonality,
-                models = models,
-                activeModelPath = activeModelPath,
-                loadingModelPath = loadingModelPath,
-                onLoadModel = onLoadModel,
-            )
-
-            SettingsSection.NOTIFICATIONS -> NotificationsSection(
-                access = notificationAccess,
-                onOpenSystemSettings = onOpenNotificationSettings,
-                onAllowBackground = onAllowBackground,
-            )
-
-            SettingsSection.REMOTE -> RemoteSection(
-                hostName,
-                hostStatus,
-                onOpenHost,
-                pairedDevices,
-                onRefreshDevices,
-                onRenameDevice,
-                onUnpairDevice,
-            )
-
-            SettingsSection.ARCHIVE -> SectionBody(spacing = Spacing.x4) {
-                ArchiveScreen(
-                    chats = archivedChats,
-                    projects = archivedProjects,
-                    loading = archiveLoading,
-                    error = archiveError,
-                    onRestore = onRestoreArchived,
-                    onDelete = onDeleteArchived,
-                    modifier = Modifier.padding(bottom = Spacing.x5),
-                )
-            }
-
-            SettingsSection.DIAGNOSTICS -> SectionBody(spacing = Spacing.x4) {
-                DiagnosticsScreen(
+        CompositionLocalProvider(LocalSectionTint provides openTint) {
+            when (section) {
+                null -> SettingsIndex(
                     hostName = hostName,
-                    connectionStatus = hostStatus,
-                    connectionHint = connectionHint,
-                    lastCrash = lastCrash,
-                    onCopyCrash = onCopyCrash,
-                    onReportCrash = onReportCrash,
-                    onForgetCrash = onForgetCrash,
-                    modifier = Modifier.padding(bottom = Spacing.x5),
+                    hostStatus = hostStatus,
+                    installedVersion = installedVersion,
+                    themeMode = themeMode,
+                    updateAvailable = newerVersion != null,
+                    onOpen = { section = it },
+                )
+
+                // No longer "at the computer, and nothing else". Editing a profile is
+                // still a setting and still unreachable — `settings:` carries the
+                // permission mode and the model directory — but that was being used to
+                // justify an empty screen, including the numbers the computer already
+                // keeps. `settings:get-profile` is a read and nothing more.
+                SettingsSection.PROFILE -> SectionBody(spacing = Spacing.x5) {
+                    ProfileScreen(
+                        user = user,
+                        usage = usage,
+                        loading = profileLoading,
+                        error = profileError,
+                        modifier = Modifier.padding(vertical = Spacing.x4),
+                    )
+                }
+
+                // Reading was previously refused here on the grounds that it would put
+                // the contents of every note on a device that gets left on tables. That
+                // argument does not survive contact with the rest of the app: this phone
+                // already shows whole conversations, the mailbox and the project's files,
+                // all of which say considerably more than a memory note does. Memory was
+                // being held to a standard nothing beside it meets.
+                //
+                // What genuinely does not belong here is *writing* one. A memory is fed
+                // into later prompts, so adding one from a phone steers every future
+                // conversation — which is why `memory:create` and `memory:update` are
+                // still denied, and why this screen has no control that would call them.
+                SettingsSection.MEMORY -> MemoryScreen(
+                    entries = memories,
+                    loading = memoryLoading,
+                    error = memoryError,
+                    onForget = onForgetMemory,
+                )
+
+                SettingsSection.APPEARANCE -> AppearanceSection(
+                    mode = themeMode,
+                    onSelect = onSelectTheme,
+                    fontScale = fontScale,
+                    onSelectFontScale = onSelectFontScale,
+                    uiFont = uiFont,
+                    onSelectFont = onSelectFont,
+                    motion = motion,
+                    onSelectMotion = onSelectMotion,
+                    keepAwake = keepAwake,
+                    onSetKeepAwake = onSetKeepAwake,
+                    haptics = haptics,
+                    onSetHaptics = onSetHaptics,
+                    streamOnMetered = streamOnMetered,
+                    onSetStreamOnMetered = onSetStreamOnMetered,
+                )
+
+                SettingsSection.AI_MODELS -> AiAndModelsSection(
+                    personalities = personalities,
+                    activePersonalityId = activePersonalityId,
+                    busy = busy,
+                    onSelectPersonality = onSelectPersonality,
+                    models = models,
+                    activeModelPath = activeModelPath,
+                    loadingModelPath = loadingModelPath,
+                    onLoadModel = onLoadModel,
+                )
+
+                SettingsSection.NOTIFICATIONS -> NotificationsSection(
+                    access = notificationAccess,
+                    onOpenSystemSettings = onOpenNotificationSettings,
+                    onAllowBackground = onAllowBackground,
+                )
+
+                SettingsSection.REMOTE -> RemoteSection(
+                    hostName,
+                    hostStatus,
+                    onOpenHost,
+                    pairedDevices,
+                    onRefreshDevices,
+                    onRenameDevice,
+                    onUnpairDevice,
+                )
+
+                SettingsSection.ARCHIVE -> SectionBody(spacing = Spacing.x4) {
+                    ArchiveScreen(
+                        chats = archivedChats,
+                        projects = archivedProjects,
+                        loading = archiveLoading,
+                        error = archiveError,
+                        onRestore = onRestoreArchived,
+                        onDelete = onDeleteArchived,
+                        modifier = Modifier.padding(bottom = Spacing.x5),
+                    )
+                }
+
+                SettingsSection.DIAGNOSTICS -> SectionBody(spacing = Spacing.x4) {
+                    DiagnosticsScreen(
+                        hostName = hostName,
+                        connectionStatus = hostStatus,
+                        connectionHint = connectionHint,
+                        lastCrash = lastCrash,
+                        onCopyCrash = onCopyCrash,
+                        onReportCrash = onReportCrash,
+                        onForgetCrash = onForgetCrash,
+                        modifier = Modifier.padding(bottom = Spacing.x5),
+                    )
+                }
+
+                SettingsSection.ABOUT -> AboutSection(
+                    installedVersion = installedVersion,
+                    newerVersion = newerVersion,
+                    updateCheck = updateCheck,
+                    onCheckForUpdates = onCheckForUpdates,
                 )
             }
-
-            SettingsSection.ABOUT -> AboutSection(
-                installedVersion = installedVersion,
-                newerVersion = newerVersion,
-                updateCheck = updateCheck,
-                onCheckForUpdates = onCheckForUpdates,
-            )
         }
     }
 }
+
+/**
+ * The colour of the section you are inside.
+ *
+ * The index gives each section a step on the mark's ramp, and then the section
+ * itself threw that away: grey headings and a generic blue tick, the same nine
+ * times over. The door was Anodex's and the room behind it was anybody's.
+ *
+ * Carried as a local rather than passed down, because it is ambient — every
+ * heading and every chosen row wants it, and threading a colour through nine
+ * screens' worth of arguments would be a parameter nobody reads.
+ *
+ * It is not decoration. A section's colour is its position in the list, so the
+ * colour answers "where am I" before the title is read, and answers it the same
+ * way on the way in and once you are there.
+ */
+private val LocalSectionTint = compositionLocalOf<SectionColours?> { null }
+
+/**
+ * A section's colour, twice.
+ *
+ * [shape] is the logo's own step, for chips and the 12% wash behind a chosen row.
+ * [ink] is the readable rendition of the same step, for headings and ticks. They
+ * are carried together because a screen wants both and picking the wrong one is
+ * invisible in dark mode — which is how violet headings shipped at 3.43:1 on
+ * cream in the first draft of this.
+ */
+private data class SectionColours(val shape: Color, val ink: Color)
 
 /** The nine doors, each saying what is behind it. */
 @Composable
@@ -330,7 +375,10 @@ private fun SettingsIndex(
                             if (updateAvailable) "Update available" else installedVersion
                         else -> entry.summary
                     },
-                    tint = sectionTint(index, SettingsSection.entries.size),
+                    tint = SectionColours(
+                        shape = sectionTint(index, SettingsSection.entries.size, AnodexTheme.colors),
+                        ink = sectionInk(index, SettingsSection.entries.size, AnodexTheme.colors),
+                    ),
                     onClick = { onOpen(entry) },
                 )
             }
@@ -389,16 +437,10 @@ private fun SettingsHeader(hostName: String?, hostStatus: String) {
  * rather than only by reading every label.
  */
 @Composable
-private fun sectionTint(index: Int, count: Int): Color {
-    val colors = AnodexTheme.colors
+private fun sectionTint(index: Int, count: Int): Color =
     // Halfway is the mark's blue, which is where the desktop's gradient turns.
-    val position = index.toFloat() / (count - 1).coerceAtLeast(1)
-    return if (position < 0.5f) {
-        lerp(colors.accentCyan, colors.accent, position * 2f)
-    } else {
-        lerp(colors.accent, colors.accentViolet, (position - 0.5f) * 2f)
-    }
-}
+    // The ramp itself lives in the theme, where `ContrastTest` can measure it.
+    sectionTint(index, count, AnodexTheme.colors)
 
 /**
  * A section that exists on the computer and is not reachable from here.
@@ -1019,7 +1061,7 @@ private fun ChoiceRow(label: String, detail: String, selected: Boolean, onClick:
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .background(if (selected) chosenWash() else Color.Transparent)
             .heightIn(min = Touch.minTarget)
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
@@ -1031,7 +1073,7 @@ private fun ChoiceRow(label: String, detail: String, selected: Boolean, onClick:
             Text(detail, style = type.meta, color = colors.textMuted)
         }
 
-        if (selected) Text("\u2713", style = type.body, color = colors.accentInk)
+        if (selected) Text("\u2713", style = type.body, color = chosenInk())
     }
 }
 
@@ -1046,18 +1088,45 @@ private fun ChoiceRow(label: String, detail: String, selected: Boolean, onClick:
  * than "close" — which is what it now does.
  */
 @Composable
-private fun Header(title: String, onBack: () -> Unit) {
+private fun Header(
+    title: String,
+    onBack: () -> Unit,
+    /** The open section's mark, repeated from the row that opened it. */
+    section: SettingsSection? = null,
+    tint: SectionColours? = null,
+) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     Box(Modifier.fillMaxWidth().padding(vertical = Spacing.x2)) {
-        Text(
-            text = title,
-            style = type.bodyEmphasis,
-            color = colors.text,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().align(Alignment.Center),
-        )
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            // The same icon, in the same colour, as the row you pressed. Without
+            // it the door is the last Anodex thing you see: you tap a coloured
+            // mark and arrive at a title in plain grey, and the screen you asked
+            // for looks like it belongs to a different app than the list did.
+            if (section != null && tint != null) {
+                Box(
+                    modifier = Modifier
+                        .size(HEADER_CHIP)
+                        .clip(Radii.sm)
+                        .background(tint.shape.copy(alpha = CHIP_WASH)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnodexIcon(section.icon, size = 14.dp, tint = tint.ink)
+                }
+            }
+
+            Text(
+                text = title,
+                style = type.bodyEmphasis,
+                color = colors.text,
+                textAlign = TextAlign.Center,
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -1077,7 +1146,9 @@ private fun SectionLabel(text: String) {
     Text(
         text = text.uppercase(),
         style = AnodexTheme.type.badge,
-        color = AnodexTheme.colors.textFaint,
+        // The section's own colour, falling back to the faint grey these were
+        // for every screen that is not one of the nine.
+        color = LocalSectionTint.current?.ink ?: AnodexTheme.colors.textFaint,
         modifier = Modifier.padding(
             start = Spacing.x2,
             top = Spacing.x5,
@@ -1131,8 +1202,13 @@ private fun SettingsRow(
      * The colour this row's glyph is carried in. Null keeps the plain grey, which
      * is right everywhere the icon labels a setting rather than opening a door --
      * inside a section there is nothing to tell apart at a glance.
+     *
+     * Two colours rather than one, because the chip is a wash and the glyph on it
+     * is a mark, and on the light theme they cannot be the same value: cyan on a
+     * 14% cyan wash over cream measures 1.80:1, which is a chip with nothing
+     * visible in it. Dark mode never showed it.
      */
-    tint: Color? = null,
+    tint: SectionColours? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
@@ -1157,10 +1233,10 @@ private fun SettingsRow(
                 modifier = Modifier
                     .size(CHIP)
                     .clip(Radii.md)
-                    .background(tint.copy(alpha = CHIP_WASH)),
+                    .background(tint.shape.copy(alpha = CHIP_WASH)),
                 contentAlignment = Alignment.Center,
             ) {
-                AnodexIcon(icon, size = 18.dp, tint = tint)
+                AnodexIcon(icon, size = 18.dp, tint = tint.ink)
             }
         }
 
@@ -1196,7 +1272,7 @@ private fun PersonalityRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) colors.accentSoft else Color.Transparent)
+            .background(if (selected) chosenWash() else Color.Transparent)
             .heightIn(min = Touch.minTarget)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
@@ -1225,7 +1301,7 @@ private fun PersonalityRow(
             }
         }
 
-        if (selected) Text("✓", style = type.body, color = colors.accentInk)
+        if (selected) Text("✓", style = type.body, color = chosenInk())
     }
 }
 
@@ -1250,7 +1326,7 @@ private fun ModelRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (active) colors.accentSoft else Color.Transparent)
+            .background(if (active) chosenWash() else Color.Transparent)
             .heightIn(min = Touch.minTarget)
             .clickable(enabled = enabled && !active, onClick = onClick)
             .padding(horizontal = Spacing.x4, vertical = Spacing.x3),
@@ -1284,12 +1360,12 @@ private fun ModelRow(
                     size = 16.dp,
                     thickness = 1.5.dp,
                     variant = SpinnerVariant.HEX,
-                    tint = colors.accentInk,
+                    tint = chosenInk(),
                 )
-                Text("Loading…", style = type.meta, color = colors.accentInk)
+                Text("Loading…", style = type.meta, color = chosenInk())
             }
 
-            active -> Text("✓", style = type.body, color = colors.accentInk)
+            active -> Text("✓", style = type.body, color = chosenInk())
         }
     }
 }
@@ -1317,6 +1393,30 @@ private fun PreviewSettings() {
         )
     }
 }
+
+/**
+ * The colour a chosen row is marked with, inside a section.
+ *
+ * Falls back to the app's accent everywhere else, so nothing outside the nine
+ * screens changes and the helpers are safe to use anywhere.
+ */
+@Composable
+private fun chosenInk(): Color = LocalSectionTint.current?.ink ?: AnodexTheme.colors.accentInk
+
+/**
+ * The wash behind a chosen row, at the 12% the accent wash has always used —
+ * not the chip's 14%. A full-width row carries more colour than a 32dp square,
+ * so matching the numbers would not match the weight.
+ */
+@Composable
+private fun chosenWash(): Color =
+    LocalSectionTint.current?.shape?.copy(alpha = ROW_WASH) ?: AnodexTheme.colors.accentSoft
+
+/** What `accentSoft` has always been, now that a tint has to reproduce it. */
+private const val ROW_WASH = 0.12f
+
+/** Smaller than the index chip: a title's companion, not a target. */
+private val HEADER_CHIP = 24.dp
 
 /** Large enough for the wash to read as a colour, small enough to stay a row. */
 private val CHIP = 32.dp

@@ -114,6 +114,18 @@ data class AnodexColors(
     val accentGreenInk: Color,
     val accentCyanInk: Color,
 
+    /**
+     * `accentViolet` as text, which it did not used to be.
+     *
+     * The note above says violet is left alone because it only ever appears as a
+     * large block. That stopped being true when Settings gave each section its own
+     * step on the logo ramp and then wrote the section's headings in it: measured
+     * as text, `accentViolet` is 3.92:1 on Midnight and 3.43:1 on cream — under
+     * the 4.5 floor in *both* themes, which is the rarer failure and the one dark
+     * mode does not hide.
+     */
+    val accentVioletInk: Color,
+
     /** True for Midnight and any other dark rendition. Drives status-bar icon polarity. */
     val isDark: Boolean,
 ) {
@@ -214,6 +226,8 @@ val MidnightColors = AnodexColors(
     successInk = Color(0xFF3CCF7A),
     accentGreenInk = Color(0xFF74F0A8),
     accentCyanInk = Color(0xFF38BDF8),
+    // 5.26 worst case anywhere along the section ramp, on every Midnight ground.
+    accentVioletInk = Color(0xFF9B7CFF),
 
     isDark = true,
 )
@@ -278,6 +292,8 @@ val LightColors = MidnightColors.copy(
     // Worst case 4.66 apiece, on the same four grounds.
     accentGreenInk = Color(0xFF0D7538),
     accentCyanInk = Color(0xFF056C9A),
+    // 4.57 worst case along the same ramp, on the same four grounds.
+    accentVioletInk = Color(0xFF5B3FD1),
 
     isDark = false,
 )
