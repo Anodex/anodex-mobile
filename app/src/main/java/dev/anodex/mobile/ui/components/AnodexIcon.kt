@@ -434,6 +434,20 @@ enum class AnodexIcon(
         )
     ),
 
+    /**
+     * A tray with the lip a letter drops through. Where archived mail goes back to.
+     *
+     * Its own glyph rather than the archive box reversed, because "put this back"
+     * and "take this away" are opposite acts and two arrows on one shape is the
+     * kind of icon people press to find out what it does.
+     */
+    INBOX(
+        listOf(
+            "M3 13.5a2.5 2.5 0 0 1 .3-1.2L6 5.6A2.5 2.5 0 0 1 8.3 4h7.4a2.5 2.5 0 0 1 2.3 1.6l2.7 6.7a2.5 2.5 0 0 1 .3 1.2v4a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-4z",
+            "M3 13.5h5l1.5 2.5h5l1.5-2.5h5",
+        )
+    ),
+
     /** A lidded box with the Anodex corner cut. The desktop's `archive`. */
     ARCHIVE(
         listOf(

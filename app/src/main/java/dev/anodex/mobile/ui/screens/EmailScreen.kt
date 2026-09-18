@@ -168,6 +168,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             onTrash = viewModel::trashOpenThread,
             onDownload = viewModel::downloadAttachment,
             downloadingId = downloadingAttachment,
+            canRestore = openFolder != null,
             modifier = modifier,
         )
         return
@@ -581,6 +582,11 @@ internal fun ThreadReader(
     onDownload: ((EmailAttachment) -> Unit)? = null,
     /** Which attachment is being fetched, so two do not start at once. */
     downloadingId: String? = null,
+    /**
+     * True when this thread is being read somewhere other than the inbox, so the
+     * action worth offering is putting it back rather than taking it away.
+     */
+    canRestore: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -605,7 +611,18 @@ internal fun ThreadReader(
                     // the computer, never deleted, and a bin beside an archive box
                     // would be two buttons that look alike and differ in whether
                     // anything can be undone.
-                    HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
+                    // Archiving something already out of the inbox does nothing,
+                    // and the thing that is wanted there is the opposite act. So
+                    // the same position carries whichever of the two is
+                    // available, rather than a fourth icon on a phone header or
+                    // a button that quietly no-ops.
+                    if (canRestore) {
+                        HeaderAction(AnodexIcon.INBOX, "Move to inbox") {
+                            onFlag(MailFlag.UNARCHIVE)
+                        }
+                    } else {
+                        HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
+                    }
                     HeaderAction(AnodexIcon.MAIL, "Mark unread") { onFlag(MailFlag.UNREAD) }
                     // Delete last, furthest from the two that are undone by
                     // pressing them again. It asks once: the message is

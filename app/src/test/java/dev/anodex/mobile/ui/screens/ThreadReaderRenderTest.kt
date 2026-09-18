@@ -2,7 +2,10 @@ package dev.anodex.mobile.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import org.junit.Assert.assertEquals
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import org.junit.Rule
@@ -45,10 +48,23 @@ class ThreadReaderRenderTest {
         attachmentCount = 0,
     )
 
-    private fun show(notes: List<EmailNote>, loading: Boolean = false, error: String? = null) {
+    private fun show(
+        notes: List<EmailNote>,
+        loading: Boolean = false,
+        error: String? = null,
+        canRestore: Boolean = false,
+        onFlag: ((dev.anodex.mobile.email.MailFlag) -> Unit)? = null,
+    ) {
         compose.setContent {
             AnodexTheme(darkTheme = true) {
-                ThreadReader(notes = notes, loading = loading, onClose = {}, error = error)
+                ThreadReader(
+                    notes = notes,
+                    loading = loading,
+                    onClose = {},
+                    error = error,
+                    canRestore = canRestore,
+                    onFlag = onFlag,
+                )
             }
         }
     }
@@ -87,5 +103,26 @@ class ThreadReaderRenderTest {
 
         compose.onNodeWithText("Quarterly report").assertIsDisplayed()
         compose.onNodeWithText("The numbers are attached.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the inbox offers archive`() {
+        show(notes = listOf(note()), onFlag = {})
+
+        compose.onNodeWithContentDescription("Archive").assertIsDisplayed()
+    }
+
+    @Test
+    fun `everywhere else offers the way back`() {
+        // The same position, carrying whichever of the two acts is available.
+        // Archiving a message already out of the inbox does nothing, and the
+        // opposite act had nowhere to live -- so a swipe could take a message
+        // away and neither app could put it back once the undo had gone.
+        val flagged = mutableListOf<dev.anodex.mobile.email.MailFlag>()
+        show(notes = listOf(note()), canRestore = true, onFlag = { flagged += it })
+
+        compose.onNodeWithContentDescription("Move to inbox").performClick()
+
+        assertEquals(listOf(dev.anodex.mobile.email.MailFlag.UNARCHIVE), flagged)
     }
 }

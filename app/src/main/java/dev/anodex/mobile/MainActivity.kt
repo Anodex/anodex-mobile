@@ -1596,7 +1596,6 @@ private fun ConnectedScaffold(
         // A message swiped out of the inbox, with the six seconds it takes to
         // notice it was the wrong one. Archiving is set up so this is a real
         // undo rather than an apology: `unarchive` puts it back where it was.
-        android.util.Log.i("AnodexSwipe", "render, archivedMail=${archivedMail?.id}")
         archivedMail?.let { thread ->
             UndoBar(
                 text = "Archived “${thread.subject}”.",
