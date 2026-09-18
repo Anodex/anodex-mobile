@@ -1,6 +1,7 @@
 package dev.anodex.mobile.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,7 +72,22 @@ fun UpdateBanner(
             .fillMaxWidth()
             .padding(horizontal = Spacing.x3, vertical = Spacing.x2)
             .clip(Radii.lg)
+            // Two fills, and the first one is the whole point. `accentSoft` is a
+            // *tint* -- twelve percent of blue -- which is a fill only when there
+            // is a known surface underneath it. Under the header there always was
+            // one. Floating over the offline screen there is not, and the notice
+            // was eighty-eight percent transparent: "Gort is offline" and "No
+            // answer from 3 addresses" read straight through the release notes.
+            //
+            // So the notice carries its own surface and puts the tint on top of
+            // it. It looks the same where it always worked, and it is opaque
+            // everywhere else.
+            .background(colors.bgSurface)
             .background(colors.accentSoft)
+            // An edge, because an opaque card the same lightness as the page
+            // behind it has no shape -- which is most of the light theme, where
+            // surface and app background are four values apart.
+            .border(1.dp, colors.border, Radii.lg)
             .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
         verticalArrangement = Arrangement.spacedBy(Spacing.x2),
     ) {
@@ -139,6 +155,13 @@ fun UpdateBanner(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(max = 320.dp)
+                        // The notes are longer than the box on every phone, so the
+                        // last visible line is always cut through the middle. Cut
+                        // with a hard edge it reads as broken text; faded it reads
+                        // as more text, which is what it is. The button sits
+                        // directly under this, and "Deleting is still two" ending
+                        // flush against Install was the shape of the complaint.
+                        .fadingEdges(0.dp, Spacing.x4)
                         .verticalScroll(rememberScrollState()),
                 ) {
                     MarkdownText(release.notes)
