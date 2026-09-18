@@ -108,6 +108,13 @@ fun MailBody(
                         if (view == null) return
                         for (delay in REMEASURE_DELAYS_MS) {
                             view.postDelayed({
+                                // The view may be gone by the time this runs: a
+                                // scroll away from the message destroys it while
+                                // up to a second of callbacks are still pending,
+                                // and reading `contentHeight` off a destroyed
+                                // `WebView` is not something to find out about
+                                // from a crash report.
+                                if (!view.isAttachedToWindow) return@postDelayed
                                 val content = view.contentHeight
                                 if (content > 0) {
                                     val height = with(density) { (content * view.scale).toDp() }
@@ -153,6 +160,21 @@ fun MailBody(
             // `null` as the base URL, so the document has no origin to inherit and
             // nothing relative to resolve against.
             view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
+        },
+        onRelease = { view ->
+            // A `WebView` outlives the composable that made it unless it is told
+            // not to. It holds a reference to its context, a render process, and
+            // in this case up to four pending re-measure callbacks -- so a thread
+            // scrolled through leaves one behind per message, and a mailbox read
+            // for ten minutes leaves a pile.
+            //
+            // Emptied before destroying: `destroy()` on a view still displaying a
+            // document is documented as undefined behaviour, and loading a blank
+            // page first is the sanctioned way to stop it.
+            view.stopLoading()
+            view.loadUrl("about:blank")
+            view.removeAllViews()
+            view.destroy()
         },
     )
 }
