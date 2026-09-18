@@ -106,7 +106,10 @@ fun SchedulerScreen(
                         // The reason, when there is one. An empty list and a failed
                         // read looked identical before, so a broken feature was
                         // indistinguishable from a working one with nothing to show.
-                        detail = error ?: "Tasks are created at the computer.",
+                        // Only reached when there is no composer, which means no
+                        // connection -- so this says where they live rather than
+                        // where they are made. They are made here too, now.
+                        detail = error ?: "Scheduled tasks run on your computer.",
                         tone = if (error != null) EmptyTone.PROBLEM else EmptyTone.QUIET,
                         icon = AnodexIcon.CLOCK,
                         modifier = Modifier.padding(top = topInset),
