@@ -271,6 +271,10 @@ class Conversations(private val socket: AnodexSocket) {
             // this phone simply never looked, so history arrived with `[S1]` in the
             // text and nothing to point it at.
             webSources = parseWebSources(this["webSources"]),
+            // Read back for the same reason as the sources: a conversation held
+            // at the computer should show here what it was built on.
+            memoryUsed = parseMemoryUsed(this["memoryUsed"]),
+            recalled = parseRecalled(this["transcriptRecallUsed"]),
             webSearchAttempted = this["webSearchAttempted"]?.jsonPrimitive?.contentOrNull() == "true",
             // A reply the computer recorded as ending in an error kept what it had done.
             // Desktop 0.9.14 says so as `endedEarly`; the error text stays over there.
@@ -442,6 +446,44 @@ private fun parseWebSources(element: JsonElement?): List<WebSource> {
             url = url,
             snippet = o["snippet"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() },
             verified = o["verified"]?.jsonPrimitive?.contentOrNull() == "true",
+        )
+    }
+}
+
+/** Memories recorded against a stored turn. */
+private fun parseMemoryUsed(element: JsonElement?): List<RecalledMemory> {
+    val list = element as? JsonArray ?: return emptyList()
+    return list.mapNotNull { entry ->
+        val o = entry as? JsonObject ?: return@mapNotNull null
+        val text = o["text"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() }
+            ?: return@mapNotNull null
+        RecalledMemory(
+            id = o["id"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            kind = o["kind"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+            text = text,
+        )
+    }
+}
+
+/** Past conversations recorded against a stored turn. */
+private fun parseRecalled(element: JsonElement?): List<RecalledChat> {
+    val list = element as? JsonArray ?: return emptyList()
+    return list.mapNotNull { entry ->
+        val o = entry as? JsonObject ?: return@mapNotNull null
+        val id = o["conversationId"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
+        val excerpts = (o["excerpts"] as? JsonArray).orEmpty().mapNotNull { row ->
+            val e = row as? JsonObject ?: return@mapNotNull null
+            val text = e["text"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            RecalledLine(e["role"]?.jsonPrimitive?.contentOrNull().orEmpty(), text)
+        }
+        if (excerpts.isEmpty()) return@mapNotNull null
+        RecalledChat(
+            conversationId = id,
+            title = o["title"]?.jsonPrimitive?.contentOrNull()?.takeIf { it.isNotBlank() }
+                ?: "A past conversation",
+            updatedAtEpochMs = o["updatedAt"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
+            excerpts = excerpts,
         )
     }
 }

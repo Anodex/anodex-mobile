@@ -1046,6 +1046,14 @@ private fun MessageRow(
                     )
                 }
 
+                // What the computer reached for before it answered, above what
+                // the answer stood on -- retrieval happens first and reads first.
+                RecalledContext(
+                    memories = message.memoryUsed,
+                    chats = message.recalled,
+                    streaming = message.streaming,
+                )
+
                 // What the answer stood on. Under the words and above the actions,
                 // which is where a footnote goes.
                 MessageSources(
