@@ -17,7 +17,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -164,6 +168,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             onTrash = viewModel::trashOpenThread,
             onDownload = viewModel::downloadAttachment,
             downloadingId = downloadingAttachment,
+            canRestore = openFolder != null,
             modifier = modifier,
         )
         return
@@ -187,12 +192,13 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         folders = folders,
         openFolder = openFolder,
         onOpenFolder = viewModel::openMailFolder,
+        onArchive = viewModel::archiveThreadFromList,
         modifier = modifier,
     )
 }
 
 @Composable
-private fun InboxList(
+internal fun InboxList(
     threads: List<EmailThread>,
     loading: Boolean,
     configured: Boolean?,
@@ -218,6 +224,8 @@ private fun InboxList(
     /** Which one is showing, or null for the inbox. */
     openFolder: MailFolder? = null,
     onOpenFolder: ((MailFolder?) -> Unit)? = null,
+    /** Archive a thread by swiping it away. Null leaves the rows fixed. */
+    onArchive: ((EmailThread) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -328,16 +336,99 @@ private fun InboxList(
                 }
 
                 items(threads, key = { it.id }) { thread ->
-                    ThreadRow(
+                    SwipeableThreadRow(
                         thread = thread,
                         nowEpochMs = nowEpochMs,
                         onClick = { onOpen(thread) },
                         onSetUnread = onSetUnread,
                         onSetStarred = onSetStarred,
+                        onArchive = onArchive,
+                        modifier = Modifier.animateItem(),
                     )
                 }
             }
         }
+    }
+}
+
+/**
+ * A row you can push out of the inbox with a thumb.
+ *
+ * The gesture every mail client on a phone has, and the reason it is worth
+ * having is triage: most of an inbox is decided without being read, and a swipe
+ * is the only control that costs nothing to reach. Both directions archive,
+ * which is what Gmail does out of the box.
+ *
+ * Archive rather than delete, deliberately. A gesture a sleeve can start should
+ * not be the one that is hard to take back, and the six seconds of undo below
+ * are a promise the archive can keep -- `unarchive` is the same call in reverse.
+ * Deleting stays where it was: two deliberate taps inside the message.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableThreadRow(
+    thread: EmailThread,
+    nowEpochMs: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
+    onSetStarred: ((EmailThread, Boolean) -> Unit)? = null,
+    onArchive: ((EmailThread) -> Unit)? = null,
+) {
+    if (onArchive == null) {
+        ThreadRow(
+            thread = thread,
+            nowEpochMs = nowEpochMs,
+            onClick = onClick,
+            onSetUnread = onSetUnread,
+            onSetStarred = onSetStarred,
+            modifier = modifier,
+        )
+        return
+    }
+
+    val colors = AnodexTheme.colors
+    val state = rememberSwipeToDismissBoxState(
+        // The row leaves on the caller's say-so, not the gesture's: the list is
+        // what removes it, and letting the box settle into a dismissed state as
+        // well would leave a second copy of that decision to disagree.
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.Settled) return@rememberSwipeToDismissBoxState false
+            onArchive(thread)
+            false
+        },
+        // Most of the width, because a thumb travelling that far is not an
+        // accident. The default third is easy to cross while scrolling.
+        positionalThreshold = { width -> width * 0.5f },
+    )
+
+    SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        backgroundContent = {
+            // Says what letting go will do, on both sides, in the colour the
+            // rest of the app uses for "this is fine".
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(Radii.lg)
+                    .background(colors.bgSurface2)
+                    .padding(horizontal = Spacing.x5),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                AnodexIcon(AnodexIcon.ARCHIVE, size = 20.dp, tint = colors.textMuted)
+                AnodexIcon(AnodexIcon.ARCHIVE, size = 20.dp, tint = colors.textMuted)
+            }
+        },
+    ) {
+        ThreadRow(
+            thread = thread,
+            nowEpochMs = nowEpochMs,
+            onClick = onClick,
+            onSetUnread = onSetUnread,
+            onSetStarred = onSetStarred,
+        )
     }
 }
 
@@ -346,6 +437,7 @@ private fun ThreadRow(
     thread: EmailThread,
     nowEpochMs: Long,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     /** Toggle read state. Null leaves the dot as an indicator only. */
     onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
     /** Toggle the star. Null hides it. */
@@ -361,7 +453,7 @@ private fun ThreadRow(
     // card says where one message ends and the next begins without a hairline
     // that disappears at arm's length, and it gives the tap a shape.
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(Radii.lg)
             .background(if (thread.unread) colors.bgSurface2 else colors.bgSurface)
@@ -490,6 +582,11 @@ internal fun ThreadReader(
     onDownload: ((EmailAttachment) -> Unit)? = null,
     /** Which attachment is being fetched, so two do not start at once. */
     downloadingId: String? = null,
+    /**
+     * True when this thread is being read somewhere other than the inbox, so the
+     * action worth offering is putting it back rather than taking it away.
+     */
+    canRestore: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -514,7 +611,18 @@ internal fun ThreadReader(
                     // the computer, never deleted, and a bin beside an archive box
                     // would be two buttons that look alike and differ in whether
                     // anything can be undone.
-                    HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
+                    // Archiving something already out of the inbox does nothing,
+                    // and the thing that is wanted there is the opposite act. So
+                    // the same position carries whichever of the two is
+                    // available, rather than a fourth icon on a phone header or
+                    // a button that quietly no-ops.
+                    if (canRestore) {
+                        HeaderAction(AnodexIcon.INBOX, "Move to inbox") {
+                            onFlag(MailFlag.UNARCHIVE)
+                        }
+                    } else {
+                        HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
+                    }
                     HeaderAction(AnodexIcon.MAIL, "Mark unread") { onFlag(MailFlag.UNREAD) }
                     // Delete last, furthest from the two that are undone by
                     // pressing them again. It asks once: the message is

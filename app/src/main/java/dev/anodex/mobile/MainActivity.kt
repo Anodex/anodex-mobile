@@ -742,6 +742,7 @@ private fun ConnectedScaffold(
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val archiveNotice by viewModel.archiveNotice.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val archivedMail by viewModel.archivedFromList.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
 
     val waitingAgents = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW }
@@ -1588,6 +1589,19 @@ private fun ConnectedScaffold(
             UndoBar(
                 text = text,
                 onDismiss = viewModel::dismissNotice,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
+        // A message swiped out of the inbox, with the six seconds it takes to
+        // notice it was the wrong one. Archiving is set up so this is a real
+        // undo rather than an apology: `unarchive` puts it back where it was.
+        archivedMail?.let { thread ->
+            UndoBar(
+                text = "Archived “${thread.subject}”.",
+                actionLabel = "Undo",
+                onAction = viewModel::undoArchiveFromList,
+                onDismiss = viewModel::dismissArchivedFromList,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
