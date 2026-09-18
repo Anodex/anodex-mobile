@@ -2191,7 +2191,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                         is SavedAttachment.ToAppFolder -> "Saved to ${where.path}."
                     }
                 }
-                .onFailure { _emailError.value = it.message ?: "That attachment would not download." }
+                // The same strip the success uses, because the reader has no
+                // error surface of its own and this is about a tap that just
+                // happened. Put on `emailError` it went to the inbox, behind the
+                // message being read, and a failed download was indistinguishable
+                // from a tap that did not register.
+                .onFailure { _notice.value = it.message ?: "That attachment would not download." }
             _downloading.value = null
         }
     }

@@ -372,8 +372,12 @@ class Email(private val socket: AnodexSocket) {
             put("offset", JsonPrimitive(offset))
             accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
         }
+        // A refusal here is not "no bytes". An older desktop has no such channel
+        // at all, and that answer -- "this version of Anodex has no
+        // email:get-attachment-chunk" -- is the whole explanation, thrown away
+        // by a null. Saving an attachment then did nothing, visibly.
         val value = socket.invoke(CHANNEL_ATTACHMENT, listOf(request), timeout = 120.seconds)
-            .unwrap() as? JsonObject ?: return null
+            .unwrapOrThrow("read that attachment") as? JsonObject ?: return null
 
         return AttachmentChunk(
             filename = value["filename"]?.jsonPrimitive?.contentOrNull().orEmpty(),
