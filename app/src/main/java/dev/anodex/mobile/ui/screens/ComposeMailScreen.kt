@@ -216,18 +216,31 @@ fun ComposeMailScreen(
 
             // Two taps, like Forget on a memory, and for a stronger reason: a
             // memory can be written again and a sent message cannot be recalled.
-            PrimaryButton(
-                label = when {
-                    sending -> "Sending…"
-                    confirming -> "Tap again to send"
-                    else -> "Send"
-                },
-                onClick = {
-                    if (!ready || sending) return@PrimaryButton
-                    if (confirming) onSend(compose(to, cc, subject, body, draft)) else confirming = true
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            val sendLabel = when {
+                sending -> "Sending…"
+                confirming -> "Tap again to send"
+                else -> "Send"
+            }
+
+            // The quiet button until there is something to send. These have no
+            // enabled state, and a full-strength gradient that does nothing on tap
+            // tells you the opposite of the truth -- the line beneath says what is
+            // missing, and this stops the button arguing with it.
+            if (ready && !sending) {
+                PrimaryButton(
+                    label = sendLabel,
+                    onClick = {
+                        if (confirming) onSend(compose(to, cc, subject, body, draft)) else confirming = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                SecondaryButton(
+                    label = sendLabel,
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             // Said rather than shown by a greyed button. A button that looks
             // disabled tells you it will not work; this tells you what to do about
