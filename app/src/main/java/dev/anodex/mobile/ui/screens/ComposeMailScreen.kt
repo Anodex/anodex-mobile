@@ -13,6 +13,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import dev.anodex.mobile.ui.theme.Radii
+import dev.anodex.mobile.ui.theme.Touch
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,6 +110,19 @@ fun ComposeMailScreen(
 
     var confirming by rememberSaveable { mutableStateOf(false) }
 
+    // Leaving asks too, once there is anything to lose.
+    //
+    // Send takes two taps because it cannot be undone. Cancel could not be undone
+    // either and took one -- a mistap on a narrow header, or a back gesture from
+    // the edge of the screen, and a written message was gone with nothing to
+    // recover it from. The asymmetry was the bug: the same loss guarded on one
+    // side of the screen and not the other.
+    var leaving by rememberSaveable { mutableStateOf(false) }
+    val written = to.isNotBlank() || subject.isNotBlank() || body.isNotBlank()
+
+    // The back gesture is the same act as Cancel and gets the same question.
+    BackHandler(enabled = written && !leaving) { leaving = true }
+
     // The computer requires all three. `validateDraftRequest` on the desktop
     // rejects an empty subject outright, so letting Send be pressed without one
     // would mean the phone offering an action the computer then refuses -- an
@@ -112,7 +133,12 @@ fun ComposeMailScreen(
         title = draft.kind,
         subtitle = draft.inReplyTo?.let { "to ${senderName(it.from)}" },
         modifier = modifier,
-        leading = { SecondaryButton(label = "Cancel", onClick = onClose) },
+        leading = {
+            SecondaryButton(
+                label = if (leaving) "Discard it?" else "Cancel",
+                onClick = { if (!written || leaving) onClose() else leaving = true },
+            )
+        },
     ) { topInset ->
         Column(
             modifier = Modifier
@@ -127,6 +153,34 @@ fun ComposeMailScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.x3),
         ) {
             if (error != null) InlineProblem(text = error)
+
+            // Said in the body rather than only on the button, because the button
+            // is in the corner and the thing at risk is the paragraph below it.
+            if (leaving) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Tap Discard again to throw this message away.",
+                        style = type.meta,
+                        color = colors.dangerInk,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "Keep writing",
+                        style = type.label,
+                        color = colors.accentInk,
+                        modifier = Modifier
+                            .heightIn(min = Touch.minTarget)
+                            .wrapContentHeight(Alignment.CenterVertically)
+                            .clip(Radii.md)
+                            .clickable { leaving = false }
+                            .padding(horizontal = Spacing.x2),
+                    )
+                }
+            }
 
             AnodexTextField(
                 value = to,
