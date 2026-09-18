@@ -2085,6 +2085,67 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * The thread a swipe just archived, for as long as it can be put back.
+     *
+     * Held rather than merely announced: archiving from a list is the one action
+     * here that a finger can start by accident, and "Archived." with no way back
+     * is a message that tells you what you lost. `unarchive` is the same call in
+     * reverse, so the undo is real rather than a second guess at where the
+     * message went.
+     */
+    private val _archivedFromList = MutableStateFlow<EmailThread?>(null)
+    val archivedFromList: StateFlow<EmailThread?> = _archivedFromList.asStateFlow()
+
+    /**
+     * Archive a thread from the list.
+     *
+     * The row goes immediately and comes back if the computer refuses, which is
+     * the same optimistic shape the dot and the star use. A swipe that waits for
+     * a round trip before the row moves does not read as a swipe.
+     */
+    fun archiveThreadFromList(thread: EmailThread) {
+        val client = emailClient ?: return
+        val before = _emailThreads.value
+        _emailThreads.value = before.filterNot { it.id == thread.id }
+        _notice.value = null
+
+        viewModelScope.launch {
+            val accountId = thread.accountId.takeIf { it.isNotBlank() }
+            runCatching { client.flag(thread.id, MailFlag.ARCHIVE, accountId) }
+                .onSuccess { ok ->
+                    if (ok) _archivedFromList.value = thread
+                    else restoreThreads(before, "Your computer would not archive that.")
+                }
+                .onFailure {
+                    restoreThreads(before, it.message ?: "Your computer would not archive that.")
+                }
+        }
+    }
+
+    /** Put the last swiped-away thread back where it was. */
+    fun undoArchiveFromList() {
+        val thread = _archivedFromList.value ?: return
+        val client = emailClient ?: return
+        _archivedFromList.value = null
+
+        viewModelScope.launch {
+            val accountId = thread.accountId.takeIf { it.isNotBlank() }
+            runCatching { client.flag(thread.id, MailFlag.UNARCHIVE, accountId) }
+                .onSuccess { ok ->
+                    // Re-read rather than re-inserted: where a restored message
+                    // belongs in the list is the mailbox's answer, not this
+                    // phone's.
+                    if (ok) refreshEmail() else _emailError.value = "That could not be put back."
+                }
+                .onFailure { _emailError.value = it.message ?: "That could not be put back." }
+        }
+    }
+
+    fun dismissArchivedFromList() {
+        _archivedFromList.value = null
+    }
+
+    /**
      * Star or archive the thread being read.
      *
      * The list is re-read rather than edited: archiving removes a row entirely and
