@@ -137,6 +137,8 @@ fun ChatScreen(
     onDeny: () -> Unit = {},
     /** Opens a file a tool touched. Null in previews and where there is no socket. */
     onOpenFile: ((String) -> Unit)? = null,
+    /** Open a cited page, after the reader has seen where it goes. */
+    onOpenSource: ((String) -> Unit)? = null,
     /** Show what a turn changed inside one file: (reply id, path). */
     onShowDiff: ((String, String) -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
@@ -533,6 +535,7 @@ fun ChatScreen(
                         MessageRow(
                             message = if (runInstruction) message.copy(text = runGoal!!) else message,
                             onOpenFile = onOpenFile,
+                            onOpenSource = onOpenSource,
                             onShowDiff = onShowDiff,
                             onRetry = onRetryMessage,
                             onContinue = onContinue?.takeIf {
@@ -698,6 +701,8 @@ fun ChatScreen(
 private fun MessageRow(
     message: ChatMessage,
     onOpenFile: ((String) -> Unit)? = null,
+    /** Open a cited page, after the reader has seen where it goes. */
+    onOpenSource: ((String) -> Unit)? = null,
     /** Show what a turn changed inside one file: (reply id, path). */
     onShowDiff: ((String, String) -> Unit)? = null,
     onRetry: ((String) -> Unit)? = null,
@@ -985,7 +990,14 @@ private fun MessageRow(
                     // about code, so a reply is mostly fenced blocks and inline
                     // code — as plain text that is backticks and asterisks, with
                     // shell commands run together into a paragraph.
-                    MarkdownText(message.text, modifier = Modifier.arrival(watchedItFill))
+                    // Citations become links before the markdown is parsed, so a
+                    // marker is drawn and opened by the path that already handles
+                    // every other link -- including its refusal of any scheme but
+                    // http, https and mailto.
+                    MarkdownText(
+                        linkCitations(message.text, message.webSources),
+                        modifier = Modifier.arrival(watchedItFill),
+                    )
                 }
 
                 // The turn is still going and nothing else on screen is saying so.
@@ -1029,9 +1041,19 @@ private fun MessageRow(
                     ChangedFiles(
                         files = message.changedFiles,
                         onOpenFile = onOpenFile,
+                        onOpenSource = onOpenSource,
                         onShowDiff = onShowDiff?.let { show -> { path -> show(message.id, path) } },
                     )
                 }
+
+                // What the answer stood on. Under the words and above the actions,
+                // which is where a footnote goes.
+                MessageSources(
+                    sources = message.webSources,
+                    attempted = message.webSearchAttempted,
+                    streaming = message.streaming,
+                    onOpen = { source -> onOpenSource?.invoke(source.url) },
+                )
 
                 if (!message.streaming && message.text.isNotEmpty()) {
                     if (onContinue != null) StoppedPartway(enabled = actionsEnabled, onContinue = onContinue)
@@ -1588,6 +1610,7 @@ private suspend fun LazyListState.showEndOf(index: Int, smooth: Boolean = true) 
 private fun ChangedFiles(
     files: List<ChangedFile>,
     onOpenFile: ((String) -> Unit)?,
+    onOpenSource: ((String) -> Unit)?,
     onShowDiff: ((String) -> Unit)?,
 ) {
     val colors = AnodexTheme.colors

@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
@@ -1809,6 +1810,8 @@ private fun ChatPane(
         return
     }
 
+    val sourceUriHandler = LocalUriHandler.current
+
     if (chat == null) {
         // Reconnecting: the host bar already says so, and replacing the transcript
         // with a spinner would throw away what the user was reading over a
@@ -1868,6 +1871,12 @@ private fun ChatPane(
         },
     ) {
         ChatScreen(
+            // The same handler every other link in a reply already uses, so a
+            // citation tapped in the text and the same citation tapped in the list
+            // beneath it do the same thing. Mail keeps its confirmation, because a
+            // link in somebody else's message is a different proposition from a
+            // page the model found in a search this reader asked for.
+            onOpenSource = { url -> sourceUriHandler.openUri(url) },
             // Only when the connection is what took the screen away. Leaving a chat on
             // purpose mid-turn is not a reason to send what was left in the box later.
             onDraftStranded = { text -> if (viewModel.chatIsGone()) viewModel.queueWhileOffline(text) },
