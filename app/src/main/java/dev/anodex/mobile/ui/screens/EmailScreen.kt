@@ -50,6 +50,7 @@ import dev.anodex.mobile.ui.components.EmptyTone
 import dev.anodex.mobile.ui.components.InlineProblem
 import dev.anodex.mobile.ui.components.ListSkeleton
 import dev.anodex.mobile.ui.components.ScreenScaffold
+import dev.anodex.mobile.ui.components.SearchField
 import dev.anodex.mobile.ui.components.fadingEdges
 import dev.anodex.mobile.ui.components.listPadding
 import dev.anodex.mobile.ui.theme.AnodexTheme
@@ -93,6 +94,9 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val mailSending by viewModel.mailSending.collectAsStateWithLifecycle()
     val mailError by viewModel.mailError.collectAsStateWithLifecycle()
     val shownImages by viewModel.shownImages.collectAsStateWithLifecycle()
+    val mailQuery by viewModel.mailQuery.collectAsStateWithLifecycle()
+    val mailResults by viewModel.mailResults.collectAsStateWithLifecycle()
+    val mailSearching by viewModel.mailSearching.collectAsStateWithLifecycle()
 
     // Above the reader, so Back out of a half-written reply lands on the message it
     // answers rather than on the inbox.
@@ -153,7 +157,13 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     }
 
     InboxList(
-        threads = threads,
+        threads = mailResults ?: threads,
+        searching = mailSearching,
+        // Null means the inbox is showing, which is a different sentence from a
+        // search that matched nothing.
+        isResults = mailResults != null,
+        query = mailQuery,
+        onQueryChange = viewModel::searchMail,
         loading = loading,
         configured = configured,
         error = emailError,
@@ -181,13 +191,29 @@ private fun InboxList(
     onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
     /** Star a thread from the list. */
     onSetStarred: ((EmailThread, Boolean) -> Unit)? = null,
+    /** What is being searched for, and how to change it. Null hides the field. */
+    query: String = "",
+    onQueryChange: ((String) -> Unit)? = null,
+    searching: Boolean = false,
+    /** True when the list is search results rather than the inbox. */
+    isResults: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     ScreenScaffold(
-        title = "Inbox",
+        title = if (isResults) "Search" else "Inbox",
         modifier = modifier,
+        beneath = if (onQueryChange == null) null else {
+            {
+                SearchField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    placeholder = "Search mail",
+                    modifier = Modifier.padding(top = Spacing.x2),
+                )
+            }
+        },
         // In the header rather than as a button floating over the list. The inbox
         // is read far more often than it is written to, and a control covering the
         // newest row sits on top of what people opened this for.
@@ -208,10 +234,21 @@ private fun InboxList(
                 modifier = emptyModifier,
             )
 
-            loading && threads.isEmpty() -> ListSkeleton(
+            // A search that matched nothing is not an empty mailbox, and it is
+            // certainly not a missing account -- which is what the branches below
+            // would otherwise say to somebody who mistyped a word. First, so it
+            // wins over all of them.
+            isResults && threads.isEmpty() && !searching -> EmptyState(
+                headline = "Nothing matched",
+                detail = "No message in this mailbox contains “$query”.",
+                icon = AnodexIcon.SEARCH,
+                modifier = emptyModifier,
+            )
+
+            (loading || searching) && threads.isEmpty() -> ListSkeleton(
                 rows = 5,
                 lines = 2,
-                caption = "Reading your mail…",
+                caption = if (searching) "Searching…" else "Reading your mail…",
                 modifier = Modifier.padding(listPadding(topInset)),
             )
 

@@ -1800,6 +1800,68 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private val _mailQuery = MutableStateFlow("")
+
+    /** What is being searched for, or empty for the plain inbox. */
+    val mailQuery: StateFlow<String> = _mailQuery.asStateFlow()
+
+    private val _mailResults = MutableStateFlow<List<EmailThread>?>(null)
+
+    /**
+     * What the search found, or null when nothing is being searched.
+     *
+     * Null and empty are different answers and the screen says different things
+     * about them: null is "showing your inbox", empty is "nothing matched". A
+     * single list with a flag beside it collapses those into one, and the empty
+     * inbox message ends up in front of somebody whose search simply missed.
+     */
+    val mailResults: StateFlow<List<EmailThread>?> = _mailResults.asStateFlow()
+
+    private val _mailSearching = MutableStateFlow(false)
+    val mailSearching: StateFlow<Boolean> = _mailSearching.asStateFlow()
+
+    private var mailSearchJob: Job? = null
+
+    /**
+     * Search the mailbox, a moment after typing stops.
+     *
+     * Debounced because every keystroke would otherwise be a round trip to the
+     * computer and a request to somebody's mail provider. Three hundred
+     * milliseconds is long enough that a typed word is one search and short
+     * enough that the results feel like they belong to the typing.
+     *
+     * The previous search is cancelled rather than left running: results that
+     * arrive after a newer query would overwrite it with an older answer, which
+     * is the bug where a list flickers back to what you searched for before.
+     */
+    fun searchMail(query: String) {
+        _mailQuery.value = query
+        mailSearchJob?.cancel()
+
+        if (query.isBlank()) {
+            _mailResults.value = null
+            _mailSearching.value = false
+            return
+        }
+
+        _mailSearching.value = true
+        mailSearchJob = viewModelScope.launch {
+            delay(MAIL_SEARCH_DELAY_MS)
+            val client = emailClient
+            if (client == null) {
+                _mailSearching.value = false
+                return@launch
+            }
+            runCatching { client.search(query) }
+                .onSuccess { _mailResults.value = it }
+                .onFailure {
+                    _mailResults.value = emptyList()
+                    _emailError.value = it.message ?: "That search did not work."
+                }
+            _mailSearching.value = false
+        }
+    }
+
     fun openEmailThread(thread: EmailThread) {
         val client = emailClient ?: return
         _openThreadSummary = thread
@@ -3967,3 +4029,6 @@ internal fun widgetConnectionFor(state: ConnectionState): WidgetConnection = whe
     is ConnectionState.Reconnecting -> WidgetConnection.RECONNECTING
     is ConnectionState.Offline, ConnectionState.Unpaired -> WidgetConnection.OFFLINE
 }
+
+/** Long enough that a typed word is one search, short enough to feel immediate. */
+private const val MAIL_SEARCH_DELAY_MS = 300L

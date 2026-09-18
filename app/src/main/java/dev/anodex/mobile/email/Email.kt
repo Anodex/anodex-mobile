@@ -84,6 +84,31 @@ data class EmailNote(
  */
 class Email(private val socket: AnodexSocket) {
 
+    /**
+     * Search the mailbox.
+     *
+     * The same shape as [threads] on purpose: the computer answers a search with
+     * thread summaries, so the list that draws an inbox draws results without
+     * knowing which it is showing.
+     *
+     * Works on every account type. `email:search` is `listThreads` with a query
+     * on the far side, and all three providers -- Gmail, Microsoft and plain
+     * IMAP -- implement that one method. Nothing here is written against a
+     * provider's own search syntax, which is what would have made this work on
+     * one account and quietly return nothing on another.
+     */
+    suspend fun search(query: String, limit: Int = 50): List<EmailThread> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return emptyList()
+
+        val request = buildJsonObject {
+            put("query", JsonPrimitive(trimmed))
+            put("limit", JsonPrimitive(limit))
+        }
+        val value = socket.invoke(CHANNEL_SEARCH, listOf(request)).unwrap() as? JsonArray
+        return value.orEmpty().mapNotNull { (it as? JsonObject)?.asThread() }
+    }
+
     /** The most recent threads in the inbox. Empty when email is not set up at all. */
     suspend fun threads(limit: Int = 50): List<EmailThread> {
         val request = buildJsonObject { put("limit", JsonPrimitive(limit)) }
@@ -273,6 +298,7 @@ class Email(private val socket: AnodexSocket) {
         const val CHANNEL_SEND = "email:send"
         const val CHANNEL_FLAG = "email:apply-flag"
         const val CHANNEL_TRASH = "email:trash"
+        const val CHANNEL_SEARCH = "email:search"
         const val CHANNEL_IMAGES = "email:load-remote-images"
         const val CHANNEL_THREADS = "email:list-threads"
         const val CHANNEL_MESSAGES = "email:get-thread-messages"
