@@ -235,6 +235,27 @@ class Email(private val socket: AnodexSocket) {
         return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
     }
 
+    /**
+     * Delete a thread, which means moving it to the account's trash.
+     *
+     * The computer works out which mailbox that is -- Gmail, Microsoft and a
+     * plain IMAP server all call it something different, and a phone carrying
+     * its own list of spellings would be a second list to get wrong. It refuses
+     * rather than guessing when an account has no trash, and says so.
+     *
+     * Recoverable from the desktop this phone is paired to, which is the whole
+     * reason a delete button is safe to put in a pocket. Nothing in this app
+     * expunges anything.
+     */
+    suspend fun trash(threadId: String, accountId: String? = null): Boolean {
+        val request = buildJsonObject {
+            put("threadId", JsonPrimitive(threadId))
+            accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
+        }
+        val answer = socket.invoke(CHANNEL_TRASH, listOf(request)) as? JsonObject ?: return false
+        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+    }
+
     /** Remote images for a message the reader has asked to see in full. */
     suspend fun loadRemoteImages(urls: List<String>): Map<String, String> {
         if (urls.isEmpty()) return emptyMap()
@@ -251,6 +272,7 @@ class Email(private val socket: AnodexSocket) {
     private companion object {
         const val CHANNEL_SEND = "email:send"
         const val CHANNEL_FLAG = "email:apply-flag"
+        const val CHANNEL_TRASH = "email:trash"
         const val CHANNEL_IMAGES = "email:load-remote-images"
         const val CHANNEL_THREADS = "email:list-threads"
         const val CHANNEL_MESSAGES = "email:get-thread-messages"

@@ -1983,6 +1983,32 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Delete the thread being read.
+     *
+     * Asks once, like sending does, and for the mirrored reason: this one is
+     * recoverable but only somewhere else, and "where did that message go" is a
+     * worse afternoon than one extra tap.
+     */
+    fun trashOpenThread() {
+        val client = emailClient ?: return
+        val thread = _openThreadSummary ?: return
+
+        viewModelScope.launch {
+            runCatching { client.trash(thread.id, thread.accountId.takeIf { it.isNotBlank() }) }
+                .onSuccess { ok ->
+                    if (!ok) {
+                        _emailError.value = "Your computer would not delete it."
+                        return@onSuccess
+                    }
+                    _notice.value = "Moved to trash."
+                    closeEmailThread()
+                    refreshEmail()
+                }
+                .onFailure { _emailError.value = it.message ?: "Your computer would not delete it." }
+        }
+    }
+
     /** Which thread the reader is showing, for actions that address the thread. */
     private var _openThreadSummary: EmailThread? = null
 

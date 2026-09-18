@@ -18,6 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -143,6 +146,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             onShowImages = viewModel::showRemoteImages,
             onLink = viewModel::openLink,
             onFlag = { action -> viewModel.flagOpenThread(action) },
+            onTrash = viewModel::trashOpenThread,
             modifier = modifier,
         )
         return
@@ -408,9 +412,15 @@ private fun ThreadReader(
     onLink: ((String) -> Unit)? = null,
     /** Mark, star or archive this thread. Null hides the row. */
     onFlag: ((MailFlag) -> Unit)? = null,
+    /** Move it to the computer's trash. Null hides the bin. */
+    onTrash: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+
+    // Armed per thread, so opening a different message does not inherit a
+    // half-pressed delete from the last one.
+    var confirmingTrash by remember(notes.firstOrNull()?.threadId) { mutableStateOf(false) }
 
     ScreenScaffold(
         // The chrome says what you can do; the subject has moved into the message
@@ -430,6 +440,19 @@ private fun ThreadReader(
                     // anything can be undone.
                     HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
                     HeaderAction(AnodexIcon.MAIL, "Mark unread") { onFlag(MailFlag.UNREAD) }
+                    // Delete last, furthest from the two that are undone by
+                    // pressing them again. It asks once: the message is
+                    // recoverable, but only from the trash on the computer, and
+                    // "where did that go" is a worse afternoon than one more tap.
+                    if (onTrash != null) {
+                        HeaderAction(
+                            icon = AnodexIcon.TRASH,
+                            label = if (confirmingTrash) "Tap again to delete" else "Delete",
+                            tint = if (confirmingTrash) colors.dangerInk else colors.textMuted,
+                        ) {
+                            if (confirmingTrash) onTrash() else confirmingTrash = true
+                        }
+                    }
                 }
             }
         },
@@ -675,7 +698,12 @@ private fun addressOf(from: String): String =
  * the screen.
  */
 @Composable
-private fun HeaderAction(icon: AnodexIcon, label: String, onClick: () -> Unit) {
+private fun HeaderAction(
+    icon: AnodexIcon,
+    label: String,
+    tint: Color = AnodexTheme.colors.textMuted,
+    onClick: () -> Unit,
+) {
     Box(
         modifier = Modifier
             .size(Touch.minTarget)
@@ -683,7 +711,7 @@ private fun HeaderAction(icon: AnodexIcon, label: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        AnodexIcon(icon, size = 20.dp, tint = AnodexTheme.colors.textMuted, contentDescription = label)
+        AnodexIcon(icon, size = 20.dp, tint = tint, contentDescription = label)
     }
 }
 
