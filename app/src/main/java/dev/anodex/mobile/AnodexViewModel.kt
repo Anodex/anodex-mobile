@@ -56,6 +56,7 @@ import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
+import dev.anodex.mobile.email.EmailDrafter
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
 import dev.anodex.mobile.memory.Memory
@@ -72,6 +73,8 @@ import dev.anodex.mobile.pairing.PairingPayload
 import dev.anodex.mobile.pairing.humanFingerprintOf
 import dev.anodex.mobile.profile.ProfileReader
 import dev.anodex.mobile.settings.AgentSettings
+import dev.anodex.mobile.ui.screens.MailDraft
+import dev.anodex.mobile.ui.screens.addressList
 import dev.anodex.mobile.settings.PermissionMode
 import dev.anodex.mobile.profile.UsageProfile
 import dev.anodex.mobile.profile.UserProfile
@@ -1768,6 +1771,172 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _openThread.value = null
     }
 
+    private val _shownImages = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+
+    /**
+     * Remote images the reader has asked to see, by message id then by original URL.
+     *
+     * Per message rather than per session. Agreeing to load one sender's pictures
+     * is not agreeing to load the next sender's, and a single flag would make it
+     * so -- quietly, on the message after the one somebody was looking at.
+     */
+    val shownImages: StateFlow<Map<String, Map<String, String>>> = _shownImages.asStateFlow()
+
+    /**
+     * Fetch the remote images in one message, because the reader asked.
+     *
+     * The computer fetches them, not the phone. That is not a convenience: the
+     * request reaches the sender's server from the machine that already holds the
+     * mailbox, so asking to see a picture does not also tell a stranger where the
+     * phone is.
+     */
+    fun showRemoteImages(note: EmailNote, urls: List<String>) {
+        val client = emailClient ?: return
+        if (urls.isEmpty()) return
+
+        viewModelScope.launch {
+            runCatching { client.loadRemoteImages(urls) }
+                .onSuccess { loaded ->
+                    _shownImages.value = _shownImages.value + (note.id to loaded)
+                }
+                .onFailure { _emailError.value = it.message ?: "Those images would not load." }
+        }
+    }
+
+    private val _pendingLink = MutableStateFlow<String?>(null)
+
+    /**
+     * A link tapped in a message, waiting to be looked at before it is followed.
+     *
+     * Never opened on the tap. What a link says and where it goes are different
+     * strings in an email more often than anywhere else, and this is the surface
+     * where that difference is the whole attack. The full URL is shown and the
+     * person decides.
+     */
+    val pendingLink: StateFlow<String?> = _pendingLink.asStateFlow()
+
+    fun openLink(url: String) {
+        _pendingLink.value = url
+    }
+
+    fun dismissLink() {
+        _pendingLink.value = null
+    }
+
+    /** The browser intent for a link the person has looked at and accepted. */
+    fun linkIntent(url: String): android.content.Intent =
+        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    private var drafter: EmailDrafter? = null
+
+    private val _mailDraft = MutableStateFlow<MailDraft?>(null)
+
+    /** The message being written, or null when nothing is. */
+    val mailDraft: StateFlow<MailDraft?> = _mailDraft.asStateFlow()
+
+    private val _mailSending = MutableStateFlow(false)
+    val mailSending: StateFlow<Boolean> = _mailSending.asStateFlow()
+
+    private val _mailDrafting = MutableStateFlow(false)
+    val mailDrafting: StateFlow<Boolean> = _mailDrafting.asStateFlow()
+
+    private val _mailDrafted = MutableStateFlow<String?>(null)
+
+    /** What Anodex wrote, waiting to be put in the body field. */
+    val mailDrafted: StateFlow<String?> = _mailDrafted.asStateFlow()
+
+    private val _mailError = MutableStateFlow<String?>(null)
+    val mailError: StateFlow<String?> = _mailError.asStateFlow()
+
+    /**
+     * Start writing one.
+     *
+     * The draft is held here rather than in the screen so that leaving the compose
+     * window and coming back does not lose it -- Android rebuilds the composable
+     * freely, and an email somebody has half written is exactly the thing not to
+     * throw away on a configuration change.
+     */
+    fun startMail(draft: MailDraft) {
+        _mailDrafted.value = null
+        _mailError.value = null
+        _mailDraft.value = draft
+    }
+
+    fun closeMail() {
+        _mailDraft.value = null
+        _mailDrafted.value = null
+        _mailError.value = null
+    }
+
+    /** Have Anodex write the body. What comes back is a draft, never a sent message. */
+    fun draftMail(draft: MailDraft, instruction: String) {
+        val client = drafter ?: return
+        _mailDrafting.value = true
+        _mailError.value = null
+        // Keep whatever is typed, so a failed draft does not also lose the fields.
+        _mailDraft.value = draft
+
+        viewModelScope.launch {
+            runCatching {
+                client.draft(
+                    instruction = instruction,
+                    replyingTo = draft.inReplyTo,
+                    to = addressList(draft.to),
+                    subject = draft.subject,
+                )
+            }
+                .onSuccess { written ->
+                    if (written == null) {
+                        _mailError.value = "Anodex did not write anything."
+                    } else {
+                        _mailDrafted.value = written
+                    }
+                }
+                .onFailure { _mailError.value = it.message ?: "Anodex could not write that." }
+            _mailDrafting.value = false
+        }
+    }
+
+    /**
+     * Send it.
+     *
+     * The compose window stays open until the computer says it went. A screen that
+     * closes on tap and fails afterwards loses the message and tells somebody it
+     * was sent, which is the worst of the three outcomes available here.
+     */
+    fun sendMail(draft: MailDraft) {
+        val client = emailClient ?: return
+        _mailSending.value = true
+        _mailError.value = null
+
+        viewModelScope.launch {
+            runCatching {
+                client.send(
+                    to = addressList(draft.to),
+                    subject = draft.subject,
+                    body = draft.body,
+                    cc = addressList(draft.cc),
+                    inReplyTo = draft.inReplyTo?.id,
+                    threadId = draft.threadId,
+                )
+            }
+                .onSuccess { sent ->
+                    if (sent) {
+                        _mailDraft.value = null
+                        _mailDrafted.value = null
+                        _notice.value = "Sent."
+                        // The thread it joined now has one more message in it.
+                        refreshEmail()
+                    } else {
+                        _mailError.value = "Your computer would not send it."
+                    }
+                }
+                .onFailure { _mailError.value = it.message ?: "Your computer would not send it." }
+            _mailSending.value = false
+        }
+    }
+
     private val _agentsError = MutableStateFlow<String?>(null)
 
     /** Why a run could not be started, or the list could not be read. */
@@ -2393,6 +2562,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 projectClient = Projects(candidate)
                 agentClient = Agents(candidate)
                 emailClient = Email(candidate)
+                drafter = EmailDrafter(candidate)
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
                 uploads = Uploads(candidate, getApplication<Application>().contentResolver)

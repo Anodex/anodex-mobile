@@ -33,6 +33,9 @@ import dev.anodex.mobile.AnodexViewModel
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.EmailThread
+import androidx.compose.ui.platform.LocalContext
+import dev.anodex.mobile.ui.components.ConfirmDialog
+import dev.anodex.mobile.ui.components.PrimaryButton
 import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.EmptyState
@@ -75,12 +78,64 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         if (connected is ConnectionState.Connected) viewModel.refreshEmail()
     }
 
+    val draft by viewModel.mailDraft.collectAsStateWithLifecycle()
+    val drafting by viewModel.mailDrafting.collectAsStateWithLifecycle()
+    val drafted by viewModel.mailDrafted.collectAsStateWithLifecycle()
+    val mailSending by viewModel.mailSending.collectAsStateWithLifecycle()
+    val mailError by viewModel.mailError.collectAsStateWithLifecycle()
+    val shownImages by viewModel.shownImages.collectAsStateWithLifecycle()
+
+    // Above the reader, so Back out of a half-written reply lands on the message it
+    // answers rather than on the inbox.
+    draft?.let { open ->
+        BackHandler { viewModel.closeMail() }
+        ComposeMailScreen(
+            draft = open,
+            onClose = viewModel::closeMail,
+            onSend = viewModel::sendMail,
+            onAskAnodex = viewModel::draftMail,
+            drafting = drafting,
+            drafted = drafted,
+            sending = mailSending,
+            error = mailError,
+            modifier = modifier,
+        )
+        return
+    }
+
+    // Shown over whatever is beneath, because a link tapped in a message is a
+    // question that has to be answered before anything else happens.
+    val pendingLink by viewModel.pendingLink.collectAsStateWithLifecycle()
+    val linkContext = LocalContext.current
+    pendingLink?.let { url ->
+        ConfirmDialog(
+            title = "Open this link?",
+            // The whole URL, not the text that was tapped. In mail those are
+            // different strings more often than anywhere else, and the gap between
+            // them is the entire trick.
+            body = url,
+            confirmLabel = "Open in browser",
+            onConfirm = {
+                viewModel.dismissLink()
+                linkContext.startActivity(viewModel.linkIntent(url))
+            },
+            onDismiss = viewModel::dismissLink,
+        )
+    }
+
     if (openThread != null) {
         BackHandler { viewModel.closeEmailThread() }
         ThreadReader(
             notes = openThread.orEmpty(),
             loading = threadLoading,
             onClose = viewModel::closeEmailThread,
+            onReply = { note, all ->
+                viewModel.startMail(replyDraft(note, all))
+            },
+            onForward = { note -> viewModel.startMail(forwardDraft(note)) },
+            shownImages = shownImages,
+            onShowImages = viewModel::showRemoteImages,
+            onLink = viewModel::openLink,
             modifier = modifier,
         )
         return
@@ -92,6 +147,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         configured = configured,
         error = emailError,
         onOpen = viewModel::openEmailThread,
+        onCompose = { viewModel.startMail(MailDraft()) },
         modifier = modifier,
     )
 }
@@ -106,11 +162,20 @@ private fun InboxList(
     onOpen: (EmailThread) -> Unit,
     modifier: Modifier = Modifier,
     nowEpochMs: Long = System.currentTimeMillis(),
+    /** Start a new message. Null leaves the inbox read-only, as it was. */
+    onCompose: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
-    ScreenScaffold(title = "Inbox", modifier = modifier) { topInset ->
+    ScreenScaffold(
+        title = "Inbox",
+        modifier = modifier,
+        // In the header rather than as a button floating over the list. The inbox
+        // is read far more often than it is written to, and a control covering the
+        // newest row sits on top of what people opened this for.
+        trailing = onCompose?.let { { SecondaryButton(label = "Write", onClick = it) } },
+    ) { topInset ->
         val emptyModifier = Modifier.padding(top = topInset)
 
         when {
@@ -255,6 +320,13 @@ private fun ThreadReader(
     loading: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Answer it. The boolean is reply-all. */
+    onReply: ((EmailNote, Boolean) -> Unit)? = null,
+    onForward: ((EmailNote) -> Unit)? = null,
+    /** Remote images the reader has asked for, by message id then by original URL. */
+    shownImages: Map<String, Map<String, String>> = emptyMap(),
+    onShowImages: ((EmailNote, List<String>) -> Unit)? = null,
+    onLink: ((String) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -314,12 +386,121 @@ private fun ThreadReader(
                             color = colors.textFaint,
                         )
                     }
-                    Text(text = note.body, style = type.body, color = colors.textMuted)
+                    // The message as written, when the desktop sent one. `body` is
+                    // the plain-text fallback and is what a message with no HTML
+                    // part has always been.
+                    val html = note.bodyHtml
+                    if (html != null) {
+                        val held = remoteImageCount(html)
+                        val shown = shownImages[note.id].orEmpty()
+
+                        MailBody(
+                            html = html,
+                            images = shown,
+                            onLink = onLink,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        // Offered, never automatic. Fetching a remote image is how a
+                        // sender learns the message was opened, when it was, and
+                        // roughly from where -- so it is the reader's call, and the
+                        // count is shown because "3 images" and "60 images" are
+                        // different decisions.
+                        if (held > 0 && shown.isEmpty() && onShowImages != null) {
+                            SecondaryButton(
+                                label = if (held == 1) "Show 1 image" else "Show $held images",
+                                onClick = { onShowImages(note, remoteImageUrls(html)) },
+                            )
+                            Text(
+                                text = "Loading them tells the sender you opened this.",
+                                style = type.meta,
+                                color = colors.textFaint,
+                            )
+                        }
+                    } else {
+                        Text(text = note.body, style = type.body, color = colors.textMuted)
+                    }
+                }
+            }
+
+            // Under the last message rather than floating over it. The actions
+            // belong to the thread you have just finished reading, and a button
+            // hovering above the text is one more thing covering the words.
+            val last = notes.lastOrNull()
+            if (last != null && (onReply != null || onForward != null)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                ) {
+                    if (onReply != null) {
+                        PrimaryButton(
+                            label = "Reply",
+                            onClick = { onReply(last, false) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        // Only where it means something. On a message with one
+                        // recipient, reply-all and reply are the same act under two
+                        // names, and offering both invites the wrong one.
+                        if (last.to.size + last.cc.size > 1) {
+                            SecondaryButton(
+                                label = "Reply all",
+                                onClick = { onReply(last, true) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    if (onForward != null) {
+                        SecondaryButton(
+                            label = "Forward",
+                            onClick = { onForward(last) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+/**
+ * A reply, with the threading headers and the right people on it.
+ *
+ * Reply-all keeps everyone the message was addressed to, minus the sender, who is
+ * already in To. Leaving them in puts somebody in both fields and some clients
+ * then deliver it twice.
+ */
+private fun replyDraft(note: EmailNote, all: Boolean): MailDraft =
+    MailDraft(
+        to = note.from,
+        cc = if (all) {
+            (note.to + note.cc).filterNot { it.contains(addressOf(note.from), ignoreCase = true) }
+                .joinToString(", ")
+        } else {
+            ""
+        },
+        subject = replySubject(note.subject),
+        inReplyTo = note,
+        // The message's own thread, read off the message. This briefly used the
+        // message id instead, which is a different identifier of the same shape --
+        // the far end would have filed every reply as a new conversation and
+        // nothing on this phone would have looked wrong.
+        threadId = note.threadId,
+        kind = if (all) "Reply all" else "Reply",
+    )
+
+private fun forwardDraft(note: EmailNote): MailDraft =
+    MailDraft(
+        subject = forwardSubject(note.subject),
+        body = forwardBody(note),
+        // No `inReplyTo`: a forward starts a new conversation with somebody who was
+        // not in the old one, and threading it onto the original would file it under
+        // a subject they have never seen.
+        kind = "Forward",
+    )
+
+/** The bare address out of `Ada Lovelace <ada@example.com>`. */
+private fun addressOf(from: String): String =
+    from.substringAfter('<').substringBefore('>').ifBlank { from }.trim()
 
 
 /**
