@@ -26,8 +26,11 @@ class CitationsTest {
     @Test
     fun `a marker becomes a numbered link to its page`() {
         val text = "Bednar and his staff will return [S1][S7]."
+        // A thin space between the two, so they do not read as one number. See
+        // `AdjacentCitationsTest` below -- without it this rendered as "13".
         assertEquals(
-            "Bednar and his staff will return [1](https://nhl.com/avs)[3](https://example.com/sakic).",
+            "Bednar and his staff will return [1](https://nhl.com/avs) " +
+                "[3](https://example.com/sakic).",
             linkCitations(text, sources),
         )
     }
@@ -126,5 +129,48 @@ class SyncKeepsSourcesTest {
             computer = message("same", emptyList()),
         )
         assertEquals(listOf(source), merged.webSources)
+    }
+}
+
+/**
+ * Two citations next to each other.
+ *
+ * `[S1][S7]` rewritten one marker at a time becomes `[1](u)[3](u)`, and markdown
+ * draws that as two links with nothing between them. On a phone it reads as a
+ * single source numbered **13** — which is not a source that exists, and is the
+ * kind of wrong that looks deliberate. Found by looking at it on a device.
+ */
+class AdjacentCitationsTest {
+
+    private val sources = listOf(
+        WebSource("S1", "one", "https://one.example", verified = true),
+        WebSource("S6", "two", "https://two.example", verified = true),
+        WebSource("S7", "three", "https://three.example", verified = true),
+    )
+
+    @Test
+    fun `adjacent markers are kept apart`() {
+        val out = linkCitations("will return [S1][S7].", sources)
+        // A thin space, not nothing. Rendered, "1 3" rather than "13".
+        assertEquals("will return [1](https://one.example)\u2009[3](https://three.example).", out)
+    }
+
+    @Test
+    fun `three in a row are all separated`() {
+        val out = linkCitations("[S1][S6][S7]", sources)
+        assertEquals(2, out.count { it == '\u2009' })
+    }
+
+    @Test
+    fun `a lone marker gets no separator`() {
+        assertEquals("[1](https://one.example)", linkCitations("[S1]", sources))
+    }
+
+    @Test
+    fun `an unknown marker in a run does not swallow its neighbours`() {
+        // The run is rewritten as a unit, so a marker with no source has to survive
+        // inside one without taking the others down with it.
+        val out = linkCitations("[S1][S9]", sources)
+        assertEquals("[1](https://one.example)\u2009[S9]", out)
     }
 }

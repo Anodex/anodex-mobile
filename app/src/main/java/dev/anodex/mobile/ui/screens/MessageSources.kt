@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
@@ -101,10 +102,14 @@ fun MessageSources(
             style = type.badge,
             color = colors.textFaint,
             modifier = Modifier
+                // A tap target the size of a finger, with the text centred in it.
+                // Left top-aligned the label sat at the top of a 48dp box and the
+                // list began well below it, which reads as a gap in the layout
+                // rather than as a control.
                 .heightIn(min = Touch.minTarget)
+                .wrapContentHeight(Alignment.CenterVertically)
                 .clip(Radii.sm)
-                .clickable { open = !open }
-                .padding(vertical = Spacing.x1),
+                .clickable { open = !open },
         )
 
         if (!open) return@Column

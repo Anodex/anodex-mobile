@@ -26,15 +26,32 @@ fun linkCitations(text: String, sources: List<WebSource>): String {
     val byId = HashMap<String, Pair<Int, WebSource>>(sources.size)
     sources.forEachIndexed { index, source -> byId[source.id] = (index + 1) to source }
 
-    return MARKER.replace(text) { match ->
-        val found = byId[match.groupValues[1]] ?: return@replace match.value
-        val (number, source) = found
-        // The url is escaped only where markdown would end the destination early.
-        // These come from a search provider rather than from the model, but a
-        // parenthesis in a real url is common enough to break this by accident.
-        "[$number](${source.url.replace(")", "%29")})"
+    // Whole runs of markers at once, so `[S1][S7]` can be kept apart.
+    //
+    // Rewritten one at a time they came out as `[1](u)[3](u)`, which markdown
+    // draws as two links with nothing between them: on screen that reads as a
+    // single source numbered **13**. Seen on a device, not reasoned about. The
+    // separator is a thin space -- enough of a gap to be two numbers, not enough
+    // to look like a gap in the sentence.
+    return RUN.replace(text) { run ->
+        val rendered = MARKER.findAll(run.value).map { marker ->
+            val found = byId[marker.groupValues[1]] ?: return@map marker.value
+            val (number, source) = found
+            // The url is escaped only where markdown would end the destination
+            // early. These come from a search provider rather than from the model,
+            // but a parenthesis in a real url is common enough to break this by
+            // accident.
+            "[$number](${source.url.replace(")", "%29")})"
+        }
+        rendered.joinToString(BETWEEN_MARKERS)
     }
 }
+
+/** A thin space: a gap wide enough to separate two numbers and no wider. */
+private const val BETWEEN_MARKERS = " "
+
+/** One or more markers with nothing between them. */
+private val RUN = Regex("""(?:\[S[1-9]\d*])+""")
 
 /**
  * `[S1]`, and nothing looser.
