@@ -1958,7 +1958,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     subject = draft.subject,
                     body = draft.body,
                     cc = addressList(draft.cc),
-                    inReplyTo = draft.inReplyTo?.id,
                     threadId = draft.threadId,
                 )
             }

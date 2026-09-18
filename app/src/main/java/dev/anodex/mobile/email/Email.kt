@@ -166,7 +166,6 @@ class Email(private val socket: AnodexSocket) {
         subject: String,
         body: String,
         cc: List<String> = emptyList(),
-        inReplyTo: String? = null,
         threadId: String? = null,
     ): Boolean {
         val request = buildJsonObject {
@@ -174,11 +173,17 @@ class Email(private val socket: AnodexSocket) {
             if (cc.isNotEmpty()) put("cc", JsonArray(cc.map(::JsonPrimitive)))
             put("subject", JsonPrimitive(subject))
             put("body", JsonPrimitive(body))
-            // Threading headers, when this is an answer rather than a new message.
-            // Without them a reply arrives as an unrelated message in the
-            // recipient's client, which is the difference between a conversation
-            // and a pile of mail.
-            inReplyTo?.let { put("inReplyTo", JsonPrimitive(it)) }
+            // The provider's thread, so a reply joins the conversation rather than
+            // starting a new one.
+            //
+            // `inReplyTo` is deliberately not sent. The desktop's field wants the
+            // RFC `Message-ID` header -- its own comment says "set by reply_email,
+            // not by hand" -- and `EmailMessage` does not carry one: `id` is the
+            // provider's own identifier, a Gmail API id or an IMAP uid depending
+            // on the account. Passing that would put a header on the wire claiming
+            // to reference a message id that does not exist, which is worse than
+            // omitting the header: a malformed reference breaks threading in
+            // clients that would otherwise fall back to the subject.
             threadId?.let { put("threadId", JsonPrimitive(it)) }
         }
 

@@ -102,7 +102,11 @@ fun ComposeMailScreen(
 
     var confirming by rememberSaveable { mutableStateOf(false) }
 
-    val ready = to.isNotBlank() && body.isNotBlank()
+    // The computer requires all three. `validateDraftRequest` on the desktop
+    // rejects an empty subject outright, so letting Send be pressed without one
+    // would mean the phone offering an action the computer then refuses -- an
+    // error message where a greyed button belonged.
+    val ready = to.isNotBlank() && subject.isNotBlank() && body.isNotBlank()
 
     ScreenScaffold(
         title = draft.kind,
@@ -247,10 +251,10 @@ fun ComposeMailScreen(
             // it, which on a form with three fields is the whole question.
             if (!ready) {
                 Text(
-                    text = if (to.isBlank()) {
-                        "Needs someone to send it to."
-                    } else {
-                        "Needs something to say."
+                    text = when {
+                        to.isBlank() -> "Needs someone to send it to."
+                        subject.isBlank() -> "Needs a subject."
+                        else -> "Needs something to say."
                     },
                     style = type.meta,
                     color = colors.textFaint,
