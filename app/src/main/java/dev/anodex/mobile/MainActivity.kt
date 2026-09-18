@@ -963,8 +963,16 @@ private fun ConnectedScaffold(
     }
 
     // Settings is where personalities are chosen, so the list is read fresh on the
-    // way in rather than trusted from whenever the connection came up.
-    LaunchedEffect(showingSettings) { if (showingSettings) viewModel.refreshPersonalities() }
+    // way in rather than trusted from whenever the connection came up. The
+    // permission mode is read on the same trip and for a stronger reason: it can
+    // be changed at the computer, and a phone showing a stale copy of this one is
+    // saying the computer will ask before running things when it may not.
+    LaunchedEffect(showingSettings) {
+        if (showingSettings) {
+            viewModel.refreshPersonalities()
+            viewModel.refreshPermissionMode()
+        }
+    }
 
     if (showingSettings) {
         val memories by viewModel.memories.collectAsStateWithLifecycle()
@@ -1020,7 +1028,14 @@ private fun ConnectedScaffold(
         var lastCrash by remember { mutableStateOf(CrashLog.lastRecorded(settingsContext)) }
 
         val pairedDevices by viewModel.pairedDevices.collectAsStateWithLifecycle()
+        val permissionMode by viewModel.permissionMode.collectAsStateWithLifecycle()
+        val permissionBusy by viewModel.permissionBusy.collectAsStateWithLifecycle()
         SettingsScreen(
+            permissionMode = permissionMode,
+            onRememberMemory = viewModel::rememberMemory,
+            onRewordMemory = viewModel::rewordMemory,
+            permissionBusy = permissionBusy,
+            onSetPermissionMode = viewModel::setPermissionMode,
             installedVersion = BuildConfig.VERSION_NAME,
             notificationAccess = notificationAccess,
             onOpenNotificationSettings = {

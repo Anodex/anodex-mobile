@@ -1,6 +1,7 @@
 package dev.anodex.mobile.memory
 
 import dev.anodex.mobile.transport.AnodexSocket
+import dev.anodex.mobile.transport.unwrap
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -30,16 +31,14 @@ data class MemoryEntry(
 /**
  * Reading what the computer remembers, and forgetting one line.
  *
- * Read and forget, and deliberately nothing else. The `memory:` prefix is denied
- * to remote callers because it sits with the configuration surfaces; these two are
- * carved out of it by name.
- *
- * The asymmetry is the point. A memory is injected into later prompts, so writing
- * one from a phone is a way to steer every future conversation from a device that
- * might be in somebody else's hand. Forgetting only ever narrows what the model is
- * told, and a memory that is *wrong* is exactly the thing worth being able to
- * remove from wherever you happen to be. One that is missing can wait until you
- * are at the machine.
+ * This used to say that "the `memory:` prefix is denied to remote callers" and
+ * that read and forget were carved out of it by name. That was wrong: nothing
+ * under `memory:` is refused, and `create` and `update` were simply never called
+ * from here. The reasoning that followed it — that writing a memory from a phone
+ * steers every later conversation from a device that might be in somebody else's
+ * hand — is an argument about whether the phone is trusted, and the desktop
+ * settled that one the other way: pairing is the trust boundary, and a paired
+ * phone may do what its owner can do at the machine.
  */
 class Memory(private val socket: AnodexSocket) {
 
@@ -70,15 +69,68 @@ class Memory(private val socket: AnodexSocket) {
 
     /** Forget one. The computer decides what that means on disk. */
     suspend fun forget(entry: MemoryEntry) {
-        val scope = buildJsonObject {
-            if (entry.projectId == null) {
-                put("type", "global")
-            } else {
-                put("type", "project")
-                put("projectId", entry.projectId)
-            }
+        socket.invoke(CHANNEL_DELETE, listOf(scopeOf(entry.projectId), JsonPrimitive(entry.id)))
+    }
+
+    /**
+     * Remember something new.
+     *
+     * `kind` is the desktop's ranking hint rather than a category anyone browses
+     * by: `identity` is retrieved ahead of everything but pinned entries, because
+     * "what is my name" shares no words with how the answer was phrased when it
+     * was saved. A memory typed on a phone is a `preference` unless it is said to
+     * be otherwise -- the ordinary case, and the one that ranks like the entries
+     * the model writes for itself.
+     */
+    suspend fun remember(
+        text: String,
+        projectId: String?,
+        kind: String = KIND_DEFAULT,
+    ): MemoryEntry? {
+        val request = buildJsonObject {
+            put("kind", kind)
+            put("text", text)
+            put("scope", scopeOf(projectId))
         }
-        socket.invoke(CHANNEL_DELETE, listOf(scope, JsonPrimitive(entry.id)))
+        return (socket.invoke(CHANNEL_CREATE, listOf(request)).unwrap() as? JsonObject)?.asEntry()
+    }
+
+    /**
+     * Correct one that is wrong.
+     *
+     * The whole reason the list is on the phone: a memory is injected into every
+     * later prompt, so a wrong one keeps being wrong quietly. Being able to read
+     * them was most of the value; being able to fix the wording without deleting
+     * and retyping is the rest.
+     */
+    suspend fun reword(entry: MemoryEntry, text: String): MemoryEntry? {
+        val patch = buildJsonObject { put("text", text) }
+        val args = listOf(scopeOf(entry.projectId), JsonPrimitive(entry.id), patch)
+        return (socket.invoke(CHANNEL_UPDATE, args).unwrap() as? JsonObject)?.asEntry()
+    }
+
+    /** Pin or unpin: pinned entries survive the storage cap and are retrieved first. */
+    suspend fun setPinned(entry: MemoryEntry, pinned: Boolean): MemoryEntry? {
+        val patch = buildJsonObject { put("pinned", pinned) }
+        val args = listOf(scopeOf(entry.projectId), JsonPrimitive(entry.id), patch)
+        return (socket.invoke(CHANNEL_UPDATE, args).unwrap() as? JsonObject)?.asEntry()
+    }
+
+    /**
+     * Global or one project's, in the shape every write takes.
+     *
+     * Written once because four calls need it and each got it slightly wrong on
+     * its own the last time this kind of thing was copied by hand -- a scope with
+     * `type: "project"` and no `projectId` is accepted by the wire and rejected by
+     * the store, which fails at the far end with nothing on screen to explain it.
+     */
+    private fun scopeOf(projectId: String?): JsonObject = buildJsonObject {
+        if (projectId == null) {
+            put("type", "global")
+        } else {
+            put("type", "project")
+            put("projectId", projectId)
+        }
     }
 
     private fun JsonObject.asEntry(): MemoryEntry? {
@@ -104,6 +156,19 @@ class Memory(private val socket: AnodexSocket) {
 
     private companion object {
         const val CHANNEL_LIST = "memory:list"
+        const val CHANNEL_CREATE = "memory:create"
+        const val CHANNEL_UPDATE = "memory:update"
+
+        /**
+         * What a memory typed by a person is, absent any other signal.
+         *
+         * `MemoryKind` in `memory.types.ts` is
+         * `identity | convention | gotcha | preference | open_task`. The phone does
+         * not ask, because the choice is a ranking hint rather than something the
+         * person is deciding, and a five-way picker in front of a one-line note is
+         * a worse screen than a sensible default.
+         */
+        const val KIND_DEFAULT = "preference"
         const val CHANNEL_DELETE = "memory:delete"
     }
 }

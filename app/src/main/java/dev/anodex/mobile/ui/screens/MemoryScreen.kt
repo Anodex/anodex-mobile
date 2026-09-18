@@ -31,6 +31,11 @@ import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.unit.dp
+import dev.anodex.mobile.ui.components.AnodexTextField
+import dev.anodex.mobile.ui.components.SecondaryButton
 
 /**
  * What Anodex remembers about you, and a way to take one back.
@@ -40,10 +45,10 @@ import dev.anodex.mobile.ui.theme.Touch
  * after it. Being able to read them from wherever you are is most of the value;
  * being able to remove one is the rest.
  *
- * Read and forget only. Writing a memory from a phone would be a way to steer
- * every future conversation from a device that might be in somebody else's hand,
- * so `memory:create` and `memory:update` stay denied to remote callers and there
- * is deliberately no control here that would call them.
+ * Write, correct and forget. The first two are new: this screen was read-only on
+ * the grounds that `memory:create` and `memory:update` "stay denied to remote
+ * callers", which was never the case — see `channelPolicy.ts`, where the only
+ * refusals are the connection settings, the terminal and critical thinking.
  *
  * Forgetting asks first. It is not undoable from this screen and the thing being
  * removed is a sentence somebody may not be able to reconstruct.
@@ -56,7 +61,12 @@ fun MemoryScreen(
     /** Why the list is empty, when the reason is not "nothing is remembered". */
     error: String? = null,
     onForget: ((MemoryEntry) -> Unit)? = null,
+    /** Write a new one. Null hides the control, for a screen with no connection. */
+    onRemember: ((String) -> Unit)? = null,
+    /** Correct the wording of one that is wrong. */
+    onReword: ((MemoryEntry, String) -> Unit)? = null,
 ) {
+    var writing by rememberSaveable { mutableStateOf(false) }
     // No title of its own, and no floating chrome. This is a section of Settings
     // rather than a destination — Settings already names it in the header above,
     // and a screen that titles itself inside something that has just titled it says
@@ -94,10 +104,27 @@ fun MemoryScreen(
                 icon = AnodexIcon.MEMORY,
             )
 
+            entries.isEmpty() && writing && onRemember != null -> Column(
+                Modifier.padding(horizontal = Spacing.x3),
+            ) {
+                RememberCard(
+                    open = true,
+                    onOpen = {},
+                    onCancel = { writing = false },
+                    onSave = { text ->
+                        onRemember(text)
+                        writing = false
+                    },
+                )
+            }
+
             entries.isEmpty() -> EmptyState(
                 headline = "Nothing remembered yet",
-                detail = "Anodex writes these as it learns them, at the computer.",
+                detail = "Anodex writes these as it learns them. You can add one yourself.",
                 icon = AnodexIcon.MEMORY,
+                action = onRemember?.let {
+                    { SecondaryButton(label = "Remember something", onClick = { writing = true }) }
+                },
             )
 
             else -> LazyColumn(
@@ -109,14 +136,28 @@ fun MemoryScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.x3),
             ) {
+                if (onRemember != null) {
+                    item(key = "compose") {
+                        RememberCard(
+                            open = writing,
+                            onOpen = { writing = true },
+                            onCancel = { writing = false },
+                            onSave = { text ->
+                                onRemember(text)
+                                writing = false
+                            },
+                        )
+                    }
+                }
+
                 items(entries, key = { it.id }) { entry ->
-                    EntryCard(entry, onForget)
+                    EntryCard(entry, onForget, onReword)
                 }
 
                 item(key = "footnote") {
                     Text(
-                        text = "New memories are written at the computer. From here you can " +
-                            "read them and take one back.",
+                        text = "Anodex writes most of these itself as it learns them. " +
+                            "Anything you add or correct here is remembered the same way.",
                         style = AnodexTheme.type.meta,
                         color = AnodexTheme.colors.textFaint,
                         modifier = Modifier.padding(Spacing.x2),
@@ -128,13 +169,76 @@ fun MemoryScreen(
 }
 
 @Composable
-private fun EntryCard(entry: MemoryEntry, onForget: ((MemoryEntry) -> Unit)?) {
+private fun EntryCard(
+    entry: MemoryEntry,
+    onForget: ((MemoryEntry) -> Unit)?,
+    onReword: ((MemoryEntry, String) -> Unit)? = null,
+) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     // Held per card rather than per screen: the question is about this line, and a
     // single shared flag would arm every row at once.
     var confirming by remember(entry.id) { mutableStateOf(false) }
+
+    // Keyed on the id so a list that reorders under an open editor does not carry
+    // one memory's half-typed correction onto another's card.
+    var editing by remember(entry.id) { mutableStateOf<String?>(null) }
+
+    val draft = editing
+    if (draft != null && onReword != null) {
+        AnodexCard {
+            AnodexTextField(
+                value = draft,
+                onValueChange = { editing = it },
+                placeholder = "What Anodex should remember instead",
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = provenance(entry),
+                    style = type.meta,
+                    color = colors.textFaint,
+                    modifier = Modifier.weight(1f),
+                )
+
+                Text(
+                    text = "Cancel",
+                    style = type.label,
+                    color = colors.textMuted,
+                    modifier = Modifier
+                        .heightIn(min = Touch.minTarget)
+                        .clip(Radii.md)
+                        .clickable { editing = null }
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+                )
+
+                // Unchanged text is not a save. Sending it anyway would bump the
+                // entry's `updatedAt` and move it in a list ordered by recency, so
+                // opening a memory to read it and closing it would reorder the page.
+                val ready = draft.isNotBlank() && draft.trim() != entry.text
+                Text(
+                    text = "Save",
+                    style = type.label,
+                    color = if (ready) colors.accentInk else colors.textFaint,
+                    modifier = Modifier
+                        .heightIn(min = Touch.minTarget)
+                        .clip(Radii.md)
+                        .clickable(enabled = ready) {
+                            onReword(entry, draft.trim())
+                            editing = null
+                        }
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+                )
+            }
+        }
+        return
+    }
 
     AnodexCard {
         Text(entry.text, style = type.body, color = colors.text)
@@ -153,6 +257,19 @@ private fun EntryCard(entry: MemoryEntry, onForget: ((MemoryEntry) -> Unit)?) {
                 modifier = Modifier.weight(1f),
             )
 
+            if (onReword != null && !confirming) {
+                Text(
+                    text = "Edit",
+                    style = type.label,
+                    color = colors.textMuted,
+                    modifier = Modifier
+                        .heightIn(min = Touch.minTarget)
+                        .clip(Radii.md)
+                        .clickable { editing = entry.text }
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+                )
+            }
+
             if (onForget != null) {
                 Text(
                     text = if (confirming) "Tap again to forget" else "Forget",
@@ -170,6 +287,108 @@ private fun EntryCard(entry: MemoryEntry, onForget: ((MemoryEntry) -> Unit)?) {
                         .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
                 )
             }
+        }
+    }
+}
+
+
+/**
+ * Writing one down.
+ *
+ * Closed to a single row until it is wanted. A text field standing open above a
+ * list is an invitation to type into the wrong thing, and this list is mostly
+ * read -- the model writes these itself as it learns them, and a person adding
+ * one is the exception rather than the shape of the screen.
+ *
+ * No kind picker. `MemoryKind` has five values and they are a retrieval ranking
+ * hint, not a decision anybody is making about their own sentence; asking would
+ * put a five-way choice in front of a one-line note. `Memory.KIND_DEFAULT`
+ * explains which one it settles on and why.
+ */
+@Composable
+private fun RememberCard(
+    open: Boolean,
+    onOpen: () -> Unit,
+    onCancel: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    if (!open) {
+        AnodexCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.minTarget)
+                    .clip(Radii.md)
+                    .clickable(onClick = onOpen),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+            ) {
+                AnodexIcon(AnodexIcon.PENCIL, size = 18.dp, tint = colors.accentInk)
+                Text("Remember something", style = type.body, color = colors.accentInk)
+            }
+        }
+        return
+    }
+
+    var text by rememberSaveable { mutableStateOf("") }
+
+    AnodexCard {
+        AnodexTextField(
+            value = text,
+            onValueChange = { text = it },
+            placeholder = "Something Anodex should know",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // The scope is stated rather than chosen. A memory written from here
+            // applies everywhere, which is the honest reading of somebody typing a
+            // sentence into a list they reached from Settings rather than from
+            // inside a project.
+            Text(
+                text = "Remembered everywhere",
+                style = type.meta,
+                color = colors.textFaint,
+                modifier = Modifier.weight(1f),
+            )
+
+            Text(
+                text = "Cancel",
+                style = type.label,
+                color = colors.textMuted,
+                modifier = Modifier
+                    .heightIn(min = Touch.minTarget)
+                    .clip(Radii.md)
+                    .clickable {
+                        text = ""
+                        onCancel()
+                    }
+                    .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+            )
+
+            val ready = text.isNotBlank()
+            Text(
+                text = "Remember",
+                style = type.label,
+                // Greyed rather than hidden: a button that vanishes while you are
+                // deciding whether to press it is worse than one that waits.
+                color = if (ready) colors.accentInk else colors.textFaint,
+                modifier = Modifier
+                    .heightIn(min = Touch.minTarget)
+                    .clip(Radii.md)
+                    .clickable(enabled = ready) {
+                        onSave(text.trim())
+                        text = ""
+                    }
+                    .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+            )
         }
     }
 }

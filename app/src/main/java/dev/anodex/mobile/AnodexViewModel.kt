@@ -71,6 +71,8 @@ import dev.anodex.mobile.pairing.PairedHostStore
 import dev.anodex.mobile.pairing.PairingPayload
 import dev.anodex.mobile.pairing.humanFingerprintOf
 import dev.anodex.mobile.profile.ProfileReader
+import dev.anodex.mobile.settings.AgentSettings
+import dev.anodex.mobile.settings.PermissionMode
 import dev.anodex.mobile.profile.UsageProfile
 import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.scheduler.ParsedWhen
@@ -665,6 +667,68 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * to forget sitting on screen while a round trip completes reads as the tap
      * having done nothing.
      */
+    /**
+     * Write a new memory from the phone.
+     *
+     * Global rather than scoped to the open project. Somebody typing a sentence
+     * into a list they reached from Settings is stating something about
+     * themselves, not about whichever project happens to be selected -- and a
+     * memory silently attached to a project is the kind of wrongness that is hard
+     * to see later, because the text reads the same either way.
+     *
+     * No optimistic row. The computer assigns the id and the timestamps, and a
+     * placeholder would have to be reconciled with the real entry a moment later
+     * or be left behind as a duplicate if the write failed.
+     */
+    fun rememberMemory(text: String) {
+        val client = memoryClient ?: return
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+
+        viewModelScope.launch {
+            runCatching { client.remember(trimmed, projectId = null) }
+                .onSuccess { entry ->
+                    if (entry == null) {
+                        _memoryError.value = "Your computer did not save that."
+                    } else {
+                        _memories.value = listOf(entry) + _memories.value
+                    }
+                }
+                .onFailure { _memoryError.value = it.message ?: "Your computer did not save that." }
+        }
+    }
+
+    /**
+     * Correct the wording of one that is wrong.
+     *
+     * Optimistic, unlike creating: the entry already exists and its id is known, so
+     * the row can show the new text immediately and be put back if the computer
+     * refuses. The same shape as `forgetMemory` below and for the same reason --
+     * a correction that appears not to have taken gets typed again.
+     */
+    fun rewordMemory(entry: MemoryEntry, text: String) {
+        val client = memoryClient ?: return
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || trimmed == entry.text) return
+
+        val before = _memories.value
+        _memories.value = before.map { if (it.id == entry.id) it.copy(text = trimmed) else it }
+
+        viewModelScope.launch {
+            runCatching { client.reword(entry, trimmed) }
+                .onSuccess { updated ->
+                    if (updated == null) {
+                        _memories.value = before
+                        _memoryError.value = "Your computer would not change it."
+                    }
+                }
+                .onFailure {
+                    _memories.value = before
+                    _memoryError.value = it.message ?: "Your computer would not change it."
+                }
+        }
+    }
+
     fun forgetMemory(entry: MemoryEntry) {
         val client = memoryClient ?: return
         val before = _memories.value
@@ -1010,6 +1074,54 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _personalityBusy = MutableStateFlow(false)
     val personalityBusy: StateFlow<Boolean> = _personalityBusy.asStateFlow()
+
+    private var agentSettings: AgentSettings? = null
+
+    private val _permissionMode = MutableStateFlow<PermissionMode?>(null)
+
+    /**
+     * How much the computer may do without asking.
+     *
+     * Null until it has answered, and null again if the read fails -- not "ask".
+     * A tick beside the safest option on a screen that could not reach the
+     * computer is the one wrong claim here somebody would act on without
+     * checking: it says "it will ask me" when it may not.
+     */
+    val permissionMode: StateFlow<PermissionMode?> = _permissionMode.asStateFlow()
+
+    private val _permissionBusy = MutableStateFlow(false)
+    val permissionBusy: StateFlow<Boolean> = _permissionBusy.asStateFlow()
+
+    /** Re-read the permission mode. Called whenever Settings opens, like the personalities. */
+    fun refreshPermissionMode() {
+        val client = agentSettings ?: return
+        viewModelScope.launch {
+            _permissionMode.value = runCatching { client.permissionMode() }.getOrNull()
+        }
+    }
+
+    /**
+     * Change what the computer may do on its own.
+     *
+     * Global, like the personality: it moves for whoever is at the computer too,
+     * which is why the footnote on the screen says so. What comes back is the
+     * computer's own answer rather than the requested value, so a rejected change
+     * leaves the phone showing what is really in force -- on this setting the
+     * difference between "it will ask" and "it will not" is the whole point.
+     */
+    fun setPermissionMode(mode: PermissionMode) {
+        val client = agentSettings ?: return
+        _permissionBusy.value = true
+
+        viewModelScope.launch {
+            runCatching { client.setPermissionMode(mode) }
+                .onSuccess { _permissionMode.value = it }
+                .onFailure {
+                    _notice.value = it.message ?: "Could not change what Anodex may do."
+                }
+            _permissionBusy.value = false
+        }
+    }
 
     /**
      * The personality in force right now, as a reply should be stamped with it.
@@ -2287,6 +2399,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 schedulerClient = Scheduler(candidate)
                 memoryClient = Memory(candidate)
                 profileReader = ProfileReader(candidate)
+                agentSettings = AgentSettings(candidate)
                 // What the computer is still waiting on, asked again on every connection:
                 // an approval asked while this phone was away, or before the app restarted,
                 // was sent to nobody who is here now. Asked rather than pushed, because
