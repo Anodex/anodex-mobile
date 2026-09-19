@@ -1,4 +1,4 @@
-package dev.anodex.mobile.ui.screens
+package dev.anodex.mobile.voice
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -175,11 +175,15 @@ data class VoiceScreenState(
         else -> "Go ahead"
     }
 
+    // Both branches decide in the same order as [headline], and that is not a
+    // coincidence to be tidied away: when they disagreed, the screen said
+    // "Answering" over "Stop talking and it will answer" — each line true, the pair
+    // of them nonsense. Somebody talking over a reply is told that is allowed.
     fun detail(): String = when {
         !running -> if (hostName.isBlank()) "Talk to Anodex" else "Talk to Anodex on $hostName"
         !connected -> "Waiting for it to answer"
-        listening -> "Stop talking and it will answer"
         answering -> "Talk over it whenever you like"
+        listening -> "Stop talking and it will answer"
         else -> "It is listening"
     }
 }

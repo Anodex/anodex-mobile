@@ -48,9 +48,20 @@ class VoiceActivity(
     private var seenFrames = 0
     private var open = false
     private var lastLoudAtMs = 0L
+    private var lastLevel = 0f
 
     /** True while the gate is open — speech, or the hangover after it. */
     val speaking: Boolean get() = open
+
+    /**
+     * How loud the last frame was, 0..1, for something to draw.
+     *
+     * Against a fixed full scale rather than against the room's floor: the gate
+     * wants a ratio, and a picture wants loudness. A halo scaled to the noise floor
+     * would swell in a quiet room and barely move in a loud one, which is the
+     * opposite of what somebody watching it expects.
+     */
+    val level: Float get() = lastLevel
 
     /**
      * Feed one frame of 16-bit mono samples.
@@ -64,6 +75,7 @@ class VoiceActivity(
 
         val energy = rms(samples)
         val voiced = crossingRate(samples) in SPEECH_CROSSINGS
+        lastLevel = (energy / LEVEL_FULL_SCALE).toFloat().coerceIn(0f, 1f)
 
         seenFrames += 1
         floor = when {
@@ -99,6 +111,7 @@ class VoiceActivity(
         seenFrames = 0
         open = false
         lastLoudAtMs = 0
+        lastLevel = 0f
     }
 
     private fun rms(samples: ShortArray): Double {
@@ -150,6 +163,15 @@ class VoiceActivity(
 
         /** Ignore crossings from dither and rounding, which are not the signal. */
         const val CROSSING_NOISE = 200
+
+        /**
+         * What counts as a full halo.
+         *
+         * Not 32,767. Conversational speech at arm's length lands around 2,000-8,000
+         * RMS, and scaling the picture to the loudest sound a microphone can encode
+         * would leave the ring nearly still while somebody talks normally.
+         */
+        const val LEVEL_FULL_SCALE = 8_000.0
 
         /** The band speech lives in, as a fraction of samples that cross zero. */
         val SPEECH_CROSSINGS = 0.01..0.35

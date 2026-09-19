@@ -31,6 +31,8 @@ class VoiceLoop(
         /** The desktop answered `start`, so the far end is really listening. */
         val acknowledged: Boolean = false,
         val speaking: Boolean = false,
+        /** 0..1, what the microphone is hearing right now. For the halo to draw. */
+        val level: Float = 0f,
         val framesSent: Int = 0,
         val framesHeard: Int = 0,
         /** Sent and never echoed. Persistent loss is the network, not the app. */
@@ -48,6 +50,15 @@ class VoiceLoop(
 
     private var seq = 0
     private var startedAtMs = 0L
+
+    /**
+     * When audio last arrived, so "answering" can mean *still* answering.
+     *
+     * A boolean set on the first frame and cleared on some end-of-speech marker
+     * would need the far end to send one, and at this stage the far end is an echo
+     * with nothing to say about turns. Recency is a fact this side already has.
+     */
+    @Volatile private var lastHeardAtMs = 0L
     private val roundTrips = ArrayDeque<Int>()
 
     /**
@@ -112,7 +123,13 @@ class VoiceLoop(
             bargeIns += 1
         }
 
-        _stats.value = _stats.value.copy(speaking = speaking, bargeIns = bargeIns)
+        _stats.value = _stats.value.copy(
+            speaking = speaking,
+            // Sent even while the gate is shut, so the halo answers to a room rather
+            // than snapping between nothing and speech.
+            level = activity.level,
+            bargeIns = bargeIns,
+        )
 
         // Silence is not sent. It is the cheapest saving available — most of any
         // conversation is nobody talking — and the far end reconstructs the gap from
@@ -143,6 +160,7 @@ class VoiceLoop(
         }
 
         playback.write(frame.payload)
+        lastHeardAtMs = System.currentTimeMillis()
 
         // The measurement. `atMs` is this phone's own clock, echoed back untouched,
         // so this subtracts two readings of one clock and never has to agree with
@@ -171,6 +189,10 @@ class VoiceLoop(
         )
     }
 
+    /** True while audio has arrived recently enough to still be a voice. */
+    fun answering(now: Long = System.currentTimeMillis()): Boolean =
+        _stats.value.running && now - lastHeardAtMs < ANSWERING_GAP_MS
+
     private fun nextSeq(): Int = seq++
 
     /** Milliseconds since this session began, which is all the header carries. */
@@ -186,6 +208,15 @@ class VoiceLoop(
          * averaging it in would describe a network nobody was using.
          */
         const val MAX_PLAUSIBLE_ROUND_TRIP_MS = 5_000
+
+        /**
+         * Silence this long means the far end has stopped talking.
+         *
+         * Longer than one frame and shorter than a pause anybody would read as a
+         * turn ending: at 20 ms a frame, 400 ms is twenty missing frames, which is a
+         * stream that has ended rather than one that stuttered.
+         */
+        const val ANSWERING_GAP_MS = 400
     }
 }
 
