@@ -306,9 +306,17 @@ internal fun InboxList(
         //
         // Rather than a second bar appearing below or above it, which is what
         // this screen has no room for: the search field and the folder strip
-        // already sit under the title. While a selection is live those two are
-        // not what anyone is about to use, so they give up their space and come
-        // straight back when it ends.
+        // already sit under the title, and the title is not doing anything a
+        // count could not do better.
+        //
+        // Those two stay exactly where they are. Hiding them was the first
+        // attempt and it was wrong -- on the phone the whole list jumped up by
+        // the height of the search field the instant a long press landed, so
+        // the row somebody was reaching for next moved out from under their
+        // thumb. Aiming at one message and selecting the one below it, at the
+        // moment the toolbar is offering Delete, is not a trade worth a tidier
+        // header. Found by driving it on a real screen; no test was going to
+        // report a list that merely moved.
         title = when {
             selecting -> "${chosen.size} selected"
             isResults -> "Search"
@@ -318,7 +326,7 @@ internal fun InboxList(
         leading = if (!selecting) null else {
             { HeaderAction(AnodexIcon.CLOSE, "Done selecting") { clearSelection() } }
         },
-        beneath = if (selecting || onQueryChange == null) null else {
+        beneath = if (onQueryChange == null) null else {
             {
                 SearchField(
                     value = query,

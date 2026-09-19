@@ -1,7 +1,7 @@
 package dev.anodex.mobile.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -197,7 +197,20 @@ class SelectManyRenderTest {
     }
 
     @Test
-    fun `the search field gives up its space and comes back`() {
+    fun `starting a selection does not move the rows`() {
+        // The one this file exists for, and the only bug here no test found.
+        //
+        // The first version of this screen dropped the search field and the
+        // folder strip while a selection was live, on the reasoning that
+        // neither is what anyone is about to use. Driving it on the phone, the
+        // whole list jumped up by the height of the search field the instant
+        // the long press landed -- and the next tap, aimed at the row below,
+        // landed on the row after it. Selecting the wrong message while the
+        // toolbar is offering Delete.
+        //
+        // Measured rather than inferred. Asserting that the search field is
+        // still on screen would pass just as well with the rows an inch higher,
+        // and it is the rows that the thumb is aiming at.
         compose.setContent {
             AnodexTheme(darkTheme = true) {
                 InboxList(
@@ -207,21 +220,25 @@ class SelectManyRenderTest {
                     onOpen = {},
                     query = "",
                     onQueryChange = {},
+                    // Configured the way the app configures it, Write button
+                    // and all. A header with no control in it is shorter than
+                    // one with a 48dp control, so a test that leaves the button
+                    // out measures a screen nobody has and reports a 13dp shift
+                    // that does not exist.
+                    onCompose = {},
                     onArchiveMany = { archived += it.map { t -> t.id } },
                     nowEpochMs = 1_760_000_100_000,
                 )
             }
         }
 
-        compose.onNodeWithText("Search mail").assertIsDisplayed()
+        val before = compose.onNodeWithText("Lunch Tuesday").getBoundsInRoot().top
 
         compose.onNodeWithText("Quarterly report").performTouchInput { longClick() }
         compose.waitForIdle()
-        compose.onNodeWithText("Search mail").assertIsNotDisplayed()
 
-        compose.onNodeWithContentDescription("Done selecting").performClick()
-        compose.waitForIdle()
-        compose.onNodeWithText("Search mail").assertIsDisplayed()
+        compose.onNodeWithText("1 selected").assertIsDisplayed()
+        assertEquals(before, compose.onNodeWithText("Lunch Tuesday").getBoundsInRoot().top)
     }
 
     @Test
