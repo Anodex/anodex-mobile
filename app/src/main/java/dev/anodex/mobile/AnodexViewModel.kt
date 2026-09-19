@@ -58,6 +58,7 @@ import dev.anodex.mobile.connection.processHoldFor
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.email.EmailAttachment
 import dev.anodex.mobile.email.EmailDrafter
+import dev.anodex.mobile.email.MailSwipeAction
 import dev.anodex.mobile.email.MailFolder
 import dev.anodex.mobile.email.SavedAttachment
 import dev.anodex.mobile.email.saveAttachment
@@ -1448,6 +1449,21 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { appearance.setMotion(preference) }
     }
 
+    /** What a swipe does to a message, per direction. See [MailSwipeAction]. */
+    val swipeRight: StateFlow<MailSwipeAction> = appearance.swipeRight
+        .stateIn(viewModelScope, SharingStarted.Eagerly, MailSwipeAction.DELETE)
+
+    fun setSwipeRight(action: MailSwipeAction) {
+        viewModelScope.launch { appearance.setSwipeRight(action) }
+    }
+
+    val swipeLeft: StateFlow<MailSwipeAction> = appearance.swipeLeft
+        .stateIn(viewModelScope, SharingStarted.Eagerly, MailSwipeAction.ARCHIVE)
+
+    fun setSwipeLeft(action: MailSwipeAction) {
+        viewModelScope.launch { appearance.setSwipeLeft(action) }
+    }
+
     val haptics: StateFlow<Boolean> = appearance.haptics
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
@@ -2143,6 +2159,66 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissArchivedFromList() {
         _archivedFromList.value = null
+    }
+
+    /**
+     * The thread a swipe just deleted, for as long as it can be put back.
+     *
+     * Its own flow rather than a flag on [archivedFromList], because the two
+     * are undone by different calls and the strip has to name which happened.
+     * "Deleted" and "Archived" are not interchangeable words to somebody
+     * deciding whether to reach for Undo.
+     */
+    private val _deletedFromList = MutableStateFlow<EmailThread?>(null)
+    val deletedFromList: StateFlow<EmailThread?> = _deletedFromList.asStateFlow()
+
+    /**
+     * Delete a thread from the list.
+     *
+     * Deleting means moving to the account's trash -- recoverable from any mail
+     * app the account is open in -- which is the only reason a gesture is
+     * allowed to do it at all. Nothing here expunges anything.
+     */
+    fun deleteThreadFromList(thread: EmailThread) {
+        val client = emailClient ?: return
+        val before = _emailThreads.value
+        _emailThreads.value = before.filterNot { it.id == thread.id }
+        _notice.value = null
+
+        viewModelScope.launch {
+            val accountId = thread.accountId.takeIf { it.isNotBlank() }
+            runCatching { client.trash(thread.id, accountId) }
+                .onSuccess { ok ->
+                    if (ok) _deletedFromList.value = thread
+                    else restoreThreads(before, "Your computer would not delete that.")
+                }
+                .onFailure {
+                    restoreThreads(before, it.message ?: "Your computer would not delete that.")
+                }
+        }
+    }
+
+    /** Move the last swiped-away thread back out of the trash. */
+    fun undoDeleteFromList() {
+        val thread = _deletedFromList.value ?: return
+        val client = emailClient ?: return
+        _deletedFromList.value = null
+
+        viewModelScope.launch {
+            val accountId = thread.accountId.takeIf { it.isNotBlank() }
+            // `INBOX` rather than wherever it came from: it is the one folder
+            // name every provider agrees on, and a message put back somewhere
+            // the reader has to go looking for is not much of an undo.
+            runCatching { client.move(thread.id, "INBOX", accountId) }
+                .onSuccess { ok ->
+                    if (ok) refreshEmail() else _emailError.value = "That could not be put back."
+                }
+                .onFailure { _emailError.value = it.message ?: "That could not be put back." }
+        }
+    }
+
+    fun dismissDeletedFromList() {
+        _deletedFromList.value = null
     }
 
     /**

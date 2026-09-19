@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.anodex.mobile.email.MailSwipeAction
 import dev.anodex.mobile.ui.screens.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -162,8 +163,42 @@ class AppearanceStore(private val context: Context) {
         context.appearanceDataStore.edit { it[KEY_LOAD_IMAGES] = enabled }
     }
 
+    /**
+     * What a swipe does to a message, per direction.
+     *
+     * Phone-local because a swipe is: the computer has no gesture to configure,
+     * and a preference about a thumb belongs with the ones about the screen it
+     * is touching.
+     *
+     * The defaults are the owner's: right throws away, left files. Stored rather
+     * than fixed because people disagree about which side means what, with
+     * feeling, and muscle memory from another mail app beats any argument made
+     * here.
+     */
+    val swipeRight: Flow<MailSwipeAction> = context.appearanceDataStore.data.map { prefs ->
+        prefs[KEY_SWIPE_RIGHT].toSwipeAction() ?: MailSwipeAction.DELETE
+    }
+
+    suspend fun setSwipeRight(action: MailSwipeAction) {
+        context.appearanceDataStore.edit { it[KEY_SWIPE_RIGHT] = action.name }
+    }
+
+    val swipeLeft: Flow<MailSwipeAction> = context.appearanceDataStore.data.map { prefs ->
+        prefs[KEY_SWIPE_LEFT].toSwipeAction() ?: MailSwipeAction.ARCHIVE
+    }
+
+    suspend fun setSwipeLeft(action: MailSwipeAction) {
+        context.appearanceDataStore.edit { it[KEY_SWIPE_LEFT] = action.name }
+    }
+
+    /** A stored name this version does not know reads as unset, not as a crash. */
+    private fun String?.toSwipeAction(): MailSwipeAction? =
+        this?.let { stored -> MailSwipeAction.entries.firstOrNull { it.name == stored } }
+
     private companion object {
         val KEY_LOAD_IMAGES = booleanPreferencesKey("load_remote_images")
+        val KEY_SWIPE_RIGHT = stringPreferencesKey("mail_swipe_right")
+        val KEY_SWIPE_LEFT = stringPreferencesKey("mail_swipe_left")
         val KEY_THEME = stringPreferencesKey("theme_mode")
         val KEY_STREAM_ON_METERED = booleanPreferencesKey("stream_on_metered")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")

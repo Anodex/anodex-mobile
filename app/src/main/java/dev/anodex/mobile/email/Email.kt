@@ -370,6 +370,27 @@ class Email(private val socket: AnodexSocket) {
     }
 
     /**
+     * Put a thread in a named folder.
+     *
+     * The other half of [trash]. Deleting is a move, so undoing one is a move
+     * back, and without this the six seconds of undo beside a swipe would have
+     * been an apology rather than an offer.
+     *
+     * The folder is named by the caller because only the caller knows where the
+     * message came from. `INBOX` is the one name every provider agrees on, which
+     * is why the undo below uses it rather than trying to remember a label.
+     */
+    suspend fun move(threadId: String, mailbox: String, accountId: String? = null): Boolean {
+        val request = buildJsonObject {
+            put("threadId", JsonPrimitive(threadId))
+            put("mailbox", JsonPrimitive(mailbox))
+            accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
+        }
+        val answer = socket.invoke(CHANNEL_MOVE, listOf(request)) as? JsonObject ?: return false
+        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+    }
+
+    /**
      * One chunk of an attachment's bytes, starting at [offset].
      *
      * Chunked because the socket refuses a response over four megabytes and
@@ -424,6 +445,7 @@ class Email(private val socket: AnodexSocket) {
         const val CHANNEL_SEND = "email:send"
         const val CHANNEL_FLAG = "email:apply-flag"
         const val CHANNEL_TRASH = "email:trash"
+        const val CHANNEL_MOVE = "email:move"
         const val CHANNEL_SEARCH = "email:search"
         const val CHANNEL_ATTACHMENT = "email:get-attachment-chunk"
         const val CHANNEL_MAILBOXES = "email:list-mailboxes"

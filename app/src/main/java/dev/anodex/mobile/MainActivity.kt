@@ -743,6 +743,7 @@ private fun ConnectedScaffold(
     val archiveNotice by viewModel.archiveNotice.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
     val archivedMail by viewModel.archivedFromList.collectAsStateWithLifecycle()
+    val deletedMail by viewModel.deletedFromList.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
 
     val waitingAgents = agentRuns.count { it.status == AgentRun.Status.NEEDS_REVIEW }
@@ -1000,6 +1001,8 @@ private fun ConnectedScaffold(
         val settingsHaptics by viewModel.haptics.collectAsStateWithLifecycle()
         val settingsStreamOnMetered by viewModel.streamOnMetered.collectAsStateWithLifecycle()
         val settingsLoadImages by viewModel.loadImages.collectAsStateWithLifecycle()
+        val settingsSwipeRight by viewModel.swipeRight.collectAsStateWithLifecycle()
+        val settingsSwipeLeft by viewModel.swipeLeft.collectAsStateWithLifecycle()
         val archivedChats by viewModel.archivedChats.collectAsStateWithLifecycle()
         val archivedProjects by viewModel.archivedProjects.collectAsStateWithLifecycle()
         val archiveLoading by viewModel.archiveLoading.collectAsStateWithLifecycle()
@@ -1045,6 +1048,10 @@ private fun ConnectedScaffold(
             permissionMode = permissionMode,
             loadImages = settingsLoadImages,
             onSetLoadImages = viewModel::setLoadImages,
+            swipeRight = settingsSwipeRight,
+            swipeLeft = settingsSwipeLeft,
+            onSetSwipeRight = viewModel::setSwipeRight,
+            onSetSwipeLeft = viewModel::setSwipeLeft,
             onRememberMemory = viewModel::rememberMemory,
             onRewordMemory = viewModel::rewordMemory,
             permissionBusy = permissionBusy,
@@ -1602,6 +1609,19 @@ private fun ConnectedScaffold(
                 actionLabel = "Undo",
                 onAction = viewModel::undoArchiveFromList,
                 onDismiss = viewModel::dismissArchivedFromList,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
+        // Named, rather than folded into the strip above. "Deleted" and
+        // "Archived" are not interchangeable words to somebody deciding whether
+        // to reach for Undo in the six seconds they have.
+        deletedMail?.let { thread ->
+            UndoBar(
+                text = "Deleted “${thread.subject}”.",
+                actionLabel = "Undo",
+                onAction = viewModel::undoDeleteFromList,
+                onDismiss = viewModel::dismissDeletedFromList,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

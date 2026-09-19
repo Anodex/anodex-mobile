@@ -65,6 +65,7 @@ import dev.anodex.mobile.ui.components.SecondaryButton
 import dev.anodex.mobile.ui.components.SpinnerVariant
 import dev.anodex.mobile.ui.components.TextInputDialog
 import dev.anodex.mobile.settings.PermissionMode
+import dev.anodex.mobile.email.MailSwipeAction
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.sectionInk
 import dev.anodex.mobile.ui.theme.sectionTint
@@ -172,6 +173,10 @@ fun SettingsScreen(
     onSetHaptics: (Boolean) -> Unit = {},
     streamOnMetered: Boolean = false,
     loadImages: Boolean = true,
+    swipeRight: MailSwipeAction = MailSwipeAction.DELETE,
+    swipeLeft: MailSwipeAction = MailSwipeAction.ARCHIVE,
+    onSetSwipeRight: (MailSwipeAction) -> Unit = {},
+    onSetSwipeLeft: (MailSwipeAction) -> Unit = {},
     onSetLoadImages: (Boolean) -> Unit = {},
     onSetStreamOnMetered: (Boolean) -> Unit = {},
     /** What the system will actually let through. */
@@ -272,6 +277,10 @@ fun SettingsScreen(
                     onSetHaptics = onSetHaptics,
                     streamOnMetered = streamOnMetered,
                     loadImages = loadImages,
+                    swipeRight = swipeRight,
+                    swipeLeft = swipeLeft,
+                    onSetSwipeRight = onSetSwipeRight,
+                    onSetSwipeLeft = onSetSwipeLeft,
                     onSetLoadImages = onSetLoadImages,
                     onSetStreamOnMetered = onSetStreamOnMetered,
                 )
@@ -501,6 +510,10 @@ private fun AppearanceSection(
     onSetHaptics: (Boolean) -> Unit,
     streamOnMetered: Boolean,
     loadImages: Boolean,
+    swipeRight: MailSwipeAction,
+    swipeLeft: MailSwipeAction,
+    onSetSwipeRight: (MailSwipeAction) -> Unit,
+    onSetSwipeLeft: (MailSwipeAction) -> Unit,
     onSetLoadImages: (Boolean) -> Unit,
     onSetStreamOnMetered: (Boolean) -> Unit,
 ) {
@@ -623,6 +636,34 @@ private fun AppearanceSection(
                 checked = loadImages,
                 onChange = onSetLoadImages,
             )
+        }
+
+        SectionLabel("Swipe right on a message")
+
+        Group {
+            MailSwipeAction.entries.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = entry.label,
+                    detail = entry.detail,
+                    selected = entry == swipeRight,
+                    onClick = { onSetSwipeRight(entry) },
+                )
+            }
+        }
+
+        SectionLabel("Swipe left on a message")
+
+        Group {
+            MailSwipeAction.entries.forEachIndexed { index, entry ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = entry.label,
+                    detail = entry.detail,
+                    selected = entry == swipeLeft,
+                    onClick = { onSetSwipeLeft(entry) },
+                )
+            }
         }
 
         Footnote(

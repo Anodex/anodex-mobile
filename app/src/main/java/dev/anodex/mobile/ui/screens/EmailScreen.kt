@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +45,7 @@ import androidx.compose.foundation.horizontalScroll
 import dev.anodex.mobile.email.MailFolder
 import dev.anodex.mobile.email.EmailNote
 import dev.anodex.mobile.email.MailFlag
+import dev.anodex.mobile.email.MailSwipeAction
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.ui.text.style.TextAlign
 import dev.anodex.mobile.email.EmailThread
@@ -84,6 +86,8 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val openThread by viewModel.openThread.collectAsStateWithLifecycle()
     val threadLoading by viewModel.threadLoading.collectAsStateWithLifecycle()
     val threadError by viewModel.threadError.collectAsStateWithLifecycle()
+    val swipeRight by viewModel.swipeRight.collectAsStateWithLifecycle()
+    val swipeLeft by viewModel.swipeLeft.collectAsStateWithLifecycle()
 
     // Fetched when the tab is opened rather than on connect: a user who never opens
     // Email should not be making the desktop hit their mail provider.
@@ -192,7 +196,15 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         folders = folders,
         openFolder = openFolder,
         onOpenFolder = viewModel::openMailFolder,
-        onArchive = viewModel::archiveThreadFromList,
+        onSwipe = { thread, action ->
+            when (action) {
+                MailSwipeAction.ARCHIVE -> viewModel.archiveThreadFromList(thread)
+                MailSwipeAction.DELETE -> viewModel.deleteThreadFromList(thread)
+                MailSwipeAction.NOTHING -> Unit
+            }
+        },
+        swipeRight = swipeRight,
+        swipeLeft = swipeLeft,
         modifier = modifier,
     )
 }
@@ -224,8 +236,11 @@ internal fun InboxList(
     /** Which one is showing, or null for the inbox. */
     openFolder: MailFolder? = null,
     onOpenFolder: ((MailFolder?) -> Unit)? = null,
-    /** Archive a thread by swiping it away. Null leaves the rows fixed. */
-    onArchive: ((EmailThread) -> Unit)? = null,
+    /** What a swipe asked for. Null leaves the rows fixed. */
+    onSwipe: ((EmailThread, MailSwipeAction) -> Unit)? = null,
+    /** Which act each direction performs, as chosen in Settings. */
+    swipeRight: MailSwipeAction = MailSwipeAction.DELETE,
+    swipeLeft: MailSwipeAction = MailSwipeAction.ARCHIVE,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -342,7 +357,9 @@ internal fun InboxList(
                         onClick = { onOpen(thread) },
                         onSetUnread = onSetUnread,
                         onSetStarred = onSetStarred,
-                        onArchive = onArchive,
+                        onSwipe = onSwipe,
+                        swipeRight = swipeRight,
+                        swipeLeft = swipeLeft,
                         modifier = Modifier.animateItem(),
                     )
                 }
@@ -356,13 +373,18 @@ internal fun InboxList(
  *
  * The gesture every mail client on a phone has, and the reason it is worth
  * having is triage: most of an inbox is decided without being read, and a swipe
- * is the only control that costs nothing to reach. Both directions archive,
- * which is what Gmail does out of the box.
+ * is the only control that costs nothing to reach.
  *
- * Archive rather than delete, deliberately. A gesture a sleeve can start should
- * not be the one that is hard to take back, and the six seconds of undo below
- * are a promise the archive can keep -- `unarchive` is the same call in reverse.
- * Deleting stays where it was: two deliberate taps inside the message.
+ * Each direction does what the reader chose in Settings — throw away one way,
+ * file the other, by default. Both used to archive, which is what Gmail ships
+ * and which wastes half the gesture. It is a setting rather than a fixed pair
+ * because people disagree about which side means what, with feeling, and muscle
+ * memory from another mail app beats any argument made here.
+ *
+ * Neither act is final. Archiving moves a message out of the inbox and deleting
+ * moves it to the trash; both are undone from the strip that follows, and
+ * nothing here expunges anything. That is the whole reason a gesture is allowed
+ * to do either.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -373,9 +395,12 @@ private fun SwipeableThreadRow(
     modifier: Modifier = Modifier,
     onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
     onSetStarred: ((EmailThread, Boolean) -> Unit)? = null,
-    onArchive: ((EmailThread) -> Unit)? = null,
+    onSwipe: ((EmailThread, MailSwipeAction) -> Unit)? = null,
+    swipeRight: MailSwipeAction = MailSwipeAction.DELETE,
+    swipeLeft: MailSwipeAction = MailSwipeAction.ARCHIVE,
 ) {
-    if (onArchive == null) {
+    val settled = swipeRight == MailSwipeAction.NOTHING && swipeLeft == MailSwipeAction.NOTHING
+    if (onSwipe == null || settled) {
         ThreadRow(
             thread = thread,
             nowEpochMs = nowEpochMs,
@@ -387,14 +412,17 @@ private fun SwipeableThreadRow(
         return
     }
 
-    val colors = AnodexTheme.colors
     val state = rememberSwipeToDismissBoxState(
         // The row leaves on the caller's say-so, not the gesture's: the list is
         // what removes it, and letting the box settle into a dismissed state as
         // well would leave a second copy of that decision to disagree.
         confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.Settled) return@rememberSwipeToDismissBoxState false
-            onArchive(thread)
+            val action = when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> swipeRight
+                SwipeToDismissBoxValue.EndToStart -> swipeLeft
+                SwipeToDismissBoxValue.Settled -> MailSwipeAction.NOTHING
+            }
+            if (action != MailSwipeAction.NOTHING) onSwipe(thread, action)
             false
         },
         // Most of the width, because a thumb travelling that far is not an
@@ -405,21 +433,21 @@ private fun SwipeableThreadRow(
     SwipeToDismissBox(
         state = state,
         modifier = modifier,
+        enableDismissFromStartToEnd = swipeRight != MailSwipeAction.NOTHING,
+        enableDismissFromEndToStart = swipeLeft != MailSwipeAction.NOTHING,
         backgroundContent = {
-            // Says what letting go will do, on both sides, in the colour the
-            // rest of the app uses for "this is fine".
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(Radii.lg)
-                    .background(colors.bgSurface2)
-                    .padding(horizontal = Spacing.x5),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                AnodexIcon(AnodexIcon.ARCHIVE, size = 20.dp, tint = colors.textMuted)
-                AnodexIcon(AnodexIcon.ARCHIVE, size = 20.dp, tint = colors.textMuted)
-            }
+            SwipeBackdrop(
+                action = when (state.dismissDirection) {
+                    SwipeToDismissBoxValue.StartToEnd -> swipeRight
+                    SwipeToDismissBoxValue.EndToStart -> swipeLeft
+                    SwipeToDismissBoxValue.Settled -> null
+                },
+                fromStart = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd,
+                // How far along the gesture is, against the point it commits at.
+                // Past 1 the field is at full strength, which is the only signal
+                // saying "let go now and it happens".
+                progress = (state.progress / 0.5f).coerceIn(0f, 1f),
+            )
         },
     ) {
         ThreadRow(
@@ -429,6 +457,75 @@ private fun SwipeableThreadRow(
             onSetUnread = onSetUnread,
             onSetStarred = onSetStarred,
         )
+    }
+}
+
+/**
+ * What is revealed behind a row as it moves.
+ *
+ * The old one was a flat grey panel with the same icon at both ends, which said
+ * nothing: not which act, not which direction, not whether letting go would do
+ * it. This is the one place in the app where the interface has to answer a
+ * question mid-gesture, and it had been answering none of them.
+ *
+ * So it is built out of the marque's own ramp. The field is the act's colour
+ * over the page, deepening as the thumb travels — cyan-blue for filing,
+ * the danger red for throwing away — and it arrives as a gradient running out
+ * from the edge the finger came from, so the direction is legible without
+ * reading the label. At the commit point the icon takes the full colour and
+ * grows, which is the moment worth marking: before it, letting go does nothing.
+ */
+@Composable
+private fun SwipeBackdrop(action: MailSwipeAction?, fromStart: Boolean, progress: Float) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    if (action == null || action == MailSwipeAction.NOTHING) return
+
+    val committing = progress >= 1f
+    val tint = if (action == MailSwipeAction.DELETE) colors.danger else colors.accent
+    val ink = if (action == MailSwipeAction.DELETE) colors.dangerInk else colors.accentInk
+    val icon = if (action == MailSwipeAction.DELETE) AnodexIcon.TRASH else AnodexIcon.ARCHIVE
+
+    // Eased rather than linear: the colour should be barely there for the first
+    // few millimetres, so a scroll that drifts sideways does not flash red.
+    val depth = (progress * progress * 0.32f)
+    val edge = tint.copy(alpha = depth)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(Radii.lg)
+            .background(colors.bgSurface2)
+            .background(
+                Brush.horizontalGradient(
+                    // Strongest at the edge the thumb came from, fading across —
+                    // the same direction as the movement, so the field reads as
+                    // something being pushed rather than a panel switching on.
+                    colors = if (fromStart) {
+                        listOf(edge, edge.copy(alpha = depth * 0.25f), Color.Transparent)
+                    } else {
+                        listOf(Color.Transparent, edge.copy(alpha = depth * 0.25f), edge)
+                    },
+                ),
+            )
+            .padding(horizontal = Spacing.x5),
+        contentAlignment = if (fromStart) Alignment.CenterStart else Alignment.CenterEnd,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            AnodexIcon(
+                icon = icon,
+                size = if (committing) 24.dp else 20.dp,
+                tint = if (committing) ink else colors.textMuted,
+            )
+            // The word appears only once letting go would do something. Before
+            // that it would be a label for an act that is not going to happen.
+            if (committing) {
+                Text(text = action.label, style = type.label, color = ink)
+            }
+        }
     }
 }
 
