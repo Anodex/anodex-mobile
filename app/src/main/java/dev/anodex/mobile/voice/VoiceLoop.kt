@@ -52,6 +52,25 @@ class VoiceLoop(
     private var startedAtMs = 0L
 
     /**
+     * The audio from just before the gate opened.
+     *
+     * A gate decides somebody is talking by hearing them talk, which means the
+     * evidence it decided on is already in the past by the time it decides. Sending
+     * only what comes after loses the beginning of the first word — and the
+     * beginning of a word is most of what tells it from another word.
+     *
+     * Measured, not guessed: of six recordings taken from a real phone in a real
+     * room, five began already at full volume, and a recogniser turned "Remind" into
+     * "Mind" and "Vane" into "Bane" on exactly those. The sixth started quiet and
+     * transcribed letter-perfect.
+     *
+     * So the frames are kept while the gate is shut and sent when it opens. They
+     * carry the clock they were captured with, which keeps them contiguous with
+     * the speech that follows.
+     */
+    private val preRoll = ArrayDeque<Pair<ShortArray, Long>>()
+
+    /**
      * When audio last arrived, so "answering" can mean *still* answering.
      *
      * A boolean set on the first frame and cleared on some end-of-speech marker
@@ -73,6 +92,7 @@ class VoiceLoop(
         seq = 0
         startedAtMs = System.currentTimeMillis()
         roundTrips.clear()
+        preRoll.clear()
         activity.reset()
         _stats.value = Stats(running = true)
 
@@ -134,12 +154,38 @@ class VoiceLoop(
         // Silence is not sent. It is the cheapest saving available — most of any
         // conversation is nobody talking — and the far end reconstructs the gap from
         // the sequence numbers.
-        if (!speaking) return
+        if (!speaking) {
+            // Held rather than dropped, so the start of the first word survives.
+            preRoll.addLast(samples to atMs)
+            while (preRoll.size > PRE_ROLL_FRAMES) preRoll.removeFirst()
+            return
+        }
 
+        // The gate has just opened: what it decided on goes first, in the order it
+        // was heard.
+        if (!wasSpeaking) {
+            while (preRoll.isNotEmpty()) {
+                val (held, heldAt) = preRoll.removeFirst()
+                sendAudio(held, heldAt)
+            }
+        }
+
+        sendAudio(samples, atMs)
+    }
+
+    /**
+     * One frame on the wire.
+     *
+     * Takes the clock the samples were *captured* with rather than reading it now,
+     * so a held pre-roll frame is timestamped when it was heard. The far end decides
+     * where an utterance ends by the distance between those clocks, and a frame
+     * stamped on its way out would look like a gap that never happened.
+     */
+    private fun sendAudio(samples: ShortArray, capturedAtMs: Long) {
         val frame = VoiceFrames.encode(
             kind = VoiceFrames.KIND_AUDIO,
             seq = nextSeq(),
-            atMs = sessionMs(),
+            atMs = (capturedAtMs - startedAtMs).toInt(),
             payload = toLittleEndianBytes(samples),
         )
         if (send(frame)) {
@@ -199,6 +245,16 @@ class VoiceLoop(
     private fun sessionMs(): Int = (System.currentTimeMillis() - startedAtMs).toInt()
 
     private companion object {
+        /**
+         * How much of the past to keep, in 20 ms frames.
+         *
+         * 300 ms. Long enough to hold the consonant and the breath before it, short
+         * enough that a gate opening on a cough does not post a third of a second of
+         * whatever was on the television. It costs 15 frames of memory and nothing
+         * on the wire until the gate opens.
+         */
+        const val PRE_ROLL_FRAMES = 15
+
         const val ROUND_TRIP_WINDOW = 100
 
         /**
