@@ -142,6 +142,11 @@ fun ChatScreen(
     onOpenSource: ((String) -> Unit)? = null,
     /** Show what a turn changed inside one file: (reply id, path). */
     onShowDiff: ((String, String) -> Unit)? = null,
+    /**
+     * voice:seam — opens Speak. Null when the computer has not offered voice, which
+     * keeps the button off screen rather than present and failing.
+     */
+    onSpeak: (() -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
     hostLine: String? = null,
     /** What the computer is doing later today, if anything. Null on a quiet day. */
@@ -692,6 +697,7 @@ fun ChatScreen(
                 onPickPhoto = onPickPhoto,
                 onRemoveAttachment = onRemoveAttachment,
                 onDictate = dictate,
+                onSpeak = onSpeak,
                 focusRequester = composerFocus,
             )
         }
@@ -1947,6 +1953,8 @@ private fun Composer(
     onRemoveAttachment: (UploadState) -> Unit = {},
     /** Null on a phone with no speech screen to hand off to, which hides the mic. */
     onDictate: (() -> Unit)? = null,
+    /** voice:seam — null unless the computer offered voice. */
+    onSpeak: (() -> Unit)? = null,
     /** Lets "Edit" on a sent message put the cursor here. */
     focusRequester: FocusRequester? = null,
 ) {
@@ -2116,6 +2124,26 @@ private fun Composer(
                         size = 20.dp,
                         tint = colors.textMuted,
                         contentDescription = "Dictate a message",
+                    )
+                }
+            }
+
+            // voice:seam — beside dictation, because the two are easy to confuse and
+            // sit better next to each other than apart: the mic turns speech into
+            // something to read before it is sent, and this holds a conversation.
+            if (onSpeak != null) {
+                Box(
+                    modifier = Modifier
+                        .size(Touch.minTarget)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onSpeak),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnodexIcon(
+                        AnodexIcon.ACTIVITY,
+                        size = 20.dp,
+                        tint = colors.textMuted,
+                        contentDescription = "Speak to Anodex",
                     )
                 }
             }

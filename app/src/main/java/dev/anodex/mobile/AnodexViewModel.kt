@@ -90,6 +90,7 @@ import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
 import dev.anodex.mobile.scheduler.parseTasks
 import dev.anodex.mobile.transport.AnodexSocket
+import dev.anodex.mobile.voice.VoiceController // voice:seam
 import dev.anodex.mobile.transport.ServerFrame
 import dev.anodex.mobile.transport.unwrap
 import dev.anodex.mobile.ui.screens.Archived
@@ -1395,6 +1396,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _openDiff.value = null
         _openDiffContent.value = null
     }
+
+    /**
+     * voice:seam — everything about speaking, behind three calls.
+     *
+     * Told when a connection arrives and when it goes; it owns the microphone, the
+     * binary stream and the state a screen draws. Deliberately not spread through
+     * this file: the feature is meant to come out cleanly if it does not work out.
+     */
+    val voice = VoiceController(viewModelScope)
 
     private val _newerVersion = MutableStateFlow<String?>(null)
 
@@ -3188,6 +3198,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                             _connectionHint.value = farewell.explain(host.identity.displayName)
                         }
                         _noLongerPaired.value = farewell == RemoteFarewell.UNPAIRED
+                        voice.onDisconnected() // voice:seam
                         controller.onDisconnected(host)
                     }
                 }
@@ -3255,6 +3266,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 // public IP in plain sight on a device that leaves the house. Doing it
                 // here rather than at pairing means a phone paired before the computer
                 // sent a name picks it up by reconnecting, not by pairing again.
+                // voice:seam
+                voice.onConnected(candidate, handshake.capabilities, handshake.hostName)
                 store.recordHostName(handshake.hostName)
                 // The state machine captured the identity when pairing began, so the
                 // store alone is not enough — without this the header keeps showing
