@@ -435,6 +435,21 @@ enum class AnodexIcon(
     ),
 
     /**
+     * Five points, open. The one mark in this set people already read as
+     * "keep this" without a label, which is why the list row uses the glyph
+     * alone and this chip can afford a word beside it.
+     */
+    STAR(
+        listOf(
+            // Copied from the desktop's `star`, character for character. The
+            // drift test insisted, and it was right to: a star drawn twice by
+            // hand is two slightly different stars, and the whole point of the
+            // shared contract is that the two apps are one product.
+            "M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z",
+        )
+    ),
+
+    /**
      * A tray with the lip a letter drops through. Where archived mail goes back to.
      *
      * Its own glyph rather than the archive box reversed, because "put this back"

@@ -2,6 +2,7 @@ package dev.anodex.mobile.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.mutableStateOf
@@ -208,10 +212,12 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         },
         swipeRight = swipeRight,
         swipeLeft = swipeLeft,
+        onRefresh = viewModel::refreshEmail,
         modifier = modifier,
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun InboxList(
     threads: List<EmailThread>,
@@ -244,9 +250,12 @@ internal fun InboxList(
     /** Which act each direction performs, as chosen in Settings. */
     swipeRight: MailSwipeAction = MailSwipeAction.DELETE,
     swipeLeft: MailSwipeAction = MailSwipeAction.ARCHIVE,
+    /** Fetch again. Null leaves the list without the gesture. */
+    onRefresh: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    val pullState = rememberPullToRefreshState()
 
     ScreenScaffold(
         title = if (isResults) "Search" else openFolder?.label ?: "Inbox",
@@ -338,7 +347,32 @@ internal fun InboxList(
                 modifier = emptyModifier,
             )
 
-            else -> LazyColumn(
+            // Pull down to fetch.
+            //
+            // The only way to ask for new mail was a Refresh button in the
+            // header, which is a thing you have to know is there. Every mail
+            // client on a phone refreshes on a pull, so the gesture is already
+            // in everyone's hands -- and this list is exactly the place people
+            // arrive wanting to know whether anything has come in.
+            //
+            // Wrapping the list rather than the whole screen, so the folder
+            // strip and the search field stay put while the mail moves.
+            else -> PullToRefreshBox(
+                isRefreshing = loading,
+                onRefresh = { onRefresh?.invoke() },
+                modifier = Modifier.fillMaxSize(),
+                state = pullState,
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullState,
+                        isRefreshing = loading,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset),
+                        containerColor = colors.bgSurface2,
+                        color = colors.accent,
+                    )
+                },
+            ) {
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .fadingEdges(topInset, 0.dp),
@@ -366,6 +400,7 @@ internal fun InboxList(
                         modifier = Modifier.animateItem(),
                     )
                 }
+            }
             }
         }
     }
@@ -767,18 +802,30 @@ internal fun ThreadReader(
             return@ScreenScaffold
         }
 
+        // One message gets the screen; a conversation scrolls.
+        //
+        // The difference decides who does the scrolling, and getting it wrong is
+        // what left screens of blank under a long newsletter. A `WebView` paints
+        // its own viewport and nothing more: sized to its content it has no
+        // scroll and paints all of it, but sized to less it paints the top and
+        // leaves the rest of the view empty. So a message that is on its own is
+        // handed the remaining space and scrolls itself, and only a thread with
+        // several messages -- which are replies, and short -- is measured and
+        // stacked in a scrolling column.
+        val single = notes.size == 1 && notes[0].bodyHtml != null
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .fadingEdges(topInset, 0.dp)
-                .verticalScroll(rememberScrollState())
+                .then(if (single) Modifier else Modifier.verticalScroll(rememberScrollState()))
                 .padding(
                     start = Spacing.x4,
                     end = Spacing.x4,
                     top = topInset + Spacing.x2,
                     bottom = Spacing.x6,
                 ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.x5),
+            verticalArrangement = Arrangement.spacedBy(if (single) Spacing.x3 else Spacing.x5),
         ) {
             // The subject, full width and wrapping, above the first message.
             // This is what a mail client leads with and what the header bar could
@@ -792,7 +839,10 @@ internal fun ThreadReader(
             }
 
             for (note in notes) {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+                Column(
+                    modifier = if (single) Modifier.weight(1f) else Modifier,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+                ) {
                     // Who it is from, as a person: circle, name, when. The same
                     // three things the inbox row shows, so opening a message does
                     // not change what it is identified by.
@@ -884,7 +934,12 @@ internal fun ThreadReader(
                             html = html,
                             images = shown,
                             onLink = onLink,
-                            modifier = Modifier.fillMaxWidth(),
+                            fill = single,
+                            modifier = if (single) {
+                                Modifier.fillMaxWidth().weight(1f)
+                            } else {
+                                Modifier.fillMaxWidth()
+                            },
                         )
 
                         // Offered, never automatic. Fetching a remote image is how a
@@ -956,24 +1011,22 @@ internal fun ThreadReader(
                         modifier = Modifier.fillMaxWidth().padding(top = Spacing.x1),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
                     ) {
-                        for (action in listOf(MailFlag.STAR, MailFlag.ARCHIVE, MailFlag.UNREAD)) {
-                            Text(
-                                text = when (action) {
-                                    MailFlag.STAR -> "Star"
-                                    MailFlag.ARCHIVE -> "Archive"
-                                    else -> "Mark unread"
-                                },
-                                style = type.label,
-                                color = colors.textMuted,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = Touch.minTarget)
-                                    .wrapContentHeight(Alignment.CenterVertically)
-                                    .clip(Radii.md)
-                                    .clickable { onFlag(action) }
-                                    .padding(vertical = Spacing.x2),
-                                textAlign = TextAlign.Center,
-                            )
+                        // Chips, not three grey words in a row.
+                        //
+                        // They were plain text, evenly spaced across the bottom
+                        // of the message, which reads as a footer -- a line of
+                        // small print about the mail rather than three things
+                        // you can do to it. Gmail uses pills here and Outlook a
+                        // bar of icons; what both have and this did not is an
+                        // edge, so the eye can tell a control from a caption.
+                        MailChip(AnodexIcon.STAR, "Star", Modifier.weight(1f)) {
+                            onFlag(MailFlag.STAR)
+                        }
+                        MailChip(AnodexIcon.ARCHIVE, "Archive", Modifier.weight(1f)) {
+                            onFlag(MailFlag.ARCHIVE)
+                        }
+                        MailChip(AnodexIcon.MAIL, "Unread", Modifier.weight(1f)) {
+                            onFlag(MailFlag.UNREAD)
                         }
                     }
                 }
@@ -1087,6 +1140,46 @@ private fun FolderChip(label: String, selected: Boolean, onClick: () -> Unit) {
  * message, and small enough that two of them do not become the loudest thing on
  * the screen.
  */
+/**
+ * One of the quieter things you can do to a message.
+ *
+ * An outline rather than a fill, because these sit under Reply and must not
+ * compete with it: answering is the act somebody opened the message for and
+ * these are the tidying afterwards. The icon earns its place by making the row
+ * scannable without reading -- a star, a box, an envelope, in that order, is
+ * quicker to hit than three words of similar length.
+ */
+@Composable
+private fun MailChip(
+    icon: AnodexIcon,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Row(
+        modifier = modifier
+            .heightIn(min = Touch.minTarget)
+            .clip(Radii.pill)
+            .border(1.dp, colors.border, Radii.pill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.x3),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AnodexIcon(icon, size = 16.dp, tint = colors.textMuted)
+        Text(
+            text = label,
+            style = type.label,
+            color = colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 private fun HeaderAction(
     icon: AnodexIcon,
