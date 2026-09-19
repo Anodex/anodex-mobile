@@ -4,6 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -22,6 +24,21 @@ import kotlinx.serialization.json.put
 
 /** Bump together with the desktop's PROTOCOL_VERSION. Majors must match to connect. */
 const val PROTOCOL_VERSION = "1.0.0"
+
+/**
+ * What this phone can do, beyond what the protocol version guarantees.
+ *
+ * [PROTOCOL_VERSION] is a hard gate — a major mismatch refuses the connection — which
+ * is right for a change to the frame format and wrong for a feature only one side
+ * has. Bumping it to add a feature would refuse every computer in the field,
+ * including the ones that do not care about the feature.
+ *
+ * So a feature announces itself instead, and neither end uses one the other did not
+ * claim. Empty today; names are added here as the features that need them land.
+ * Named `feature.major`, so a feature whose wire shape changes becomes `voice.2` and
+ * an older peer simply does not recognise it.
+ */
+val PHONE_CAPABILITIES: List<String> = emptyList()
 
 @Serializable
 sealed interface ServerFrame {
@@ -55,6 +72,17 @@ sealed interface ServerFrame {
          * a frame to reject.
          */
         val hostName: String = "",
+        /**
+         * What the computer can do, beyond the protocol version.
+         *
+         * Defaulted to empty for the same reason as [mobileVersion] and [hostName]: a
+         * desktop that predates capabilities does not send the key, and that means it
+         * has no extra features — not that the frame is malformed.
+         *
+         * Read on every connection rather than remembered from pairing, because the
+         * same computer announces a different list after it updates.
+         */
+        val capabilities: List<String> = emptyList(),
     ) : ServerFrame
 
     /** Pairing completed. [deviceKey] is the long-lived credential — store it, never log it. */
@@ -67,6 +95,8 @@ sealed interface ServerFrame {
         val addresses: List<String> = emptyList(),
         val mobileVersion: String = "",
         val hostName: String = "",
+        /** As on [Welcome]. */
+        val capabilities: List<String> = emptyList(),
     ) : ServerFrame
 
     /** A reply to one invoke. */
@@ -142,6 +172,7 @@ object ClientFrames {
             put("deviceKey", deviceKey)
             put("deviceName", deviceName)
             put("reachedAt", reachedAt)
+            putCapabilities()
         }.toString()
 
     fun pair(secret: String, deviceName: String, reachedAt: String): String =
@@ -151,6 +182,7 @@ object ClientFrames {
             put("secret", secret)
             put("deviceName", deviceName)
             put("reachedAt", reachedAt)
+            putCapabilities()
         }.toString()
 
     fun invoke(id: String, channel: String, args: List<JsonElement>): String = buildJsonObject {
@@ -161,6 +193,16 @@ object ClientFrames {
     }.toString()
 
     fun ping(): String = buildJsonObject { put("type", "ping") }.toString()
+
+    /**
+     * Said on both handshake frames, not only on [hello].
+     *
+     * A phone that pairs and then uses a feature in the same session would otherwise
+     * have announced nothing for that first connection.
+     */
+    private fun JsonObjectBuilder.putCapabilities() {
+        put("capabilities", buildJsonArray { PHONE_CAPABILITIES.forEach { add(JsonPrimitive(it)) } })
+    }
 }
 
 /**
