@@ -175,6 +175,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             onDownload = viewModel::downloadAttachment,
             downloadingId = downloadingAttachment,
             canRestore = openFolder != null,
+            onMoveToInbox = viewModel::moveOpenThreadToInbox,
             modifier = modifier,
         )
         return
@@ -686,6 +687,8 @@ internal fun ThreadReader(
      * action worth offering is putting it back rather than taking it away.
      */
     canRestore: Boolean = false,
+    /** Put it back in the inbox. A move, so it works from Trash as well as Archive. */
+    onMoveToInbox: (() -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -716,9 +719,7 @@ internal fun ThreadReader(
                     // available, rather than a fourth icon on a phone header or
                     // a button that quietly no-ops.
                     if (canRestore) {
-                        HeaderAction(AnodexIcon.INBOX, "Move to inbox") {
-                            onFlag(MailFlag.UNARCHIVE)
-                        }
+                        HeaderAction(AnodexIcon.INBOX, "Move to inbox") { onMoveToInbox?.invoke() }
                     } else {
                         HeaderAction(AnodexIcon.ARCHIVE, "Archive") { onFlag(MailFlag.ARCHIVE) }
                     }

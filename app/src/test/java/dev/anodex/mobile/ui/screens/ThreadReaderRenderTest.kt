@@ -54,6 +54,7 @@ class ThreadReaderRenderTest {
         error: String? = null,
         canRestore: Boolean = false,
         onFlag: ((dev.anodex.mobile.email.MailFlag) -> Unit)? = null,
+        onMoveToInbox: (() -> Unit)? = null,
     ) {
         compose.setContent {
             AnodexTheme(darkTheme = true) {
@@ -64,6 +65,7 @@ class ThreadReaderRenderTest {
                     error = error,
                     canRestore = canRestore,
                     onFlag = onFlag,
+                    onMoveToInbox = onMoveToInbox,
                 )
             }
         }
@@ -118,11 +120,15 @@ class ThreadReaderRenderTest {
         // Archiving a message already out of the inbox does nothing, and the
         // opposite act had nowhere to live -- so a swipe could take a message
         // away and neither app could put it back once the undo had gone.
-        val flagged = mutableListOf<dev.anodex.mobile.email.MailFlag>()
-        show(notes = listOf(note()), canRestore = true, onFlag = { flagged += it })
+        //
+        // A move rather than a flag, and that distinction is the fix: unarchive
+        // looks for the thread in the *archive* folder, so from Trash it found
+        // nothing and reported that the conversation had no messages.
+        var movedBack = 0
+        show(notes = listOf(note()), canRestore = true, onFlag = {}, onMoveToInbox = { movedBack++ })
 
         compose.onNodeWithContentDescription("Move to inbox").performClick()
 
-        assertEquals(listOf(dev.anodex.mobile.email.MailFlag.UNARCHIVE), flagged)
+        assertEquals(1, movedBack)
     }
 }
