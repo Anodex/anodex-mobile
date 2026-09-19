@@ -2083,7 +2083,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val action = if (unread) MailFlag.UNREAD else MailFlag.READ
             runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { if (!it) restoreThreads(before, "Your computer would not change that.") }
                 .onFailure { restoreThreads(before, it.message ?: "Your computer would not change that.") }
         }
     }
@@ -2097,7 +2096,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val action = if (starred) MailFlag.STAR else MailFlag.UNSTAR
             runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { if (!it) restoreThreads(before, "Your computer would not change that.") }
                 .onFailure { restoreThreads(before, it.message ?: "Your computer would not change that.") }
         }
     }
@@ -2116,56 +2114,72 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * reverse, so the undo is real rather than a second guess at where the
      * message went.
      */
-    private val _archivedFromList = MutableStateFlow<EmailThread?>(null)
-    val archivedFromList: StateFlow<EmailThread?> = _archivedFromList.asStateFlow()
+    private val _archivedFromList = MutableStateFlow<List<EmailThread>>(emptyList())
+    val archivedFromList: StateFlow<List<EmailThread>> = _archivedFromList.asStateFlow()
+
+    /** Archive one thread -- a swipe, which can only ever be one. */
+    fun archiveThreadFromList(thread: EmailThread) = archiveThreadsFromList(listOf(thread))
 
     /**
-     * Archive a thread from the list.
+     * Archive threads from the list.
      *
-     * The row goes immediately and comes back if the computer refuses, which is
+     * The rows go immediately and come back if the computer refuses, which is
      * the same optimistic shape the dot and the star use. A swipe that waits for
      * a round trip before the row moves does not read as a swipe.
+     *
+     * Takes a list because selecting several and archiving the lot is the same
+     * act as swiping one, and splitting those into two code paths is how the two
+     * come to behave differently. A partial result is reported as one: whatever
+     * the computer refused goes back in the list, and the undo offers back only
+     * what actually moved.
      */
-    fun archiveThreadFromList(thread: EmailThread) {
+    fun archiveThreadsFromList(threads: List<EmailThread>) {
         val client = emailClient ?: return
+        if (threads.isEmpty()) return
         val before = _emailThreads.value
-        _emailThreads.value = before.filterNot { it.id == thread.id }
+        val asked = threads.map { it.id }.toSet()
+        _emailThreads.value = before.filterNot { it.id in asked }
         _notice.value = null
 
         viewModelScope.launch {
-            val accountId = thread.accountId.takeIf { it.isNotBlank() }
-            runCatching { client.flag(thread.id, MailFlag.ARCHIVE, accountId) }
-                .onSuccess { ok ->
-                    if (ok) _archivedFromList.value = thread
-                    else restoreThreads(before, "Your computer would not archive that.")
-                }
-                .onFailure {
-                    restoreThreads(before, it.message ?: "Your computer would not archive that.")
-                }
+            val moved = mutableListOf<EmailThread>()
+            var reason: String? = null
+            for (thread in threads) {
+                val accountId = thread.accountId.takeIf { it.isNotBlank() }
+                runCatching { client.flag(thread.id, MailFlag.ARCHIVE, accountId) }
+                    .onSuccess { moved += thread }
+                    .onFailure { failure -> reason = reason ?: failure.message }
+            }
+            settleBulk(before, threads, moved, "archive", reason)
+            if (moved.isNotEmpty()) _archivedFromList.value = moved
         }
     }
 
-    /** Put the last swiped-away thread back where it was. */
+    /** Put the threads that were just archived back where they were. */
     fun undoArchiveFromList() {
-        val thread = _archivedFromList.value ?: return
+        val threads = _archivedFromList.value
         val client = emailClient ?: return
-        _archivedFromList.value = null
+        if (threads.isEmpty()) return
+        _archivedFromList.value = emptyList()
 
         viewModelScope.launch {
-            val accountId = thread.accountId.takeIf { it.isNotBlank() }
-            runCatching { client.flag(thread.id, MailFlag.UNARCHIVE, accountId) }
-                .onSuccess { ok ->
-                    // Re-read rather than re-inserted: where a restored message
-                    // belongs in the list is the mailbox's answer, not this
-                    // phone's.
-                    if (ok) refreshEmail() else _emailError.value = "That could not be put back."
-                }
-                .onFailure { _emailError.value = it.message ?: "That could not be put back." }
+            var failed = 0
+            var reason: String? = null
+            for (thread in threads) {
+                val accountId = thread.accountId.takeIf { it.isNotBlank() }
+                runCatching { client.flag(thread.id, MailFlag.UNARCHIVE, accountId) }
+                    .onFailure { failed++; reason = reason ?: it.message }
+            }
+            // Re-read rather than re-inserted: where a restored message belongs
+            // in the list is the mailbox's answer, not this phone's. Read even
+            // when some failed, because the ones that worked did move.
+            refreshEmail()
+            if (failed > 0) _emailError.value = reason ?: couldNotPutBack(failed, threads.size)
         }
     }
 
     fun dismissArchivedFromList() {
-        _archivedFromList.value = null
+        _archivedFromList.value = emptyList()
     }
 
     /**
@@ -2176,56 +2190,137 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * "Deleted" and "Archived" are not interchangeable words to somebody
      * deciding whether to reach for Undo.
      */
-    private val _deletedFromList = MutableStateFlow<EmailThread?>(null)
-    val deletedFromList: StateFlow<EmailThread?> = _deletedFromList.asStateFlow()
+    private val _deletedFromList = MutableStateFlow<List<EmailThread>>(emptyList())
+    val deletedFromList: StateFlow<List<EmailThread>> = _deletedFromList.asStateFlow()
+
+    /** Delete one thread -- a swipe, which can only ever be one. */
+    fun deleteThreadFromList(thread: EmailThread) = deleteThreadsFromList(listOf(thread))
 
     /**
-     * Delete a thread from the list.
+     * Delete threads from the list.
      *
      * Deleting means moving to the account's trash -- recoverable from any mail
      * app the account is open in -- which is the only reason a gesture is
-     * allowed to do it at all. Nothing here expunges anything.
+     * allowed to do it at all. Nothing here expunges anything, and that holds
+     * however many were selected.
      */
-    fun deleteThreadFromList(thread: EmailThread) {
+    fun deleteThreadsFromList(threads: List<EmailThread>) {
         val client = emailClient ?: return
+        if (threads.isEmpty()) return
         val before = _emailThreads.value
-        _emailThreads.value = before.filterNot { it.id == thread.id }
+        val asked = threads.map { it.id }.toSet()
+        _emailThreads.value = before.filterNot { it.id in asked }
         _notice.value = null
 
         viewModelScope.launch {
-            val accountId = thread.accountId.takeIf { it.isNotBlank() }
-            runCatching { client.trash(thread.id, accountId) }
-                .onSuccess { ok ->
-                    if (ok) _deletedFromList.value = thread
-                    else restoreThreads(before, "Your computer would not delete that.")
-                }
-                .onFailure {
-                    restoreThreads(before, it.message ?: "Your computer would not delete that.")
-                }
+            val moved = mutableListOf<EmailThread>()
+            var reason: String? = null
+            for (thread in threads) {
+                val accountId = thread.accountId.takeIf { it.isNotBlank() }
+                runCatching { client.trash(thread.id, accountId) }
+                    .onSuccess { moved += thread }
+                    .onFailure { failure -> reason = reason ?: failure.message }
+            }
+            settleBulk(before, threads, moved, "delete", reason)
+            if (moved.isNotEmpty()) _deletedFromList.value = moved
         }
     }
 
-    /** Move the last swiped-away thread back out of the trash. */
+    /** Move the threads that were just deleted back out of the trash. */
     fun undoDeleteFromList() {
-        val thread = _deletedFromList.value ?: return
+        val threads = _deletedFromList.value
         val client = emailClient ?: return
-        _deletedFromList.value = null
+        if (threads.isEmpty()) return
+        _deletedFromList.value = emptyList()
 
         viewModelScope.launch {
-            val accountId = thread.accountId.takeIf { it.isNotBlank() }
-            // `INBOX` rather than wherever it came from: it is the one folder
-            // name every provider agrees on, and a message put back somewhere
-            // the reader has to go looking for is not much of an undo.
-            runCatching { client.move(thread.id, "INBOX", accountId) }
-                .onSuccess { ok ->
-                    if (ok) refreshEmail() else _emailError.value = "That could not be put back."
-                }
-                .onFailure { _emailError.value = it.message ?: "That could not be put back." }
+            var failed = 0
+            var reason: String? = null
+            for (thread in threads) {
+                val accountId = thread.accountId.takeIf { it.isNotBlank() }
+                // `INBOX` rather than wherever it came from: it is the one
+                // folder name every provider agrees on, and a message put back
+                // somewhere the reader has to go looking for is not much of an
+                // undo.
+                runCatching { client.move(thread.id, "INBOX", accountId) }
+                    .onFailure { failed++; reason = reason ?: it.message }
+            }
+            refreshEmail()
+            if (failed > 0) _emailError.value = reason ?: couldNotPutBack(failed, threads.size)
         }
     }
 
     fun dismissDeletedFromList() {
-        _deletedFromList.value = null
+        _deletedFromList.value = emptyList()
+    }
+
+    /**
+     * What the list looks like after a bulk act, and what to say about it.
+     *
+     * Three outcomes, and the middle one is why this is a function. All of them
+     * moved: nothing to say. None of them moved: put the whole list back,
+     * because rows that vanished would be a lie. *Some* of them moved: put back
+     * only the ones that did not, and say how many. A count rather than names,
+     * since five subjects in a strip is unreadable -- but a count rather than
+     * silence, because silence here is the shape of bug this app keeps having,
+     * where a refusal arrives looking like an absence.
+     */
+    private fun settleBulk(
+        before: List<EmailThread>,
+        asked: List<EmailThread>,
+        moved: List<EmailThread>,
+        verb: String,
+        reason: String?,
+    ) {
+        if (moved.size == asked.size) return
+
+        if (moved.isEmpty()) {
+            restoreThreads(before, reason ?: "Your computer would not $verb that.")
+            return
+        }
+
+        val gone = moved.map { it.id }.toSet()
+        _emailThreads.value = before.filterNot { it.id in gone }
+        val left = asked.size - moved.size
+        _emailError.value =
+            if (left == 1) "One message could not be ${verb}d."
+            else "$left messages could not be ${verb}d."
+    }
+
+    private fun couldNotPutBack(failed: Int, of: Int): String = when {
+        of == 1 -> "That could not be put back."
+        failed == of -> "Those could not be put back."
+        else -> "$failed of them could not be put back."
+    }
+
+    /**
+     * Mark several threads read or unread at once.
+     *
+     * The one bulk act that is not destructive, and the one people reach for
+     * most: an inbox is caught up on by reading the subjects and clearing the
+     * lot. Optimistic like its single-thread twin, and the whole list goes back
+     * if any of it is refused -- a half-applied read state is worse to look at
+     * than none of it, because nothing tells you which half.
+     */
+    fun setThreadsUnread(threads: List<EmailThread>, unread: Boolean) {
+        val client = emailClient ?: return
+        if (threads.isEmpty()) return
+        val before = _emailThreads.value
+        val asked = threads.map { it.id }.toSet()
+        _emailThreads.value = before.map { if (it.id in asked) it.copy(unread = unread) else it }
+
+        viewModelScope.launch {
+            val action = if (unread) MailFlag.UNREAD else MailFlag.READ
+            var reason: String? = null
+            for (thread in threads) {
+                val accountId = thread.accountId.takeIf { it.isNotBlank() }
+                runCatching { client.flag(thread.id, action, accountId) }
+                    .onFailure { reason = reason ?: it.message ?: "" }
+            }
+            reason?.let {
+                restoreThreads(before, it.ifBlank { "Your computer would not change those." })
+            }
+        }
     }
 
     /**
@@ -2245,11 +2340,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val accountId = thread.accountId.takeIf { it.isNotBlank() }
             runCatching { client.move(thread.id, "INBOX", accountId) }
-                .onSuccess { ok ->
-                    if (!ok) {
-                        _emailError.value = "Your computer would not move that."
-                        return@onSuccess
-                    }
+                .onSuccess {
                     _notice.value = "Moved to your inbox."
                     closeEmailThread()
                     refreshEmail()
@@ -2271,11 +2362,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { ok ->
-                    if (!ok) {
-                        _emailError.value = "Your computer would not change that."
-                        return@onSuccess
-                    }
+                .onSuccess {
                     _notice.value = when (action) {
                         MailFlag.STAR -> "Starred."
                         MailFlag.ARCHIVE -> "Archived."
@@ -2308,11 +2395,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             runCatching { client.trash(thread.id, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { ok ->
-                    if (!ok) {
-                        _emailError.value = "Your computer would not delete it."
-                        return@onSuccess
-                    }
+                .onSuccess {
                     _notice.value = "Moved to trash."
                     closeEmailThread()
                     refreshEmail()
@@ -2485,17 +2568,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     threadId = draft.threadId,
                 )
             }
-                .onSuccess { sent ->
-                    if (sent) {
-                        _mailDraft.value = null
-                        _mailDrafted.value = null
-                        _notice.value = "Sent."
-                        // The thread it joined now has one more message in it.
-                        refreshEmail()
-                    } else {
-                        _mailError.value = "Your computer would not send it."
-                    }
+                .onSuccess {
+                    _mailDraft.value = null
+                    _mailDrafted.value = null
+                    _notice.value = "Sent."
+                    // The thread it joined now has one more message in it.
+                    refreshEmail()
                 }
+                // The composer stays open and keeps what was typed. A window
+                // that closes on a failed send loses the message *and* says it
+                // went, which is the worst of the outcomes available.
                 .onFailure { _mailError.value = it.message ?: "Your computer would not send it." }
             _mailSending.value = false
         }

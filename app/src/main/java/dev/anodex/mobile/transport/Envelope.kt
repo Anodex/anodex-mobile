@@ -47,14 +47,58 @@ internal fun JsonElement?.unwrap(): JsonElement? {
 internal fun JsonElement?.unwrapOrThrow(what: String): JsonElement? {
     val result = this as? JsonObject ?: error("Your computer answered $what with something unreadable.")
     if (result["ok"]?.jsonPrimitive?.contentOrNullish() != "true") {
-        // The desktop's own words when it has them: `err(code, message, detail)`
-        // is written for a reader, and repeating it beats inventing a second
-        // sentence about the same failure.
-        val said = (result["error"] as? JsonObject)?.get("message")
-            ?.jsonPrimitive?.contentOrNullish()?.takeIf { it.isNotBlank() }
-        error(said ?: "Your computer would not $what.")
+        error(whatWentWrong(result["error"] as? JsonObject) ?: "Your computer would not $what.")
     }
     return result["value"]
+}
+
+/**
+ * The computer's own account of a failure, as one sentence.
+ *
+ * `err(code, message, detail)` splits a failure in two, and the halves are not
+ * interchangeable. `message` is what the handler decided to call it -- "Could
+ * not send email." -- written before anything had gone wrong and therefore the
+ * same sentence for a rejected address, a stale password and an attachment over
+ * the limit. `detail` is `toErrorMessage(error)`: the provider's actual words.
+ *
+ * Reading only `message`, which is what this used to do, is how a refusal
+ * reaches a phone having lost the one part of it worth reading. The desktop's
+ * own interface never made that mistake -- every `notifyError` on that side
+ * passes `error.detail ?? error.message`, so the person at the computer has
+ * been getting the real reason all along and the person holding the phone has
+ * not.
+ *
+ * Both, where there are both and they differ. The desktop can afford to drop
+ * the headline because it has a title line to put it on; here there is one
+ * string, and the pair reads better than either alone -- "Could not send email.
+ * Invalid login: 535 authentication failed." says what failed and why, and
+ * neither half says both.
+ */
+private fun whatWentWrong(error: JsonObject?): String? {
+    fun field(name: String) = error?.get(name)?.jsonPrimitive?.contentOrNullish()
+        ?.trim()?.takeIf { it.isNotBlank() }
+
+    val headline = field("message")
+    val cause = field("detail")
+
+    return when {
+        cause == null -> headline
+        headline == null -> cause
+        // A handler that passed the same string twice, and a detail the
+        // headline already contains, are both one sentence rather than two.
+        cause == headline || headline.contains(cause) -> headline
+        // Joined exactly as it was written, with no capital forced onto it.
+        //
+        // The first version uppercased the cause so the pair read as two
+        // sentences. A `detail` is far more often a filename, a hostname or
+        // a command than a sentence -- `video.mov` came back as `Video.mov`,
+        // and `getaddrinfo ENOTFOUND` would have become `Getaddrinfo`.
+        // Renaming something inside an error message is worse than a
+        // lowercase letter after a full stop, and the whole point of this
+        // function is to repeat what the computer said. Editing it is not
+        // repeating it.
+        else -> "$headline $cause"
+    }
 }
 
 /** `content` on a JSON null is the string "null", which is never what a caller wants. */

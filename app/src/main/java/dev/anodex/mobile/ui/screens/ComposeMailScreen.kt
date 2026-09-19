@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.SendButton
 import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexTextField
@@ -178,24 +179,27 @@ fun ComposeMailScreen(
                         tint = if (asking) colors.accentInk else colors.textMuted,
                     ) { if (!drafting) asking = !asking }
                 }
-                ComposerAction(
-                    icon = AnodexIcon.SEND,
+                // The chat composer's button, not a grey glyph beside it.
+                //
+                // These are the two screens in the app that send something,
+                // and they looked like two different apps doing it: chat wore
+                // the mark on a circle, mail drew a plain outline plane in the
+                // same corner. A control that distinctive exists precisely so
+                // that sending is recognisable wherever it happens.
+                //
+                // The armed state is carried by the line under the message --
+                // "Tap send again and it goes." in the accent -- rather than
+                // by a tint difference on a glyph nobody is looking at while
+                // reading the sentence that explains it.
+                SendButton(
+                    enabled = ready && !sending,
                     label = when {
                         sending -> "Sending"
                         confirming -> "Tap again to send"
                         else -> "Send"
                     },
-                    // Three states in one control, because it has three. Faint
-                    // until the message could go at all, the mark's colour once
-                    // it could, and the full accent while it is armed -- which
-                    // is the tap that cannot be taken back.
-                    tint = when {
-                        !ready || sending -> colors.textFaint
-                        confirming -> colors.accent
-                        else -> colors.accentInk
-                    },
                 ) {
-                    if (!ready || sending) return@ComposerAction
+                    if (!ready || sending) return@SendButton
                     if (confirming) onSend(compose(to, cc, subject, body, draft))
                     else confirming = true
                 }
