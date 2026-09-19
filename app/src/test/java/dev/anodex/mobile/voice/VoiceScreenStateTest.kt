@@ -52,6 +52,23 @@ class VoiceScreenStateTest {
     }
 
     @Test
+    fun `a refused microphone says so instead of inviting another tap`() {
+        // The idle screen would invite a tap that does nothing: Android asks once and
+        // then remembers, so the second request is refused without showing anything
+        // and the screen looks broken.
+        val state = VoiceScreenState(microphoneRefused = true, hostName = "STUDIO-PC")
+        assertEquals("Anodex cannot hear", state.headline())
+        assertEquals("Allow the microphone in Android's settings for Anodex", state.detail())
+    }
+
+    @Test
+    fun `a refused microphone outranks whatever the loop thinks`() {
+        // It can be refused while a previous session's state is still on the screen.
+        val state = VoiceScreenState(running = true, connected = true, listening = true, microphoneRefused = true)
+        assertEquals("Anodex cannot hear", state.headline())
+    }
+
+    @Test
     fun `connected and quiet is the invitation`() {
         val state = VoiceScreenState(running = true, connected = true)
         assertEquals("Go ahead", state.headline())
