@@ -7,6 +7,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +56,21 @@ fun MailBody(
     /** Remote images the reader asked for, by their original URL. */
     images: Map<String, String> = emptyMap(),
     onLink: ((String) -> Unit)? = null,
+    /**
+     * Fill the space given instead of growing to fit the message.
+     *
+     * The difference decides who scrolls. A `WebView` only ever paints its own
+     * viewport: sized to its content it has no scroll of its own and paints all
+     * of it, which is what a short message wants -- but sized to *less* than its
+     * content it paints the top and leaves the remainder of the view blank,
+     * which is what a long one was doing. Screens of nothing, and no amount of
+     * capping fixes it, because the cap is what creates it.
+     *
+     * So a message that is the only thing on the screen is given the screen and
+     * scrolls itself. Measuring is for the other case: several messages in one
+     * conversation, where each has to sit inline in a column that scrolls.
+     */
+    fill: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val document = wrapMailHtml(html, images, colors.text.toArgb(), colors.bgApp.toArgb())
@@ -90,9 +106,13 @@ fun MailBody(
     val loaded = remember { LoadedDocument() }
 
     AndroidView(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(if (measured.value > 0.dp) measured.value else FALLBACK_HEIGHT),
+        modifier = if (fill) {
+            modifier.fillMaxSize()
+        } else {
+            modifier.fillMaxWidth().height(
+                if (measured.value > 0.dp) measured.value else FALLBACK_HEIGHT
+            )
+        },
         factory = { context ->
             WebView(context).apply {
                 settings.javaScriptEnabled = false
@@ -103,6 +123,13 @@ fun MailBody(
                 settings.blockNetworkLoads = true
                 settings.setSupportZoom(false)
                 setBackgroundColor(AndroidColor.TRANSPARENT)
+                // Left on, unlike before. While the view was as tall as its
+                // content there was never anything to scroll; now that a very
+                // long message is capped, its own scrollbar is how the rest of
+                // it is reached.
+                // On when the view is the scrolling region, off when it is
+                // sized to its content and has nothing of its own to scroll.
+                isVerticalScrollBarEnabled = fill
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -120,7 +147,7 @@ fun MailBody(
                         // reflow can report a smaller intermediate height and a
                         // message that shrinks after you start reading is worse than
                         // one that is briefly too tall.
-                        if (view == null) return
+                        if (view == null || fill) return
 
                         // Read until the height stops growing, rather than for a
                         // fixed second.
@@ -138,7 +165,7 @@ fun MailBody(
                         // which stays off. It stops as soon as the number has held
                         // still, so a short message costs a handful of reads.
                         view.post(object : Runnable {
-                            private var tallest = 0
+                            private var previous = 0
                             private var held = 0
                             private val startedAt = SystemClock.uptimeMillis()
 
@@ -151,19 +178,63 @@ fun MailBody(
                                 if (!view.isAttachedToWindow) return
 
                                 val content = view.contentHeight
-                                // Taken as a maximum rather than a last value: a
-                                // reflow reports smaller intermediate heights, and
-                                // a message that shrinks while it is being read is
-                                // worse than one briefly too tall.
-                                if (content > tallest) {
-                                    tallest = content
+                                if (content <= 0) {
+                                    schedule()
+                                    return
+                                }
+
+                                // The value that stops changing, not the largest
+                                // one seen.
+                                //
+                                // Keeping the largest was the obvious rule and it
+                                // was wrong in a way that only shows on a heavy
+                                // message: while pictures are decoding, the
+                                // document is briefly laid out at their natural
+                                // size, before `max-width: 100%` has anything to
+                                // constrain. That intermediate height is the tallest
+                                // reading by a long way, so the maximum locked it in
+                                // and the reader scrolled through a screen and a
+                                // half of nothing after the last line.
+                                //
+                                // Settling handles both failures with one rule: it
+                                // does not stop early, because it waits for the
+                                // number to hold still, and it does not keep a
+                                // transient peak, because it takes whatever is true
+                                // when the movement ends.
+                                // Clamped, because this number is not ours.
+                                //
+                                // `contentHeight` is whatever the renderer thinks
+                                // mid-reflow, and it went straight into a layout
+                                // constraint: on a picture-heavy newsletter it
+                                // briefly said 89,010, and the app went down with
+                                // `Can't represent a width of 0 and height of
+                                // 267030 in Constraints`.
+                                //
+                                // Only reached when this message is one of
+                                // several -- a message on its own fills the screen
+                                // and is never measured -- so the ceiling is about
+                                // surviving a bad reading rather than about how
+                                // long a reply can be.
+                                val raw = with(density) { (content * view.scale).toDp() }
+                                measured.value = raw.coerceAtMost(MAX_INLINE_HEIGHT)
+
+                                // Settling is about the *reading*, not about the
+                                // height that came out of it. Tying it to the
+                                // capped value meant a message over the cap never
+                                // settled -- the reading kept changing while the
+                                // height did not, so the loop ran to its fifteen
+                                // second limit on every long newsletter.
+                                if (content != previous) {
+                                    previous = content
                                     held = 0
-                                    val height = with(density) { (content * view.scale).toDp() }
-                                    if (height > measured.value) measured.value = height
                                 } else {
                                     held++
                                 }
 
+                                schedule()
+                            }
+
+                            private fun schedule() {
                                 val elapsed = SystemClock.uptimeMillis() - startedAt
                                 if (held < SETTLED_READS && elapsed < GIVE_UP_MEASURING_MS) {
                                     view.postDelayed(this, MEASURE_EVERY_MS)
@@ -320,7 +391,9 @@ private const val MEASURE_EVERY_MS = 150L
  * Reads at the same height before the message is called measured.
  *
  * Five, so roughly three quarters of a second of stillness. Fewer, and a pause
- * between two pictures decoding reads as the end of the document.
+ * between two pictures decoding reads as the end of the document. The height
+ * follows every reading in the meantime, so this decides when to stop watching
+ * rather than what to believe.
  */
 private const val SETTLED_READS = 5
 
@@ -331,6 +404,16 @@ private const val SETTLED_READS = 5
  * down, and one that keeps changing under the reader is its own problem.
  */
 private const val GIVE_UP_MEASURING_MS = 15_000L
+
+/**
+ * A ceiling on a number that comes from a web page.
+ *
+ * `contentHeight` is the renderer's opinion mid-reflow and it can be absurd --
+ * 89,010 once, which became 267,030 pixels in a layout constraint and crashed
+ * the app. Two thousand is generous for a reply stacked in a conversation,
+ * which is the only thing measured now.
+ */
+private val MAX_INLINE_HEIGHT = 2_000.dp
 
 /** Enough to look like a message while the real height is being worked out. */
 private val FALLBACK_HEIGHT = 240.dp
