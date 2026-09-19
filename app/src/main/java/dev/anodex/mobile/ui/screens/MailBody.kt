@@ -2,16 +2,15 @@ package dev.anodex.mobile.ui.screens
 
 import android.annotation.SuppressLint
 import android.graphics.Color as AndroidColor
+import android.os.SystemClock
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
@@ -71,13 +70,29 @@ fun MailBody(
     // which stays off. It is in CSS pixels, so it is density-scaled here. Until it
     // arrives the view keeps a screenful so the layout does not jump from nothing
     // to full height in one frame.
-    var measured by remember(document) { mutableStateOf(0.dp) }
+    // Deliberately **not** keyed on the document.
+    //
+    // It was, and that is what cut the message in half. `AndroidView`'s factory
+    // runs once, so the `WebViewClient` created in it closes over whichever state
+    // object existed then. Re-keying on the document builds a *new* state on the
+    // next load -- which is exactly what happens when the pictures arrive -- so
+    // from that moment the view was measuring itself correctly and writing the
+    // answer into an object nothing was reading, while the layout read a fresh
+    // zero and settled on the fallback. Measured 2328dp, drawn 240dp, and the
+    // rest of the mail below the cut.
+    //
+    // One state, stable for the life of the composable, reset in `update` where
+    // the document actually changes.
+    val measured = remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
+
+    /** What the view already holds, so it is not reloaded for nothing. */
+    val loaded = remember { LoadedDocument() }
 
     AndroidView(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (measured > 0.dp) measured else FALLBACK_HEIGHT),
+            .height(if (measured.value > 0.dp) measured.value else FALLBACK_HEIGHT),
         factory = { context ->
             WebView(context).apply {
                 settings.javaScriptEnabled = false
@@ -106,22 +121,55 @@ fun MailBody(
                         // message that shrinks after you start reading is worse than
                         // one that is briefly too tall.
                         if (view == null) return
-                        for (delay in REMEASURE_DELAYS_MS) {
-                            view.postDelayed({
+
+                        // Read until the height stops growing, rather than for a
+                        // fixed second.
+                        //
+                        // The fixed second was wrong, and wrong in the direction
+                        // that loses mail: a newsletter whose pictures arrive as
+                        // data URIs is still decoding and laying them out well
+                        // after the last scheduled read, so the view kept the
+                        // height the text alone needed and the rest of the message
+                        // was cut off -- a photograph sliced in half with the Reply
+                        // button under it. Nothing said so; the page scrolled to
+                        // its end and simply ended early.
+                        //
+                        // Polling `contentHeight` is a field read, not JavaScript,
+                        // which stays off. It stops as soon as the number has held
+                        // still, so a short message costs a handful of reads.
+                        view.post(object : Runnable {
+                            private var tallest = 0
+                            private var held = 0
+                            private val startedAt = SystemClock.uptimeMillis()
+
+                            override fun run() {
                                 // The view may be gone by the time this runs: a
                                 // scroll away from the message destroys it while
-                                // up to a second of callbacks are still pending,
-                                // and reading `contentHeight` off a destroyed
-                                // `WebView` is not something to find out about
-                                // from a crash report.
-                                if (!view.isAttachedToWindow) return@postDelayed
+                                // callbacks are still pending, and reading
+                                // `contentHeight` off a destroyed `WebView` is not
+                                // something to find out about from a crash report.
+                                if (!view.isAttachedToWindow) return
+
                                 val content = view.contentHeight
-                                if (content > 0) {
+                                // Taken as a maximum rather than a last value: a
+                                // reflow reports smaller intermediate heights, and
+                                // a message that shrinks while it is being read is
+                                // worse than one briefly too tall.
+                                if (content > tallest) {
+                                    tallest = content
+                                    held = 0
                                     val height = with(density) { (content * view.scale).toDp() }
-                                    if (height > measured) measured = height
+                                    if (height > measured.value) measured.value = height
+                                } else {
+                                    held++
                                 }
-                            }, delay)
-                        }
+
+                                val elapsed = SystemClock.uptimeMillis() - startedAt
+                                if (held < SETTLED_READS && elapsed < GIVE_UP_MEASURING_MS) {
+                                    view.postDelayed(this, MEASURE_EVERY_MS)
+                                }
+                            }
+                        })
                     }
 
                     override fun shouldInterceptRequest(
@@ -157,9 +205,24 @@ fun MailBody(
             }
         },
         update = { view ->
-            // `null` as the base URL, so the document has no origin to inherit and
-            // nothing relative to resolve against.
-            view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
+            // Only when the document actually changed.
+            //
+            // `update` runs on every recomposition, and measuring the height causes
+            // one -- so loading unconditionally meant each measurement reloaded the
+            // page it had just measured, which restarted the measurement. The
+            // message arrived in the end by always keeping the taller number, and
+            // spent the whole way reloading itself.
+            if (loaded.document != document) {
+                loaded.document = document
+                // A different document has a different height, and the old one is
+                // no longer an answer to anything. Reset here rather than by
+                // re-keying the state, so the view keeps writing to the object the
+                // layout reads.
+                measured.value = 0.dp
+                // `null` as the base URL, so the document has no origin to inherit
+                // and nothing relative to resolve against.
+                view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
+            }
         },
         onRelease = { view ->
             // A `WebView` outlives the composable that made it unless it is told
@@ -245,14 +308,29 @@ internal fun wrapMailHtml(
     """.trimIndent()
 }
 
+/** Which document a view already holds. Not state: writing it must not recompose. */
+private class LoadedDocument {
+    var document: String? = null
+}
+
+/** How often to re-read the height while it is still moving. */
+private const val MEASURE_EVERY_MS = 150L
+
 /**
- * When to re-read the height after loading ends.
+ * Reads at the same height before the message is called measured.
  *
- * Spread rather than repeated on a timer: a short message settles immediately and
- * a long one with a wide table needs a reflow or two. The last of these is late
- * enough to catch that and early enough that nobody is still looking at a gap.
+ * Five, so roughly three quarters of a second of stillness. Fewer, and a pause
+ * between two pictures decoding reads as the end of the document.
  */
-private val REMEASURE_DELAYS_MS = longArrayOf(0, 120, 400, 1000)
+private const val SETTLED_READS = 5
+
+/**
+ * Long enough for a heavy newsletter's pictures, short enough to end.
+ *
+ * A document still growing after fifteen seconds has a height nothing can pin
+ * down, and one that keeps changing under the reader is its own problem.
+ */
+private const val GIVE_UP_MEASURING_MS = 15_000L
 
 /** Enough to look like a message while the real height is being worked out. */
 private val FALLBACK_HEIGHT = 240.dp
