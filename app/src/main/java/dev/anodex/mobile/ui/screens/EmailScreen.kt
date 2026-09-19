@@ -385,7 +385,12 @@ internal fun InboxList(
                 }
             }
         } else {
-            onCompose?.let { { SecondaryButton(label = "Write", onClick = it) } }
+            // The same weight as "New" on the conversation list, which is the
+            // screen this one is a sibling of: a list of things, with the
+            // button that makes another one. It was the only secondary button
+            // in that position in the app, so it read as a lesser action than
+            // the thing it is.
+            onCompose?.let { { PrimaryButton(label = "Write", onClick = it) } }
         },
     ) { topInset ->
         val emptyModifier = Modifier.padding(top = topInset)

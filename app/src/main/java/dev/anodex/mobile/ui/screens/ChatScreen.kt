@@ -80,6 +80,7 @@ import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.SendButton
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.AttachmentThumb
@@ -2127,7 +2128,7 @@ private fun Composer(
             // appears and disappears: the old one reflowed the whole composer on the
             // first keystroke, which moved the text you were typing.
             SendButton(
-                sending = sending,
+                stop = sending,
                 enabled = sending || draft.isNotBlank(),
                 onClick = if (sending) onStop else onSend,
             )
@@ -2163,61 +2164,6 @@ private val COMPOSER_SHAPE = RoundedCornerShape((Touch.minTarget + Spacing.x1 * 
  * else on the phone.
  */
 private const val COMPOSER_MAX_LINES = 6
-
-/**
- * The one round control in the app.
- *
- * A circle rather than the app's usual 6dp radius, and deliberately: it is the only
- * control that commits work to another machine, and it should not look like the
- * buttons that merely navigate.
- */
-@Composable
-private fun SendButton(sending: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val colors = AnodexTheme.colors
-
-    val foreground = when {
-        sending -> colors.dangerInk
-        enabled -> colors.textOnAccent
-        else -> colors.textFaint
-    }
-
-    // The most-pressed control in the app, so it is the one that most has to look
-    // like this app: ready to send, it wears the mark. Stopping it is danger, and an
-    // empty field leaves it present but plainly inert — a control that vanishes when
-    // there is nothing to send takes the layout with it.
-    val paint = Modifier.run {
-        when {
-            sending -> background(colors.dangerSoft)
-            enabled -> background(Brand.gradient(colors)).background(Brand.sheen)
-            else -> background(colors.bgSurface2)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .size(Touch.minTarget)
-            .clip(CircleShape)
-            .then(paint)
-            .clickable(enabled = enabled, onClick = onClick)
-            .semantics { contentDescription = if (sending) "Stop" else "Send" },
-        contentAlignment = Alignment.Center,
-    ) {
-        // The desktop's own two glyphs, not lookalikes drawn here. Send is a paper
-        // plane in `Icon.tsx`; this drew an arrow instead, with a comment claiming it
-        // was the desktop's — which it never was, and nothing catches a wrong comment
-        // next to a wrong drawing.
-        //
-        // The filled plane, because this one sits on the gradient: the stroked plane
-        // is a hairline at this size and disappears into a saturated fill. The
-        // desktop made the same swap, and for the same reason.
-        AnodexIcon(
-            icon = if (sending) AnodexIcon.STOP else AnodexIcon.SEND_FILL,
-            size = if (sending) 15.dp else 18.dp,
-            tint = foreground,
-            contentDescription = null,
-        )
-    }
-}
 
 @Preview(name = "Chat - dark", showBackground = true, heightDp = 700)
 @Composable
