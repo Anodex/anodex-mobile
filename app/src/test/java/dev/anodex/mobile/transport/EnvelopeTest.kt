@@ -135,6 +135,74 @@ class UnwrapOrThrowTest {
     }
 
     @Test
+    fun `the reason comes through, not just the headline`() {
+        // The half that was being dropped. `err(code, message, detail)` puts a
+        // sentence the handler wrote before anything went wrong in `message`,
+        // and the provider's actual words in `detail`. Reading only the first
+        // gives every SMTP failure in existence the same three words.
+        try {
+            parse(
+                """{"ok":false,"error":{"code":"email.send-failed",""" +
+                    """"message":"Could not send email.",""" +
+                    """"detail":"Invalid login: 535 authentication failed"}}"""
+            ).unwrapOrThrow("send it")
+            fail("a refusal must not pass for an answer")
+        } catch (failure: IllegalStateException) {
+            assertEquals(
+                "Could not send email. Invalid login: 535 authentication failed",
+                failure.message,
+            )
+        }
+    }
+
+    @Test
+    fun `a detail on its own is enough`() {
+        try {
+            parse("""{"ok":false,"error":{"detail":"No trash mailbox on this account."}}""")
+                .unwrapOrThrow("delete that")
+            fail("a refusal must not pass for an answer")
+        } catch (failure: IllegalStateException) {
+            assertEquals("No trash mailbox on this account.", failure.message)
+        }
+    }
+
+    @Test
+    fun `the same thing twice is said once`() {
+        // Handlers that pass the caught error as both halves are common, and
+        // "Could not move that. Could not move that." reads like a stutter.
+        for (raw in listOf(
+            """{"ok":false,"error":{"message":"Not connected.","detail":"Not connected."}}""",
+            """{"ok":false,"error":{"message":"Not connected. Reconnect first.","detail":"Not connected."}}""",
+        )) {
+            try {
+                parse(raw).unwrapOrThrow("do that")
+                fail("a refusal must not pass for an answer")
+            } catch (failure: IllegalStateException) {
+                assertTrue(
+                    "said twice: ${failure.message}",
+                    failure.message.orEmpty().startsWith("Not connected.") &&
+                        !failure.message.orEmpty().removePrefix("Not connected.")
+                            .contains("Not connected."),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a blank detail is not a reason`() {
+        // An empty string is not the provider saying nothing went wrong; it is
+        // a field nobody filled in, and it must not displace the headline or
+        // leave a trailing space behind it.
+        try {
+            parse("""{"ok":false,"error":{"message":"Could not move that.","detail":"   "}}""")
+                .unwrapOrThrow("move that")
+            fail("a refusal must not pass for an answer")
+        } catch (failure: IllegalStateException) {
+            assertEquals("Could not move that.", failure.message)
+        }
+    }
+
+    @Test
     fun `an empty answer is still an answer`() {
         // The distinction the whole thing exists for. A folder with nothing in
         // it is a fact; a refusal is not, and they must not arrive as the same
