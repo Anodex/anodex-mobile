@@ -2229,6 +2229,36 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Put the open thread back in the inbox, from wherever it is.
+     *
+     * A move rather than `unarchive`, which is what this used to call. Unarchive
+     * is archive-specific on the far side -- it looks for the thread in the
+     * account's archive folder and moves what it finds -- so from Trash it found
+     * nothing and failed with "that conversation has no messages". A move names
+     * the destination and lets the computer find the message wherever it is,
+     * which is the same act with none of the assumption.
+     */
+    fun moveOpenThreadToInbox() {
+        val client = emailClient ?: return
+        val thread = _openThreadSummary ?: return
+
+        viewModelScope.launch {
+            val accountId = thread.accountId.takeIf { it.isNotBlank() }
+            runCatching { client.move(thread.id, "INBOX", accountId) }
+                .onSuccess { ok ->
+                    if (!ok) {
+                        _emailError.value = "Your computer would not move that."
+                        return@onSuccess
+                    }
+                    _notice.value = "Moved to your inbox."
+                    closeEmailThread()
+                    refreshEmail()
+                }
+                .onFailure { _emailError.value = it.message ?: "Your computer would not move that." }
+        }
+    }
+
+    /**
      * Star or archive the thread being read.
      *
      * The list is re-read rather than edited: archiving removes a row entirely and
