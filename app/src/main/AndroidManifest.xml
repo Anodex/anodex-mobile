@@ -51,6 +51,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+      voice:seam — asked for when voice is switched on, never at install.
+
+      Declared here because Android requires it declared; it is requested at the
+      moment somebody turns voice on, which is the only moment it means anything.
+      Removing voice removes this line.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <!--
