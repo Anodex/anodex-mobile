@@ -88,6 +88,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
     val threadError by viewModel.threadError.collectAsStateWithLifecycle()
     val swipeRight by viewModel.swipeRight.collectAsStateWithLifecycle()
     val swipeLeft by viewModel.swipeLeft.collectAsStateWithLifecycle()
+    val emailAddress by viewModel.emailAddress.collectAsStateWithLifecycle()
 
     // Fetched when the tab is opened rather than on connect: a user who never opens
     // Email should not be making the desktop hit their mail provider.
@@ -129,6 +130,7 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
             drafted = drafted,
             sending = mailSending,
             error = mailError,
+            fromAddress = emailAddress,
             modifier = modifier,
         )
         return

@@ -412,6 +412,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val _emailConfigured = MutableStateFlow<Boolean?>(null)
     val emailConfigured: StateFlow<Boolean?> = _emailConfigured.asStateFlow()
 
+    /** The address mail goes out as, for the compose window to name. */
+    private val _emailAddress = MutableStateFlow("")
+    val emailAddress: StateFlow<String> = _emailAddress.asStateFlow()
+
     /**
      * Why the mailbox could not be read, when that is the reason it looks empty.
      *
@@ -1808,8 +1812,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // things to somebody waiting on a message.
             _emailError.value = null
 
-            runCatching { client.isConfigured() }
-                .onSuccess { _emailConfigured.value = it }
+            runCatching { client.status() }
+                .onSuccess {
+                    _emailConfigured.value = it.configured
+                    _emailAddress.value = it.address
+                }
                 .onFailure {
                     // Left as it was rather than set to false. Whether an account
                     // exists is a fact about the computer, and failing to ask is not
