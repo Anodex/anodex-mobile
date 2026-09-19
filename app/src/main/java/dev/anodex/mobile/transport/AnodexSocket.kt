@@ -98,6 +98,11 @@ class AnodexSocket(
         val mobileVersion: String = "",
         /** What the computer calls itself. Empty if it did not say. */
         val hostName: String = "",
+        /**
+         * What the computer said it can do. Empty if it did not say, which is what a
+         * desktop built before capabilities existed says — and means the same thing.
+         */
+        val capabilities: List<String> = emptyList(),
     )
 
     /**
@@ -218,6 +223,7 @@ class AnodexSocket(
                         frame.addresses,
                         frame.mobileVersion,
                         frame.hostName,
+                        frame.capabilities,
                     )
                 }
 
@@ -228,6 +234,7 @@ class AnodexSocket(
                         frame.addresses,
                         frame.mobileVersion,
                         frame.hostName,
+                        frame.capabilities,
                     )
                 }
 
