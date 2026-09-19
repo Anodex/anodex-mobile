@@ -27,6 +27,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.email.EmailNote
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import dev.anodex.mobile.ui.components.AnodexIcon
+import dev.anodex.mobile.ui.components.Hairline
 import dev.anodex.mobile.ui.components.AnodexCard
 import dev.anodex.mobile.ui.components.AnodexTextField
 import dev.anodex.mobile.ui.components.InlineProblem
@@ -84,6 +93,8 @@ fun ComposeMailScreen(
     drafted: String? = null,
     sending: Boolean = false,
     error: String? = null,
+    /** The address this goes out as. Empty hides the row rather than lying. */
+    fromAddress: String = "",
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -131,180 +142,241 @@ fun ComposeMailScreen(
 
     ScreenScaffold(
         title = draft.kind,
-        subtitle = draft.inReplyTo?.let { "to ${senderName(it.from)}" },
+        // The address as the subtitle rather than a row of its own, which is
+        // what Outlook does and is right on a screen this size: it is a
+        // constant, not a field, and it was taking a seventh of the window to
+        // say one unchanging thing. Who a reply is going to lives in the To
+        // field a few pixels below, where it can be edited.
+        subtitle = fromAddress.takeIf { it.isNotBlank() }
+            ?: draft.inReplyTo?.let { "to ${senderName(it.from)}" },
         modifier = modifier,
+        // A back arrow, not a bordered button labelled Cancel.
+        //
+        // Every other control in this bar became an icon, and one filled
+        // rectangle among them read as the important thing on the screen --
+        // which leaving is not. The confirmation moved to the line at the
+        // bottom, beside the one Send uses, so both of the acts that cannot be
+        // taken back are explained in the same place in the same voice.
         leading = {
-            SecondaryButton(
-                label = if (leaving) "Discard it?" else "Cancel",
-                onClick = { if (!written || leaving) onClose() else leaving = true },
-            )
+            ComposerAction(
+                icon = AnodexIcon.CHEVRON_LEFT,
+                label = if (leaving) "Tap again to discard" else "Close",
+                tint = if (leaving) colors.dangerInk else colors.textMuted,
+            ) { if (!written || leaving) onClose() else leaving = true }
+        },
+        // Send sits in the chrome, where every mail client on a phone puts it,
+        // rather than at the bottom of a scrolling column. The old one was a
+        // full-width button below the message: it moved as the body grew, it
+        // competed with "Have Anodex write it" for the same corner, and on a
+        // long draft you had to scroll past your own writing to reach it.
+        trailing = {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.x1)) {
+                if (onAskAnodex != null) {
+                    ComposerAction(
+                        icon = AnodexIcon.PENCIL,
+                        label = if (body.isBlank()) "Have Anodex write it" else "Have Anodex rewrite it",
+                        tint = if (asking) colors.accentInk else colors.textMuted,
+                    ) { if (!drafting) asking = !asking }
+                }
+                ComposerAction(
+                    icon = AnodexIcon.SEND,
+                    label = when {
+                        sending -> "Sending"
+                        confirming -> "Tap again to send"
+                        else -> "Send"
+                    },
+                    // Three states in one control, because it has three. Faint
+                    // until the message could go at all, the mark's colour once
+                    // it could, and the full accent while it is armed -- which
+                    // is the tap that cannot be taken back.
+                    tint = when {
+                        !ready || sending -> colors.textFaint
+                        confirming -> colors.accent
+                        else -> colors.accentInk
+                    },
+                ) {
+                    if (!ready || sending) return@ComposerAction
+                    if (confirming) onSend(compose(to, cc, subject, body, draft))
+                    else confirming = true
+                }
+            }
         },
     ) { topInset ->
+        // Fills rather than scrolls.
+        //
+        // A compose window is not a document to be read through: the addressing
+        // is three short lines and everything after it is one field that should
+        // have the rest of the screen. Scrolling the whole column meant the body
+        // had to be given an arbitrary minimum height, which pushed the line
+        // saying what was missing off the bottom -- so the one sentence
+        // explaining why Send does nothing was the one thing you had to go
+        // looking for. The body scrolls inside itself when it outgrows the room.
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(
                     start = Spacing.x4,
                     end = Spacing.x4,
                     top = topInset + Spacing.x2,
-                    bottom = Spacing.x6,
+                    bottom = Spacing.x4,
                 ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+            verticalArrangement = Arrangement.spacedBy(Spacing.x2),
         ) {
             if (error != null) InlineProblem(text = error)
 
-            // Said in the body rather than only on the button, because the button
-            // is in the corner and the thing at risk is the paragraph below it.
-            if (leaving) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Tap Discard again to throw this message away.",
-                        style = type.meta,
-                        color = colors.dangerInk,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "Keep writing",
-                        style = type.label,
-                        color = colors.accentInk,
-                        modifier = Modifier
-                            .heightIn(min = Touch.minTarget)
-                            .wrapContentHeight(Alignment.CenterVertically)
-                            .clip(Radii.md)
-                            .clickable { leaving = false }
-                            .padding(horizontal = Spacing.x2),
-                    )
-                }
+            // Rows separated by a hairline, not three bordered boxes stacked up.
+            //
+            // The boxes were the whole problem with this screen: four outlined
+            // rectangles and a card, each drawing a frame around one line of
+            // text, so the chrome outweighed the message and the body -- the only
+            // part anybody is here to write -- got the same weight as Cc. A mail
+            // client gives the addressing one quiet line each and hands the rest
+            // of the screen to the writing.
+            ComposerRow(label = "To") {
+                ComposerField(
+                    value = to,
+                    onValueChange = { to = it },
+                    placeholder = "Someone",
+                )
             }
-
-            AnodexTextField(
-                value = to,
-                onValueChange = { to = it },
-                placeholder = "To",
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             // Only when there is something in it. A reply-all carries the original
             // recipients and they matter; an empty Cc on a new message is a field
             // to scroll past on a screen that is mostly fields.
             if (cc.isNotBlank() || draft.cc.isNotBlank()) {
-                AnodexTextField(
-                    value = cc,
-                    onValueChange = { cc = it },
-                    placeholder = "Cc",
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            AnodexTextField(
-                value = subject,
-                onValueChange = { subject = it },
-                placeholder = "Subject",
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            AnodexTextField(
-                value = body,
-                onValueChange = { body = it },
-                placeholder = "Write your message",
-                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp),
-            )
-
-            if (onAskAnodex != null) {
-                AnodexCard {
-                    if (!asking) {
-                        SecondaryButton(
-                            label = if (body.isBlank()) "Have Anodex write it" else "Have Anodex rewrite it",
-                            onClick = { if (!drafting) asking = true },
-                        )
-                    } else {
-                        AnodexTextField(
-                            value = instruction,
-                            onValueChange = { instruction = it },
-                            placeholder = if (draft.inReplyTo != null) {
-                                "How to answer -- \"say yes, and ask when\""
-                            } else {
-                                "What to say"
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-                            PrimaryButton(
-                                label = if (drafting) "Writing…" else "Write it",
-                                onClick = {
-                                    if (drafting) return@PrimaryButton
-                                    onAskAnodex(
-                                        MailDraft(
-                                            to = to,
-                                            cc = cc,
-                                            subject = subject,
-                                            body = body,
-                                            inReplyTo = draft.inReplyTo,
-                                            threadId = draft.threadId,
-                                            kind = draft.kind,
-                                        ),
-                                        instruction,
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            SecondaryButton(
-                                label = "Never mind",
-                                onClick = { asking = false },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "It writes a draft. You send it.",
-                        style = type.meta,
-                        color = colors.textFaint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                ComposerRow(label = "Cc") {
+                    ComposerField(
+                        value = cc,
+                        onValueChange = { cc = it },
+                        placeholder = "Nobody else",
                     )
                 }
             }
 
-            // Two taps, like Forget on a memory, and for a stronger reason: a
-            // memory can be written again and a sent message cannot be recalled.
-            val sendLabel = when {
-                sending -> "Sending…"
-                confirming -> "Tap again to send"
-                else -> "Send"
-            }
-
-            // The quiet button until there is something to send. These have no
-            // enabled state, and a full-strength gradient that does nothing on tap
-            // tells you the opposite of the truth -- the line beneath says what is
-            // missing, and this stops the button arguing with it.
-            if (ready && !sending) {
-                PrimaryButton(
-                    label = sendLabel,
-                    onClick = {
-                        if (confirming) onSend(compose(to, cc, subject, body, draft)) else confirming = true
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            } else {
-                SecondaryButton(
-                    label = sendLabel,
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth(),
+            ComposerRow(label = "Subject") {
+                ComposerField(
+                    value = subject,
+                    onValueChange = { subject = it },
+                    placeholder = "What it is about",
                 )
             }
 
-            // Said rather than shown by a greyed button. A button that looks
-            // disabled tells you it will not work; this tells you what to do about
-            // it, which on a form with three fields is the whole question.
-            if (!ready) {
-                Text(
+            // The model offered inside the empty body, not only as an icon.
+            //
+            // Both Gmail and Outlook do this and the reason is discoverability:
+            // "Draft with Copilot" and "Help me write" sit in the placeholder,
+            // where somebody looking at an empty message is already looking.
+            // An icon in the chrome is a thing you find once you know it is
+            // there. The icon stays, because it is how you ask for a *rewrite*
+            // once there is something to rewrite and no placeholder left.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = Spacing.x2),
+            ) {
+                ComposerField(
+                    value = body,
+                    onValueChange = { body = it },
+                    placeholder = "",
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (body.isEmpty() && !asking) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (onAskAnodex == null) "Write your message" else "Write your message, or ",
+                            style = type.body,
+                            color = colors.textFaint,
+                        )
+                        if (onAskAnodex != null) {
+                            Text(
+                                text = "have Anodex write it",
+                                style = type.body,
+                                color = colors.accentInk,
+                                modifier = Modifier
+                                    .clip(Radii.sm)
+                                    .clickable { if (!drafting) asking = true },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // The model, when it has been asked for, as one line under the
+            // message rather than a card beside it.
+            //
+            // It was a bordered card holding a button, a field and two more
+            // buttons -- a quarter of the screen given to a thing that writes
+            // one paragraph. The button that opens it now lives in the chrome
+            // with Send, and this appears only once it has been pressed.
+            if (onAskAnodex != null && asking) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+                    ComposerField(
+                        value = instruction,
+                        onValueChange = { instruction = it },
+                        placeholder = if (draft.inReplyTo != null) {
+                            "How to answer \u2014 \"say yes, and ask when\""
+                        } else {
+                            "What it should say"
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                    ) {
+                        PrimaryButton(
+                            label = if (drafting) "Writing\u2026" else "Write it",
+                            onClick = {
+                                if (drafting) return@PrimaryButton
+                                onAskAnodex(
+                                    MailDraft(
+                                        to = to,
+                                        cc = cc,
+                                        subject = subject,
+                                        body = body,
+                                        inReplyTo = draft.inReplyTo,
+                                        threadId = draft.threadId,
+                                        kind = draft.kind,
+                                    ),
+                                    instruction,
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        SecondaryButton(
+                            label = "Never mind",
+                            onClick = { asking = false },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Text(
+                        text = "It writes a draft. You send it.",
+                        style = type.meta,
+                        color = colors.textFaint,
+                    )
+                }
+            }
+
+            // What is missing, in words, under the fields it is missing from.
+            //
+            // A greyed Send tells you it will not work; this tells you what to
+            // do about it, which on a form with three fields is the whole
+            // question. It stays said rather than shown because the control is
+            // now an icon in the corner, and an icon can carry a state but not a
+            // sentence.
+            // One line, at the foot of the window, saying whichever of these is
+            // true. Both of the taps that cannot be taken back are explained
+            // here rather than one on a button and one in the middle of the
+            // page, which is where the discard warning used to sit.
+            when {
+                leaving -> Text(
+                    text = "Tap back again to throw this message away.",
+                    style = type.meta,
+                    color = colors.dangerInk,
+                )
+
+                !ready -> Text(
                     text = when {
                         to.isBlank() -> "Needs someone to send it to."
                         subject.isBlank() -> "Needs a subject."
@@ -313,14 +385,108 @@ fun ComposeMailScreen(
                     style = type.meta,
                     color = colors.textFaint,
                 )
-            }
 
+                confirming && !sending -> Text(
+                    text = "Tap send again and it goes.",
+                    style = type.meta,
+                    color = colors.accentInk,
+                )
+
+                sending -> Text(text = "Sending\u2026", style = type.meta, color = colors.textMuted)
+
+                else -> Text(
+                    text = "Sent by your computer, from $fromAddress.".takeIf {
+                        fromAddress.isNotBlank()
+                    } ?: "Sent by your computer.",
+                    style = type.meta,
+                    color = colors.textFaint,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One addressing line: a quiet label, the field, a hairline under it.
+ *
+ * The label sits beside rather than above, because three stacked
+ * label-over-field pairs is most of a phone screen spent on three short
+ * strings, and the message is the thing that needed the room.
+ */
+@Composable
+private fun ComposerRow(label: String, content: @Composable () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = Spacing.x3),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+        ) {
             Text(
-                text = "Sent from your computer, using your account there.",
+                text = label,
                 style = type.meta,
                 color = colors.textFaint,
+                modifier = Modifier.width(64.dp),
             )
+            Box(Modifier.weight(1f)) { content() }
         }
+        Hairline()
+    }
+}
+
+/**
+ * Text with no box around it.
+ *
+ * `AnodexTextField` draws a filled, outlined field, which is right on a settings
+ * page and wrong five times in a row on a compose window. The separation here is
+ * the hairline under each row, which is what a mail client uses and what leaves
+ * the body looking like a page rather than another input.
+ */
+@Composable
+private fun ComposerField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        textStyle = type.body.copy(color = colors.text),
+        cursorBrush = SolidColor(colors.accent),
+        decorationBox = { inner ->
+            if (value.isEmpty()) {
+                Text(text = placeholder, style = type.body, color = colors.textFaint)
+            }
+            inner()
+        },
+    )
+}
+
+/** An icon in the composer's chrome, with a finger's worth of target around it. */
+@Composable
+private fun ComposerAction(
+    icon: AnodexIcon,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(Touch.minTarget)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnodexIcon(icon, size = 20.dp, tint = tint, contentDescription = label)
     }
 }
 

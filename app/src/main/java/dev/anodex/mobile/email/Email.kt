@@ -80,6 +80,14 @@ internal fun searchRequest(query: String, limit: Int, mailbox: String?): JsonObj
         mailbox?.takeIf { it.isNotBlank() }?.let { put("mailbox", JsonPrimitive(it)) }
     }
 
+/**
+ * The account this phone's mail goes out as.
+ *
+ * Two answers in one because they come from one call and are always wanted
+ * together: whether there is an account, and which one it is.
+ */
+data class MailAccount(val configured: Boolean, val address: String)
+
 /** One message inside a thread. */
 data class EmailNote(
     val id: String,
@@ -216,11 +224,23 @@ class Email(private val socket: AnodexSocket) {
         (socket.invoke(CHANNEL_UNREAD, listOf(JsonNull)).unwrap() as? JsonPrimitive)
             ?.contentOrNull()?.toDoubleOrNull()?.toInt() ?: 0
 
-    /** Whether the desktop has email set up at all, so the tab can say so plainly. */
-    suspend fun isConfigured(): Boolean {
-        val status = socket.invoke(CHANNEL_STATUS).unwrap() as? JsonObject ?: return false
-        return status["enabled"]?.jsonPrimitive?.contentOrNull() == "true" &&
+    /**
+     * Whether the desktop has email set up at all, and which address it sends as.
+     *
+     * The address was thrown away here for a long time, and the compose window
+     * said "your account there" instead of naming it -- a phrase that is true of
+     * any account and identifies none. It is in the status already; not reading
+     * it was the only reason it could not be shown.
+     */
+    suspend fun status(): MailAccount {
+        val status = socket.invoke(CHANNEL_STATUS).unwrap() as? JsonObject
+            ?: return MailAccount(configured = false, address = "")
+        val configured = status["enabled"]?.jsonPrimitive?.contentOrNull() == "true" &&
             (status["accounts"] as? JsonArray)?.isNotEmpty() == true
+        return MailAccount(
+            configured = configured,
+            address = status["address"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+        )
     }
 
     private fun JsonObject.asThread(): EmailThread? {
