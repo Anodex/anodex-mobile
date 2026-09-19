@@ -156,6 +156,26 @@ class UnwrapOrThrowTest {
     }
 
     @Test
+    fun `it does not rename what it is quoting`() {
+        // The first version uppercased the cause so the pair read as two
+        // sentences. A detail is far more often a filename, a hostname or a
+        // command than a sentence, and `video.mov` becoming `Video.mov` is
+        // this function editing the thing it exists to repeat.
+        try {
+            parse(
+                """{"ok":false,"error":{"message":"Could not attach that.",""" +
+                    """"detail":"video.mov takes this past 18 MB."}}"""
+            ).unwrapOrThrow("attach that")
+            fail("a refusal must not pass for an answer")
+        } catch (failure: IllegalStateException) {
+            assertEquals(
+                "Could not attach that. video.mov takes this past 18 MB.",
+                failure.message,
+            )
+        }
+    }
+
+    @Test
     fun `a detail on its own is enough`() {
         try {
             parse("""{"ok":false,"error":{"detail":"No trash mailbox on this account."}}""")

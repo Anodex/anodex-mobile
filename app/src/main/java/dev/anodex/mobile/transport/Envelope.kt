@@ -87,7 +87,17 @@ private fun whatWentWrong(error: JsonObject?): String? {
         // A handler that passed the same string twice, and a detail the
         // headline already contains, are both one sentence rather than two.
         cause == headline || headline.contains(cause) -> headline
-        else -> "$headline ${cause.replaceFirstChar { it.uppercase() }}".trim()
+        // Joined exactly as it was written, with no capital forced onto it.
+        //
+        // The first version uppercased the cause so the pair read as two
+        // sentences. A `detail` is far more often a filename, a hostname or
+        // a command than a sentence -- `video.mov` came back as `Video.mov`,
+        // and `getaddrinfo ENOTFOUND` would have become `Getaddrinfo`.
+        // Renaming something inside an error message is worse than a
+        // lowercase letter after a full stop, and the whole point of this
+        // function is to repeat what the computer said. Editing it is not
+        // repeating it.
+        else -> "$headline $cause"
     }
 }
 
