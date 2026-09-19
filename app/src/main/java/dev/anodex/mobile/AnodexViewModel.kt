@@ -2083,7 +2083,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val action = if (unread) MailFlag.UNREAD else MailFlag.READ
             runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { if (!it) restoreThreads(before, "Your computer would not change that.") }
                 .onFailure { restoreThreads(before, it.message ?: "Your computer would not change that.") }
         }
     }
@@ -2097,7 +2096,6 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val action = if (starred) MailFlag.STAR else MailFlag.UNSTAR
             runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { if (!it) restoreThreads(before, "Your computer would not change that.") }
                 .onFailure { restoreThreads(before, it.message ?: "Your computer would not change that.") }
         }
     }
@@ -2149,7 +2147,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             for (thread in threads) {
                 val accountId = thread.accountId.takeIf { it.isNotBlank() }
                 runCatching { client.flag(thread.id, MailFlag.ARCHIVE, accountId) }
-                    .onSuccess { ok -> if (ok) moved += thread }
+                    .onSuccess { moved += thread }
                     .onFailure { failure -> reason = reason ?: failure.message }
             }
             settleBulk(before, threads, moved, "archive", reason)
@@ -2166,17 +2164,17 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             var failed = 0
+            var reason: String? = null
             for (thread in threads) {
                 val accountId = thread.accountId.takeIf { it.isNotBlank() }
-                val ok = runCatching { client.flag(thread.id, MailFlag.UNARCHIVE, accountId) }
-                    .getOrDefault(false)
-                if (!ok) failed++
+                runCatching { client.flag(thread.id, MailFlag.UNARCHIVE, accountId) }
+                    .onFailure { failed++; reason = reason ?: it.message }
             }
             // Re-read rather than re-inserted: where a restored message belongs
             // in the list is the mailbox's answer, not this phone's. Read even
             // when some failed, because the ones that worked did move.
             refreshEmail()
-            if (failed > 0) _emailError.value = couldNotPutBack(failed, threads.size)
+            if (failed > 0) _emailError.value = reason ?: couldNotPutBack(failed, threads.size)
         }
     }
 
@@ -2220,7 +2218,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             for (thread in threads) {
                 val accountId = thread.accountId.takeIf { it.isNotBlank() }
                 runCatching { client.trash(thread.id, accountId) }
-                    .onSuccess { ok -> if (ok) moved += thread }
+                    .onSuccess { moved += thread }
                     .onFailure { failure -> reason = reason ?: failure.message }
             }
             settleBulk(before, threads, moved, "delete", reason)
@@ -2237,18 +2235,18 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             var failed = 0
+            var reason: String? = null
             for (thread in threads) {
                 val accountId = thread.accountId.takeIf { it.isNotBlank() }
                 // `INBOX` rather than wherever it came from: it is the one
                 // folder name every provider agrees on, and a message put back
                 // somewhere the reader has to go looking for is not much of an
                 // undo.
-                val ok = runCatching { client.move(thread.id, "INBOX", accountId) }
-                    .getOrDefault(false)
-                if (!ok) failed++
+                runCatching { client.move(thread.id, "INBOX", accountId) }
+                    .onFailure { failed++; reason = reason ?: it.message }
             }
             refreshEmail()
-            if (failed > 0) _emailError.value = couldNotPutBack(failed, threads.size)
+            if (failed > 0) _emailError.value = reason ?: couldNotPutBack(failed, threads.size)
         }
     }
 
@@ -2313,14 +2311,15 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             val action = if (unread) MailFlag.UNREAD else MailFlag.READ
-            var failed = false
+            var reason: String? = null
             for (thread in threads) {
                 val accountId = thread.accountId.takeIf { it.isNotBlank() }
-                val ok = runCatching { client.flag(thread.id, action, accountId) }
-                    .getOrDefault(false)
-                if (!ok) failed = true
+                runCatching { client.flag(thread.id, action, accountId) }
+                    .onFailure { reason = reason ?: it.message ?: "" }
             }
-            if (failed) restoreThreads(before, "Your computer would not change those.")
+            reason?.let {
+                restoreThreads(before, it.ifBlank { "Your computer would not change those." })
+            }
         }
     }
 
@@ -2341,11 +2340,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val accountId = thread.accountId.takeIf { it.isNotBlank() }
             runCatching { client.move(thread.id, "INBOX", accountId) }
-                .onSuccess { ok ->
-                    if (!ok) {
-                        _emailError.value = "Your computer would not move that."
-                        return@onSuccess
-                    }
+                .onSuccess {
                     _notice.value = "Moved to your inbox."
                     closeEmailThread()
                     refreshEmail()
@@ -2367,11 +2362,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             runCatching { client.flag(thread.id, action, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { ok ->
-                    if (!ok) {
-                        _emailError.value = "Your computer would not change that."
-                        return@onSuccess
-                    }
+                .onSuccess {
                     _notice.value = when (action) {
                         MailFlag.STAR -> "Starred."
                         MailFlag.ARCHIVE -> "Archived."
@@ -2404,11 +2395,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             runCatching { client.trash(thread.id, thread.accountId.takeIf { it.isNotBlank() }) }
-                .onSuccess { ok ->
-                    if (!ok) {
-                        _emailError.value = "Your computer would not delete it."
-                        return@onSuccess
-                    }
+                .onSuccess {
                     _notice.value = "Moved to trash."
                     closeEmailThread()
                     refreshEmail()
@@ -2581,17 +2568,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     threadId = draft.threadId,
                 )
             }
-                .onSuccess { sent ->
-                    if (sent) {
-                        _mailDraft.value = null
-                        _mailDrafted.value = null
-                        _notice.value = "Sent."
-                        // The thread it joined now has one more message in it.
-                        refreshEmail()
-                    } else {
-                        _mailError.value = "Your computer would not send it."
-                    }
+                .onSuccess {
+                    _mailDraft.value = null
+                    _mailDrafted.value = null
+                    _notice.value = "Sent."
+                    // The thread it joined now has one more message in it.
+                    refreshEmail()
                 }
+                // The composer stays open and keeps what was typed. A window
+                // that closes on a failed send loses the message *and* says it
+                // went, which is the worst of the outcomes available.
                 .onFailure { _mailError.value = it.message ?: "Your computer would not send it." }
             _mailSending.value = false
         }

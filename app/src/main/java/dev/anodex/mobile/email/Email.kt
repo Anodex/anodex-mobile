@@ -20,13 +20,13 @@ import kotlinx.serialization.json.jsonPrimitive
  * its own type says so, and that is the property that makes every one of these
  * safe to offer on a phone in somebody's pocket.
  */
-enum class MailFlag(val wire: String) {
-    READ("mark_read"),
-    UNREAD("mark_unread"),
-    STAR("star"),
-    UNSTAR("unstar"),
-    ARCHIVE("archive"),
-    UNARCHIVE("unarchive"),
+enum class MailFlag(val wire: String, val what: String) {
+    READ("mark_read", "mark that read"),
+    UNREAD("mark_unread", "mark that unread"),
+    STAR("star", "star that"),
+    UNSTAR("unstar", "unstar that"),
+    ARCHIVE("archive", "archive that"),
+    UNARCHIVE("unarchive", "put that back"),
 }
 
 /** One conversation in the mailbox, as the inbox list shows it. */
@@ -337,12 +337,22 @@ class Email(private val socket: AnodexSocket) {
             threadId?.let { put("threadId", JsonPrimitive(it)) }
         }
 
-        // `email:send` answers `ok: true` with a void value, so the wrapper is the
-        // whole answer -- `unwrap()` returning a JSON null is success here, and
-        // testing the value rather than the envelope would read every send as a
-        // failure.
-        val answer = socket.invoke(CHANNEL_SEND, listOf(request)) as? JsonObject ?: return false
-        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+        // `email:send` answers `ok: true` with a void value, so the envelope is
+        // the whole answer. That was the reason this read `["ok"]` by hand, and
+        // it was a reason to avoid `unwrap()` -- which treats a null value as a
+        // failure -- not a reason to avoid [unwrapOrThrow], which tests the
+        // envelope and hands back whatever value there was. Here that is
+        // nothing, and nothing is correct.
+        //
+        // What the hand-rolled version cost: a send that the provider refused
+        // came back as a bare `false`, and the reader was told "Your computer
+        // would not send it." The computer had said why -- the address was
+        // rejected, the password was stale, the attachment was too large -- and
+        // that sentence went nowhere. Of everything in this file this is the
+        // one worth getting right, because it is the only act here that cannot
+        // be tried again by pressing the same button.
+        socket.invoke(CHANNEL_SEND, listOf(request)).unwrapOrThrow("send it")
+        return true
     }
 
     /**
@@ -358,14 +368,29 @@ class Email(private val socket: AnodexSocket) {
      * being tapped represents, and marking one message of five as read leaves an
      * inbox that still says unread with nothing visibly unread in it.
      */
+    /*
+     * These three used to read the envelope by hand and return a bare `false`.
+     *
+     * Which threw the answer away. `trash`'s own note above says the computer
+     * "refuses rather than guessing when an account has no trash, and says so"
+     * -- and it does say so, in `error.message`, and this is where that
+     * sentence was being dropped on the floor. What reached the reader was
+     * "Your computer would not delete that.", a sentence that describes every
+     * possible cause equally and names none of them.
+     *
+     * [unwrapOrThrow] is the same envelope check, written once, that repeats
+     * the desktop's own words when it has them. Every caller here already runs
+     * inside `runCatching`, so the sentence now arrives where the generic one
+     * used to be invented.
+     */
     suspend fun flag(threadId: String, action: MailFlag, accountId: String? = null): Boolean {
         val request = buildJsonObject {
             put("threadId", JsonPrimitive(threadId))
             put("action", JsonPrimitive(action.wire))
             accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
         }
-        val answer = socket.invoke(CHANNEL_FLAG, listOf(request)) as? JsonObject ?: return false
-        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+        socket.invoke(CHANNEL_FLAG, listOf(request)).unwrapOrThrow(action.what)
+        return true
     }
 
     /**
@@ -385,8 +410,8 @@ class Email(private val socket: AnodexSocket) {
             put("threadId", JsonPrimitive(threadId))
             accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
         }
-        val answer = socket.invoke(CHANNEL_TRASH, listOf(request)) as? JsonObject ?: return false
-        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+        socket.invoke(CHANNEL_TRASH, listOf(request)).unwrapOrThrow("delete that")
+        return true
     }
 
     /**
@@ -406,8 +431,8 @@ class Email(private val socket: AnodexSocket) {
             put("mailbox", JsonPrimitive(mailbox))
             accountId?.takeIf { it.isNotBlank() }?.let { put("accountId", JsonPrimitive(it)) }
         }
-        val answer = socket.invoke(CHANNEL_MOVE, listOf(request)) as? JsonObject ?: return false
-        return answer["ok"]?.jsonPrimitive?.contentOrNull() == "true"
+        socket.invoke(CHANNEL_MOVE, listOf(request)).unwrapOrThrow("move that")
+        return true
     }
 
     /**
