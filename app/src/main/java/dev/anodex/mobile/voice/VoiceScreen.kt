@@ -71,6 +71,8 @@ fun VoiceScreen(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onClose: () -> Unit,
+    /** Opens the voice sheet. One voice today, so it is a name and a note. */
+    onVoice: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = AnodexTheme.colors
@@ -96,7 +98,25 @@ fun VoiceScreen(
             ) {
                 AnodexIcon(AnodexIcon.CLOSE, size = 20.dp, tint = colors.textMuted)
             }
-            Spacer(Modifier.fillMaxWidth(0.5f))
+
+            Spacer(Modifier.weight(1f))
+
+            // Who is talking, as the control that changes it. There is one voice, so
+            // this only says its name — but it says it here, where the switcher will
+            // be, rather than hiding the name until there are two. A voice nobody can
+            // name is a setting; a voice with a name is somebody answering.
+            Row(
+                modifier = Modifier
+                    .clip(Radii.pill)
+                    .clickable(onClick = onVoice)
+                    .padding(horizontal = Spacing.x3, vertical = Spacing.x2)
+                    .semantics { contentDescription = "Voice: $VOICE_NAME" },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            ) {
+                Text(VOICE_NAME, style = type.bodyEmphasis, color = colors.textMuted)
+                AnodexIcon(AnodexIcon.SETTINGS, size = 16.dp, tint = colors.textFaint)
+            }
         }
 
         Column(
@@ -330,6 +350,55 @@ private fun TalkButton(running: Boolean, onClick: () -> Unit) {
             style = type.bodyEmphasis,
             color = if (running) colors.dangerInk else colors.textOnAccent,
         )
+    }
+}
+
+/**
+ * The voice sheet: who is talking, and eventually which.
+ *
+ * One voice, so this is a name, a line about it, and the truth about the rest. It
+ * exists now rather than when there are several because the place a thing lives is
+ * worth settling before there is a list to argue about — and because somebody who
+ * taps the name deserves an answer rather than nothing happening.
+ */
+@Composable
+fun VoiceSheet(onDismiss: () -> Unit) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.bgElevated)
+            .padding(horizontal = Spacing.x6, vertical = Spacing.x8),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Text(VOICE_NAME, style = type.title, color = colors.text)
+        Text(VOICE_DESCRIPTION, style = type.body, color = colors.textMuted)
+
+        Spacer(Modifier.height(Spacing.x4))
+
+        Text(
+            text = "The only voice for now. More, and the choice between them, once " +
+                "this one sounds right.",
+            style = type.meta,
+            color = colors.textFaint,
+            textAlign = TextAlign.Center,
+        )
+
+        Spacer(Modifier.height(Spacing.x6))
+
+        Row(
+            modifier = Modifier
+                .clip(Radii.pill)
+                .background(colors.bgSurface)
+                .clickable(onClick = onDismiss)
+                .padding(horizontal = Spacing.x6, vertical = Spacing.x3),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Close", style = type.bodyEmphasis, color = colors.text)
+        }
     }
 }
 

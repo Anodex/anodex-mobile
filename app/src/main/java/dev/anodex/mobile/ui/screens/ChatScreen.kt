@@ -81,6 +81,7 @@ import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.SendButton
+import dev.anodex.mobile.voice.SpeakButton // voice:seam
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.AttachmentThumb
@@ -2128,26 +2129,6 @@ private fun Composer(
                 }
             }
 
-            // voice:seam — beside dictation, because the two are easy to confuse and
-            // sit better next to each other than apart: the mic turns speech into
-            // something to read before it is sent, and this holds a conversation.
-            if (onSpeak != null) {
-                Box(
-                    modifier = Modifier
-                        .size(Touch.minTarget)
-                        .clip(CircleShape)
-                        .clickable(role = Role.Button, onClick = onSpeak),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AnodexIcon(
-                        AnodexIcon.ACTIVITY,
-                        size = 20.dp,
-                        tint = colors.textMuted,
-                        contentDescription = "Speak to Anodex",
-                    )
-                }
-            }
-
             // While a turn is running this becomes Stop. A generation on the phone is
             // a generation on the computer, and one that has gone wrong can burn a
             // long time before it ends on its own.
@@ -2155,11 +2136,24 @@ private fun Composer(
             // Round and always present, rather than a word-labelled button that
             // appears and disappears: the old one reflowed the whole composer on the
             // first keystroke, which moved the text you were typing.
-            SendButton(
-                stop = sending,
-                enabled = sending || draft.isNotBlank(),
-                onClick = if (sending) onStop else onSend,
-            )
+            // voice:seam — an empty box has nothing to send, so the key that sends is
+            // the key that talks. It was a third icon in the row, which made three
+            // things to aim at and left a permanently dead Send sitting beside them.
+            //
+            // The swap happens on the first keystroke and back on the last
+            // backspace, and it is the same circle in the same place throughout —
+            // the control never moves under a thumb already travelling towards it,
+            // which is the reason Send is round and always present in the first
+            // place.
+            if (!sending && draft.isBlank() && onSpeak != null) {
+                SpeakButton(onClick = onSpeak)
+            } else {
+                SendButton(
+                    stop = sending,
+                    enabled = sending || draft.isNotBlank(),
+                    onClick = if (sending) onStop else onSend,
+                )
+            }
         }
     }
 }
