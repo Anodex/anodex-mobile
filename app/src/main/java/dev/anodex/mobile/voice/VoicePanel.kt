@@ -8,11 +8,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import dev.anodex.mobile.ui.theme.AnodexTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
@@ -28,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  * Android requires it declared, and requested at the moment somebody turns voice on,
  * which is the only moment it means anything.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoicePanel(controller: VoiceController, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -48,8 +55,20 @@ fun VoicePanel(controller: VoiceController, onClose: () -> Unit) {
         onDispose { controller.stop() }
     }
 
+    var showingVoiceSheet by remember { mutableStateOf(false) }
+
+    if (showingVoiceSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showingVoiceSheet = false },
+            containerColor = AnodexTheme.colors.bgElevated,
+        ) {
+            VoiceSheet(onDismiss = { showingVoiceSheet = false })
+        }
+    }
+
     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
         VoiceScreen(
+            onVoice = { showingVoiceSheet = true },
             state = state,
             onStart = {
                 val granted = ContextCompat.checkSelfPermission(
