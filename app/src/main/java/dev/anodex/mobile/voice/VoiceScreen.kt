@@ -153,11 +153,17 @@ fun VoiceScreen(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // One control, because there is one decision: talking, or not. The row of
-            // camera, speaker, mute and settings other apps put here is four choices
-            // nobody makes mid-sentence, and each of them is a thing to mis-tap while
+            // One control, because there is one decision: still talking, or done. The
+            // row of camera, speaker, mute and settings other apps put here is four
+            // choices nobody makes mid-sentence, and four things to mis-tap while
             // holding a phone to your face.
-            TalkButton(running = state.running, onClick = if (state.running) onStop else onStart)
+            //
+            // It is not how listening *starts* — the screen arrives listening, because
+            // a key marked Speak that opens a screen with another key marked Speak is
+            // two taps for one intention. This is Stop, and afterwards the way back.
+            if (!state.microphoneRefused) {
+                TalkButton(running = state.running, onClick = if (state.running) onStop else onStart)
+            }
         }
     }
 }
@@ -186,8 +192,17 @@ data class VoiceScreenState(
     val worstRoundTripMs: Int = 0,
     /** What the computer is called, for the line that says where this is going. */
     val hostName: String = "",
+    /**
+     * Android refused the microphone, so there is nothing to listen with.
+     *
+     * Its own state rather than falling back to the idle one, because the idle
+     * screen invites a tap that will do nothing: the system asks once and then
+     * remembers, so the second tap is silently refused and the screen looks broken.
+     */
+    val microphoneRefused: Boolean = false,
 ) {
     fun headline(): String = when {
+        microphoneRefused -> "Anodex cannot hear"
         !running -> "Speak"
         !connected -> "Asking your computer…"
         answering -> "Answering"
@@ -200,6 +215,7 @@ data class VoiceScreenState(
     // "Answering" over "Stop talking and it will answer" — each line true, the pair
     // of them nonsense. Somebody talking over a reply is told that is allowed.
     fun detail(): String = when {
+        microphoneRefused -> "Allow the microphone in Android's settings for Anodex"
         !running -> if (hostName.isBlank()) "Talk to Anodex" else "Talk to Anodex on $hostName"
         !connected -> "Waiting for it to answer"
         answering -> "Talk over it whenever you like"
