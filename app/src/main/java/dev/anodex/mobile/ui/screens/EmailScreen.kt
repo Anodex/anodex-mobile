@@ -1,9 +1,12 @@
 package dev.anodex.mobile.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -213,6 +218,9 @@ fun EmailPane(viewModel: AnodexViewModel, modifier: Modifier = Modifier) {
         swipeRight = swipeRight,
         swipeLeft = swipeLeft,
         onRefresh = viewModel::refreshEmail,
+        onArchiveMany = viewModel::archiveThreadsFromList,
+        onDeleteMany = viewModel::deleteThreadsFromList,
+        onSetManyUnread = viewModel::setThreadsUnread,
         modifier = modifier,
     )
 }
@@ -252,15 +260,65 @@ internal fun InboxList(
     swipeLeft: MailSwipeAction = MailSwipeAction.ARCHIVE,
     /** Fetch again. Null leaves the list without the gesture. */
     onRefresh: (() -> Unit)? = null,
+    /** Archive everything selected. Null leaves the list one-at-a-time. */
+    onArchiveMany: ((List<EmailThread>) -> Unit)? = null,
+    /** Delete everything selected. Null leaves the list one-at-a-time. */
+    onDeleteMany: ((List<EmailThread>) -> Unit)? = null,
+    /** Mark everything selected read or unread. */
+    onSetManyUnread: ((List<EmailThread>, Boolean) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     val pullState = rememberPullToRefreshState()
 
+    // Which rows are picked out, by id.
+    //
+    // Kept here rather than in the view model because it is a fact about this
+    // screen and nothing else: nobody needs to know from another tab which mail
+    // was highlighted, and a selection that outlives the list it points at is a
+    // set of ids waiting to act on the wrong messages.
+    //
+    // Which is also why the ids are resolved against the rows on every pass
+    // instead of being trusted. A refresh, a folder change or an archive can
+    // take a row away underneath a selection, and `chosen` simply stops
+    // containing it -- the count goes down, and if it reaches zero the mode
+    // ends. There is no separate flag to fall out of step with the set.
+    var picked by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val chosen = remember(threads, picked) { threads.filter { it.id in picked } }
+    val selecting = chosen.isNotEmpty()
+    val canSelect = onArchiveMany != null || onDeleteMany != null || onSetManyUnread != null
+
+    fun clearSelection() {
+        picked = emptySet()
+    }
+
+    fun toggle(thread: EmailThread) {
+        picked = if (thread.id in picked) picked - thread.id else picked + thread.id
+    }
+
+    // Back leaves the selection before it leaves the mail. Every list with this
+    // mode works that way, and the alternative is backing out of the whole tab
+    // because a long-press landed by accident.
+    BackHandler(enabled = selecting) { clearSelection() }
+
     ScreenScaffold(
-        title = if (isResults) "Search" else openFolder?.label ?: "Inbox",
+        // The header becomes the toolbar for what is selected.
+        //
+        // Rather than a second bar appearing below or above it, which is what
+        // this screen has no room for: the search field and the folder strip
+        // already sit under the title. While a selection is live those two are
+        // not what anyone is about to use, so they give up their space and come
+        // straight back when it ends.
+        title = when {
+            selecting -> "${chosen.size} selected"
+            isResults -> "Search"
+            else -> openFolder?.label ?: "Inbox"
+        },
         modifier = modifier,
-        beneath = if (onQueryChange == null) null else {
+        leading = if (!selecting) null else {
+            { HeaderAction(AnodexIcon.CLOSE, "Done selecting") { clearSelection() } }
+        },
+        beneath = if (selecting || onQueryChange == null) null else {
             {
                 SearchField(
                     value = query,
@@ -285,7 +343,42 @@ internal fun InboxList(
         // In the header rather than as a button floating over the list. The inbox
         // is read far more often than it is written to, and a control covering the
         // newest row sits on top of what people opened this for.
-        trailing = onCompose?.let { { SecondaryButton(label = "Write", onClick = it) } },
+        trailing = if (selecting) {
+            {
+                // Read state first, destruction last, with the widest gap the
+                // row allows between them. Both destructive acts are reversible
+                // here -- archive moves it out of the inbox, delete moves it to
+                // the trash -- but the thumb does not know that, and the order
+                // is what stops a mis-tap being the expensive one.
+                if (onSetManyUnread != null) {
+                    // Whichever it would take to change all of them. A mixed
+                    // selection reads as unread, because the point of clearing
+                    // a screenful is to end up with no dots.
+                    val toUnread = chosen.all { !it.unread }
+                    HeaderAction(
+                        icon = AnodexIcon.MAIL,
+                        label = if (toUnread) "Mark unread" else "Mark read",
+                    ) {
+                        onSetManyUnread(chosen, toUnread)
+                        clearSelection()
+                    }
+                }
+                if (onArchiveMany != null) {
+                    HeaderAction(AnodexIcon.ARCHIVE, "Archive") {
+                        onArchiveMany(chosen)
+                        clearSelection()
+                    }
+                }
+                if (onDeleteMany != null) {
+                    HeaderAction(AnodexIcon.TRASH, "Delete", tint = colors.danger) {
+                        onDeleteMany(chosen)
+                        clearSelection()
+                    }
+                }
+            }
+        } else {
+            onCompose?.let { { SecondaryButton(label = "Write", onClick = it) } }
+        },
     ) { topInset ->
         val emptyModifier = Modifier.padding(top = topInset)
 
@@ -391,10 +484,24 @@ internal fun InboxList(
                     SwipeableThreadRow(
                         thread = thread,
                         nowEpochMs = nowEpochMs,
-                        onClick = { onOpen(thread) },
-                        onSetUnread = onSetUnread,
-                        onSetStarred = onSetStarred,
-                        onSwipe = onSwipe,
+                        // While a selection is live a tap adds to it rather
+                        // than opening the message. Opening one would abandon
+                        // the selection to go and read something, which is not
+                        // what the tap meant.
+                        onClick = { if (selecting) toggle(thread) else onOpen(thread) },
+                        onLongClick = if (canSelect) ({ toggle(thread) }) else null,
+                        // The circle is the handle, the way it is in Gmail --
+                        // and unlike a long-press it is visible, which is the
+                        // only reason anybody finds this mode at all.
+                        onPickToggle = if (canSelect) ({ toggle(thread) }) else null,
+                        selected = thread.id in picked,
+                        // No swiping while selecting. The gesture acts on one
+                        // row and the screen is about several, so the two
+                        // would be answering different questions at once.
+                        onSwipe = if (selecting) null else onSwipe,
+                        frozen = selecting,
+                        onSetUnread = if (selecting) null else onSetUnread,
+                        onSetStarred = if (selecting) null else onSetStarred,
                         swipeRight = swipeRight,
                         swipeLeft = swipeLeft,
                         modifier = Modifier.animateItem(),
@@ -436,6 +543,10 @@ private fun SwipeableThreadRow(
     onSwipe: ((EmailThread, MailSwipeAction) -> Unit)? = null,
     swipeRight: MailSwipeAction = MailSwipeAction.DELETE,
     swipeLeft: MailSwipeAction = MailSwipeAction.ARCHIVE,
+    onLongClick: (() -> Unit)? = null,
+    onPickToggle: (() -> Unit)? = null,
+    selected: Boolean = false,
+    frozen: Boolean = false,
 ) {
     val settled = swipeRight == MailSwipeAction.NOTHING && swipeLeft == MailSwipeAction.NOTHING
     if (onSwipe == null || settled) {
@@ -445,6 +556,10 @@ private fun SwipeableThreadRow(
             onClick = onClick,
             onSetUnread = onSetUnread,
             onSetStarred = onSetStarred,
+            onLongClick = onLongClick,
+            onPickToggle = onPickToggle,
+            selected = selected,
+            frozen = frozen,
             modifier = modifier,
         )
         return
@@ -494,6 +609,9 @@ private fun SwipeableThreadRow(
             onClick = onClick,
             onSetUnread = onSetUnread,
             onSetStarred = onSetStarred,
+            onLongClick = onLongClick,
+            onPickToggle = onPickToggle,
+            selected = selected,
         )
     }
 }
@@ -567,6 +685,7 @@ private fun SwipeBackdrop(action: MailSwipeAction?, fromStart: Boolean, progress
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ThreadRow(
     thread: EmailThread,
@@ -577,6 +696,26 @@ private fun ThreadRow(
     onSetUnread: ((EmailThread, Boolean) -> Unit)? = null,
     /** Toggle the star. Null hides it. */
     onSetStarred: ((EmailThread, Boolean) -> Unit)? = null,
+    /** Begin picking rows out. Null leaves the row with no long press. */
+    onLongClick: (() -> Unit)? = null,
+    /** Add or remove this row from the selection, from its circle. */
+    onPickToggle: (() -> Unit)? = null,
+    /** Drawn as one of the picked rows. */
+    selected: Boolean = false,
+    /**
+     * Swallow sideways drags rather than letting them read as taps.
+     *
+     * A row with no swipe behind it is just a clickable box, and Compose ends a
+     * tap on the finger coming up inside the bounds -- it does not care how far
+     * it travelled on the way. So a thumb swiping across a row while a
+     * selection was live silently *added that row to the selection*, and the
+     * next press of Archive took a message nobody chose. Found by a test
+     * written to prove the swipe did nothing.
+     *
+     * Consuming the drag once it passes the slop is what cancels the tap. The
+     * gesture then does exactly nothing, which is what it should have done.
+     */
+    frozen: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
@@ -587,16 +726,62 @@ private fun ThreadRow(
     // Every mail client on a phone draws a card, and the reason is the thumb: a
     // card says where one message ends and the next begins without a hairline
     // that disappears at arm's length, and it gives the tap a shape.
+    //
+    // A picked row is tinted rather than outlined. `accentSoft` is a tint and
+    // only valid over a known opaque surface, which is exactly what a card in
+    // this list is -- the rule that came out of the see-through update notice.
+    val fill = when {
+        selected -> colors.accentSoft
+        thread.unread -> colors.bgSurface2
+        else -> colors.bgSurface
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(Radii.lg)
-            .background(if (thread.unread) colors.bgSurface2 else colors.bgSurface)
-            .clickable(onClick = onClick)
+            .background(fill)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .then(
+                if (!frozen) Modifier
+                else Modifier.pointerInput(Unit) {
+                    detectHorizontalDragGestures { change, _ -> change.consume() }
+                }
+            )
             .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
-        SenderAvatar(from = thread.from)
+        // The circle turns over into a tick.
+        //
+        // The same forty pixels either way, so nothing in the row shifts as a
+        // selection is built -- and it is the one control on the row that is
+        // already about *who*, which is what selecting rows is mostly done by.
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .let { base -> if (onPickToggle == null) base else base.clickable(onClick = onPickToggle) },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(colors.accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnodexIcon(
+                        AnodexIcon.CHECK,
+                        size = 20.dp,
+                        tint = colors.bgSurface,
+                        contentDescription = "Selected",
+                    )
+                }
+            } else {
+                SenderAvatar(from = thread.from)
+            }
+        }
 
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(

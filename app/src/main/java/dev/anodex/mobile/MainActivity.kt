@@ -75,6 +75,7 @@ import dev.anodex.mobile.chat.LocalPersonalityPictures
 import dev.anodex.mobile.connection.ConnectionState
 import dev.anodex.mobile.connection.HostIdentity
 import dev.anodex.mobile.connection.ModelStatus
+import dev.anodex.mobile.email.movedMailText
 import dev.anodex.mobile.notify.Notifications
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.dueToday
@@ -1600,12 +1601,13 @@ private fun ConnectedScaffold(
             )
         }
 
-        // A message swiped out of the inbox, with the six seconds it takes to
-        // notice it was the wrong one. Archiving is set up so this is a real
-        // undo rather than an apology: `unarchive` puts it back where it was.
-        archivedMail?.let { thread ->
+        // Mail swiped or selected out of the inbox, with the six seconds it
+        // takes to notice it was the wrong one. Archiving is set up so this is
+        // a real undo rather than an apology: `unarchive` puts it back where it
+        // was, however many went.
+        if (archivedMail.isNotEmpty()) {
             UndoBar(
-                text = "Archived “${thread.subject}”.",
+                text = movedMailText("Archived", archivedMail),
                 actionLabel = "Undo",
                 onAction = viewModel::undoArchiveFromList,
                 onDismiss = viewModel::dismissArchivedFromList,
@@ -1616,9 +1618,9 @@ private fun ConnectedScaffold(
         // Named, rather than folded into the strip above. "Deleted" and
         // "Archived" are not interchangeable words to somebody deciding whether
         // to reach for Undo in the six seconds they have.
-        deletedMail?.let { thread ->
+        if (deletedMail.isNotEmpty()) {
             UndoBar(
-                text = "Deleted “${thread.subject}”.",
+                text = movedMailText("Deleted", deletedMail),
                 actionLabel = "Undo",
                 onAction = viewModel::undoDeleteFromList,
                 onDismiss = viewModel::dismissDeletedFromList,
