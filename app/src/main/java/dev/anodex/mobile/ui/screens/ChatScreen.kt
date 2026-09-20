@@ -81,7 +81,6 @@ import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.toolSummary
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.SendButton
-import dev.anodex.mobile.voice.SpeakButton // voice:seam
 import dev.anodex.mobile.ui.components.AnodexMark
 import dev.anodex.mobile.ui.components.AnodexSpinner
 import dev.anodex.mobile.ui.components.AttachmentThumb
@@ -143,11 +142,6 @@ fun ChatScreen(
     onOpenSource: ((String) -> Unit)? = null,
     /** Show what a turn changed inside one file: (reply id, path). */
     onShowDiff: ((String, String) -> Unit)? = null,
-    /**
-     * voice:seam — opens Speak. Null when the computer has not offered voice, which
-     * keeps the button off screen rather than present and failing.
-     */
-    onSpeak: (() -> Unit)? = null,
     /** "STUDIO-PC is awake and listening", under the greeting on an empty chat. */
     hostLine: String? = null,
     /** What the computer is doing later today, if anything. Null on a quiet day. */
@@ -698,7 +692,6 @@ fun ChatScreen(
                 onPickPhoto = onPickPhoto,
                 onRemoveAttachment = onRemoveAttachment,
                 onDictate = dictate,
-                onSpeak = onSpeak,
                 focusRequester = composerFocus,
             )
         }
@@ -1954,8 +1947,6 @@ private fun Composer(
     onRemoveAttachment: (UploadState) -> Unit = {},
     /** Null on a phone with no speech screen to hand off to, which hides the mic. */
     onDictate: (() -> Unit)? = null,
-    /** voice:seam — null unless the computer offered voice. */
-    onSpeak: (() -> Unit)? = null,
     /** Lets "Edit" on a sent message put the cursor here. */
     focusRequester: FocusRequester? = null,
 ) {
@@ -2136,24 +2127,11 @@ private fun Composer(
             // Round and always present, rather than a word-labelled button that
             // appears and disappears: the old one reflowed the whole composer on the
             // first keystroke, which moved the text you were typing.
-            // voice:seam — an empty box has nothing to send, so the key that sends is
-            // the key that talks. It was a third icon in the row, which made three
-            // things to aim at and left a permanently dead Send sitting beside them.
-            //
-            // The swap happens on the first keystroke and back on the last
-            // backspace, and it is the same circle in the same place throughout —
-            // the control never moves under a thumb already travelling towards it,
-            // which is the reason Send is round and always present in the first
-            // place.
-            if (!sending && draft.isBlank() && onSpeak != null) {
-                SpeakButton(onClick = onSpeak)
-            } else {
-                SendButton(
-                    stop = sending,
-                    enabled = sending || draft.isNotBlank(),
-                    onClick = if (sending) onStop else onSend,
-                )
-            }
+            SendButton(
+                stop = sending,
+                enabled = sending || draft.isNotBlank(),
+                onClick = if (sending) onStop else onSend,
+            )
         }
     }
 }
