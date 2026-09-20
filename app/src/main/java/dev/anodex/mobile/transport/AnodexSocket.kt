@@ -88,19 +88,6 @@ class AnodexSocket(
     /** Pushed events: streamed tokens, tool activity, approval requests. */
     val events: Flow<ServerFrame.Event> = _events.asSharedFlow()
 
-    // voice:seam — audio is binary and does not go through the JSON frames above.
-    private val _binary = MutableSharedFlow<ByteArray>(
-        replay = 0,
-        extraBufferCapacity = 64,
-        // Late audio is worthless audio: a frame nobody has collected within a
-        // handful of frames is already past the moment it belonged to, and holding
-        // it would stall the socket reader behind the speaker.
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-
-    /** Binary frames from the desktop. Audio, and the control frames beside it. */
-    val binary: Flow<ByteArray> = _binary.asSharedFlow()
-
     private val handshake = CompletableDeferred<Result<Handshake>>()
 
     /** What the desktop said when the connection was accepted. */
@@ -196,17 +183,6 @@ class AnodexSocket(
         return id
     }
 
-    /**
-     * Put a binary frame on the wire, if there is one.
-     *
-     * voice:seam. Returns false rather than throwing when there is no socket:
-     * audio is sent fifty times a second and a disconnection during a sentence is
-     * ordinary, so the caller counts the failure instead of handling an exception
-     * per frame.
-     */
-    fun sendBinary(frame: ByteArray): Boolean =
-        socket?.send(frame.toByteString()) ?: false
-
     /** Wait for the reply to a call already sent by [enqueue]. */
     suspend fun awaitResult(id: String, timeout: Duration = 60.seconds): JsonElement? {
         val deferred = pending[id] ?: error("no call is waiting on $id")
@@ -240,11 +216,6 @@ class AnodexSocket(
     }
 
     private inner class Listener : WebSocketListener() {
-        // voice:seam
-        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-            _binary.tryEmit(bytes.toByteArray())
-        }
-
         override fun onMessage(webSocket: WebSocket, text: String) {
             when (val frame = parseServerFrame(text)) {
                 is ServerFrame.Welcome -> completeHandshake(frame.protocolVersion) {

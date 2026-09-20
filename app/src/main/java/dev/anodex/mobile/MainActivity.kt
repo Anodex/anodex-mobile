@@ -117,7 +117,6 @@ import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
 import dev.anodex.mobile.ui.screens.RunDetailScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
-import dev.anodex.mobile.voice.VoicePanel // voice:seam
 import dev.anodex.mobile.ui.screens.SchedulerScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
 import dev.anodex.mobile.ui.screens.TaskScreen
@@ -720,9 +719,6 @@ private fun ConnectedScaffold(
     var filesOpen by rememberSaveable { mutableStateOf(false) }
     var showingSettings by rememberSaveable { mutableStateOf(false) }
 
-    // voice:seam — Speak is a panel over the chat, like the others here.
-    var showingVoice by rememberSaveable { mutableStateOf(false) }
-    val voiceAvailable by viewModel.voice.available.collectAsStateWithLifecycle()
 
     // A notification tap asked for a conversation: show the chat, over whatever
     // screen the app was left on.
@@ -846,13 +842,10 @@ private fun ConnectedScaffold(
     // Back unwinds one step at a time, in the order the user got here.
     BackHandler(
         enabled = drawerOpen || filesOpen || choosingProject || showingHost || showingSettings ||
-            showingAllConversations || browsingProjects || showingVoice ||
+            showingAllConversations || browsingProjects ||
             destination != AppDestination.CHAT
     ) {
         when {
-            // voice:seam — first, because it is the panel over everything else and
-            // back out of a conversation should close the conversation, not the app.
-            showingVoice -> showingVoice = false
             drawerOpen -> drawerOpen = false
             filesOpen -> filesOpen = false
             showingSettings -> showingSettings = false
@@ -927,15 +920,6 @@ private fun ConnectedScaffold(
             },
             onClose = { openTaskId = null },
             modifier = Modifier.safeDrawingPadding(),
-        )
-        return
-    }
-
-    // voice:seam
-    if (showingVoice) {
-        VoicePanel(
-            controller = viewModel.voice,
-            onClose = { showingVoice = false },
         )
         return
     }
@@ -1383,8 +1367,6 @@ private fun ConnectedScaffold(
                         chat,
                         viewModel,
                         topInset = if (floatingChrome) chromeHeight else 0.dp,
-                        // voice:seam — absent until a computer says it can do voice.
-                        onSpeak = if (voiceAvailable) ({ showingVoice = true }) else null,
                         // Named on the empty screen, because which computer is awake is
                         // the one thing no other assistant can put there.
                         hostLine = hostNameOf(state)?.let { "$it is awake and listening" },
@@ -1778,8 +1760,6 @@ private fun ChatPane(
     openers: List<String> = emptyList(),
     /** How much floating chrome hangs over the top of the conversation. */
     topInset: Dp = 0.dp,
-    /** voice:seam — null unless the computer offered voice. */
-    onSpeak: (() -> Unit)? = null,
 ) {
     val attachments by viewModel.attachments.collectAsStateWithLifecycle()
 
@@ -1967,7 +1947,6 @@ private fun ChatPane(
             // chats belonging to projects it is not currently browsing.
             onOpenFile = { path -> viewModel.openWorkspaceFile(path, viewModel.chatProjectId()) },
             onShowDiff = viewModel::openTurnDiff,
-            onSpeak = onSpeak, // voice:seam
             hostLine = hostLine,
             userName = userName,
             dueLine = dueLine,

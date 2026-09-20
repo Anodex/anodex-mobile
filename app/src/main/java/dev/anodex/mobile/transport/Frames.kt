@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import dev.anodex.mobile.voice.VOICE_CAPABILITY // voice:seam
 
 /**
  * The wire frames, mirroring the desktop's `src/main/remote/protocol.ts`.
@@ -39,8 +38,7 @@ const val PROTOCOL_VERSION = "1.0.0"
  * Named `feature.major`, so a feature whose wire shape changes becomes `voice.2` and
  * an older peer simply does not recognise it.
  */
-// voice:seam — the one line that puts voice on the wire from this end.
-val PHONE_CAPABILITIES: List<String> = listOf(VOICE_CAPABILITY)
+val PHONE_CAPABILITIES: List<String> = emptyList()
 
 @Serializable
 sealed interface ServerFrame {
