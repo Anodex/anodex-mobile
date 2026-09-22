@@ -35,6 +35,17 @@ data class AgentRun(
     val activeMs: Long = 0,
     /** When the segment in progress began, or null when it is not generating. */
     val activeSinceAtEpochMs: Long? = null,
+    /**
+     * The run that delegated this one, or null for a run a person started.
+     *
+     * The desktop nests sub-agents under their parent. This screen is a
+     * monitoring surface and does not have room to, so it leaves them out of
+     * the list entirely and says how many a run sent — four rows for one goal
+     * with nothing connecting them is worse than one row that says three.
+     */
+    val parentRunId: String? = null,
+    /** How many sub-agents this run delegated. Zero for almost every run. */
+    val subAgentCount: Int = 0,
 ) {
     /**
      * How long this run has worked, the same reading the desktop stops it on.
@@ -212,14 +223,27 @@ internal fun parseAgentRuns(element: kotlinx.serialization.json.JsonElement?): L
         else -> return emptyList()
     }
 
-    return array.filterIsInstance<JsonObject>()
-        .mapNotNull { it.toRun() }
+    val all = array.filterIsInstance<JsonObject>().mapNotNull { it.toRun() }
+
+    // Sub-agents are steps inside their parent's run, not runs of their own.
+    // Listing them flat would show four rows for one goal with nothing saying
+    // they belong together, so they are counted onto their parent instead.
+    val delegated = all.groupBy { it.parentRunId }
+    val present = all.mapTo(mutableSetOf()) { it.id }
+    return all.asSequence()
+        // A sub-agent whose parent is not here is shown anyway. Its parent may
+        // have been deleted, or fallen outside what the desktop sent; either
+        // way it is a real run with a real transcript, and one shown out of
+        // place beats one that exists nowhere.
+        .filter { it.parentRunId == null || it.parentRunId !in present }
+        .map { run -> run.copy(subAgentCount = delegated[run.id]?.size ?: 0) }
         // Anything waiting on a human first, then by recency. A run that is blocked
         // is the reason the screen was opened.
         .sortedWith(
             compareByDescending<AgentRun> { it.status == AgentRun.Status.NEEDS_REVIEW }
                 .thenByDescending { it.updatedAtEpochMs },
         )
+        .toList()
 }
 private fun JsonObject.toRun(): AgentRun? {
     val id = str("id") ?: return null
@@ -243,6 +267,7 @@ private fun JsonObject.toRun(): AgentRun? {
         maxDurationMinutes = num("maxDurationMinutes"),
         activeMs = long("activeMs"),
         activeSinceAtEpochMs = long("activeSinceAt").takeIf { it > 0 },
+        parentRunId = str("parentRunId")?.takeIf { it.isNotBlank() },
     )
 }
 

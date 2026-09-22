@@ -3784,6 +3784,70 @@
       }
     },
     {
+      "channel": "email:pick-attachments",
+      "kind": "invoke",
+      "api": "email.pickAttachments",
+      "args": [
+        {
+          "name": "alreadyAttachedBytes",
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          }
+        }
+      ],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "array",
+                  "of": {
+                    "$ref": "EmailPickedAttachment"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "channel": "email:read-message",
       "kind": "invoke",
       "api": "email.readMessage",
@@ -8262,6 +8326,12 @@
                   "kind": "literal",
                   "value": "not-available"
                 }
+              },
+              "checkedAt": {
+                "optional": false,
+                "type": {
+                  "kind": "number"
+                }
               }
             }
           },
@@ -8437,6 +8507,12 @@
                 "type": {
                   "kind": "literal",
                   "value": "not-available"
+                }
+              },
+              "checkedAt": {
+                "optional": false,
+                "type": {
+                  "kind": "number"
                 }
               }
             }
@@ -9294,6 +9370,48 @@
             "kind": "string"
           }
         },
+        "parentRunId": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "delegatedTask": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "seriesId": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
         "goal": {
           "optional": false,
           "type": {
@@ -9620,6 +9738,26 @@
           "optional": false,
           "type": {
             "kind": "string"
+          }
+        }
+      }
+    },
+    "AgentSettings": {
+      "kind": "object",
+      "properties": {
+        "subAgentsEnabled": {
+          "optional": false,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        "subAgentProviders": {
+          "optional": false,
+          "type": {
+            "kind": "array",
+            "of": {
+              "kind": "string"
+            }
           }
         }
       }
@@ -10104,6 +10242,24 @@
           "optional": false,
           "type": {
             "$ref": "EmailSettings"
+          }
+        },
+        "git": {
+          "optional": false,
+          "type": {
+            "$ref": "GitSettings"
+          }
+        },
+        "spending": {
+          "optional": false,
+          "type": {
+            "$ref": "SpendingSettings"
+          }
+        },
+        "agents": {
+          "optional": false,
+          "type": {
+            "$ref": "AgentSettings"
           }
         }
       }
@@ -14231,6 +14387,20 @@
             "kind": "string"
           }
         },
+        "continuesSeriesId": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
         "projectId": {
           "optional": false,
           "type": {
@@ -17664,6 +17834,35 @@
         }
       }
     },
+    "EmailPickedAttachment": {
+      "kind": "object",
+      "properties": {
+        "sizeBytes": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "filename": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "mimeType": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "contentBase64": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      }
+    },
     "EmailSearchRequest": {
       "kind": "object",
       "properties": {
@@ -17683,6 +17882,20 @@
               },
               {
                 "kind": "number"
+              }
+            ]
+          }
+        },
+        "mailbox": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
               }
             ]
           }
@@ -18820,6 +19033,23 @@
                 }
               ]
             }
+          }
+        }
+      }
+    },
+    "GitSettings": {
+      "kind": "object",
+      "properties": {
+        "attributeCommits": {
+          "optional": false,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        "attributionEmail": {
+          "optional": false,
+          "type": {
+            "kind": "string"
           }
         }
       }
@@ -21805,71 +22035,6 @@
             ]
           }
         },
-        "supportsThinking": {
-          "optional": true,
-          "type": {
-            "kind": "union",
-            "of": [
-              {
-                "kind": "undefined"
-              },
-              {
-                "kind": "boolean"
-              },
-              {
-                "kind": "boolean"
-              }
-            ]
-          }
-        },
-        "nativeContextTokens": {
-          "optional": true,
-          "type": {
-            "kind": "union",
-            "of": [
-              {
-                "kind": "undefined"
-              },
-              {
-                "kind": "number"
-              }
-            ]
-          }
-        },
-        "stable": {
-          "optional": true,
-          "type": {
-            "kind": "union",
-            "of": [
-              {
-                "kind": "undefined"
-              },
-              {
-                "kind": "boolean"
-              },
-              {
-                "kind": "boolean"
-              }
-            ]
-          }
-        },
-        "recommended": {
-          "optional": true,
-          "type": {
-            "kind": "union",
-            "of": [
-              {
-                "kind": "undefined"
-              },
-              {
-                "kind": "boolean"
-              },
-              {
-                "kind": "boolean"
-              }
-            ]
-          }
-        },
         "source": {
           "optional": true,
           "type": {
@@ -23339,6 +23504,17 @@
             "of": {
               "kind": "string"
             }
+          }
+        }
+      }
+    },
+    "SpendingSettings": {
+      "kind": "object",
+      "properties": {
+        "stopAtDailyCap": {
+          "optional": false,
+          "type": {
+            "kind": "boolean"
           }
         }
       }

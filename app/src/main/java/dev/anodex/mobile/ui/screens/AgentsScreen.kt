@@ -480,6 +480,17 @@ private fun RunCard(
                 }
             }
 
+            // A run that delegated says so. The sub-agents themselves are not
+            // listed -- they are steps inside this run, and four rows for one
+            // goal with nothing connecting them reads as four unrelated runs.
+            if (run.subAgentCount > 0) {
+                Text(
+                    if (run.subAgentCount == 1) "1 sub-agent" else "${run.subAgentCount} sub-agents",
+                    style = type.meta,
+                    color = colors.textFaint,
+                )
+            }
+
             if (running) BudgetMeters(run)
 
             // Only a blocked run shows its plan. Everywhere else it is detail nobody
