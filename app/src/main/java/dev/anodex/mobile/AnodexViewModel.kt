@@ -221,10 +221,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
      * app was silent for reasons it never explained.
      *
      * Asked in order, one at a time, and only while something is actually missing:
-     * once both are granted this never fires again. Not persisted, so at worst it
-     * asks once per launch — and Android stops delivering the notification request
-     * after two refusals anyway, at which point [notificationAccess] and the
-     * settings screen are the way back.
+     * once both are granted this never fires again. The battery dialog is asked
+     * once per install (remembered in [AppearanceStore]); Android stops delivering
+     * the notification request after two refusals anyway. After that,
+     * [notificationAccess] and the settings screen are the way back.
      */
     enum class SetupPrompt {
         /** Android 13+ needs this before a single notification can be shown. */
@@ -257,8 +257,12 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Only after notifications are actually on. Somebody who declined those
             // has said what they want, and following it with a second dialog about
             // battery would be asking the same question again in different words.
-            !notifications.isExemptFromBatteryOptimisation() && !askedForBackground -> {
+            // Once per install, not once per launch: the answer is remembered on disk,
+            // so a Deny is not met with the same dialog every time the app opens.
+            !notifications.isExemptFromBatteryOptimisation() &&
+                !askedForBackground && !backgroundAskedBefore.value -> {
                 askedForBackground = true
+                viewModelScope.launch { appearance.markBackgroundAsked() }
                 SetupPrompt.BACKGROUND
             }
 
@@ -1410,6 +1414,10 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     private val updater = Updater(application)
 
     private val appearance = AppearanceStore(application)
+
+    /** Whether the battery dialog was shown on an earlier launch. See [advanceSetup]. */
+    private val backgroundAskedBefore: StateFlow<Boolean> = appearance.backgroundAsked
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
      * How this app picks its palette.

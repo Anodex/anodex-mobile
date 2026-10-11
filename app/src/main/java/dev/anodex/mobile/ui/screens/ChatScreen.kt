@@ -153,6 +153,8 @@ fun ChatScreen(
     onRetryMessage: ((String) -> Unit)? = null,
     /** Ask the last question again; shown on the error line when the turn itself failed. */
     onRetryLast: (() -> Unit)? = null,
+    /** Open model selection; shown on the error line when no model is loaded. */
+    onChooseModel: (() -> Unit)? = null,
     /** Carry on from a reply that stopped partway. See `canContinue`. */
     onContinue: (() -> Unit)? = null,
     /** Send an edited question in place of the original: (message id, new text). */
@@ -650,10 +652,19 @@ fun ChatScreen(
                     )
                     // A failed turn has nothing under it to retry from — its empty reply
                     // is not kept — so the way to ask again sits with the reason.
+                    // The fix first, when there is one to make here: a model to choose.
+                    if (onChooseModel != null) {
+                        ActionButton(
+                            label = "Choose a model",
+                            tint = colors.accentInk,
+                            enabled = true,
+                            onClick = onChooseModel,
+                        )
+                    }
                     if (onRetryLast != null) {
                         ActionButton(
                             label = "Try again",
-                            tint = colors.accentInk,
+                            tint = if (onChooseModel != null) colors.textFaint else colors.accentInk,
                             enabled = true,
                             onClick = onRetryLast,
                         )

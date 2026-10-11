@@ -119,6 +119,7 @@ import dev.anodex.mobile.ui.screens.RunDetailScreen
 import dev.anodex.mobile.ui.screens.ScanScreen
 import dev.anodex.mobile.ui.screens.SchedulerScreen
 import dev.anodex.mobile.ui.screens.SettingsScreen
+import dev.anodex.mobile.ui.screens.SettingsSection
 import dev.anodex.mobile.ui.screens.TaskScreen
 import dev.anodex.mobile.ui.screens.ThemeMode
 import dev.anodex.mobile.ui.screens.WorkspaceScreen
@@ -718,6 +719,8 @@ private fun ConnectedScaffold(
      */
     var filesOpen by rememberSaveable { mutableStateOf(false) }
     var showingSettings by rememberSaveable { mutableStateOf(false) }
+    /** Where Settings opens: the index, or a section a button asked for. */
+    var settingsSection by rememberSaveable { mutableStateOf<SettingsSection?>(null) }
 
 
     // A notification tap asked for a conversation: show the chat, over whatever
@@ -1114,7 +1117,11 @@ private fun ConnectedScaffold(
             memoryLoading = memoryLoading,
             memoryError = memoryError,
             onForgetMemory = viewModel::forgetMemory,
-            onClose = { showingSettings = false },
+            onClose = {
+                showingSettings = false
+                settingsSection = null
+            },
+            initialSection = settingsSection,
             personalities = personalityState.personalities,
             activePersonalityId = personalityState.active,
             busy = personalityBusy,
@@ -1213,6 +1220,7 @@ private fun ConnectedScaffold(
             },
             onOpenSettings = {
                 drawerOpen = false
+                settingsSection = null
                 showingSettings = true
             },
             agentBadge = waitingAgents,
@@ -1375,6 +1383,10 @@ private fun ConnectedScaffold(
                         // one tap away for the rest of the week.
                         dueLine = dueTodayLine(dueToday(tasks, System.currentTimeMillis())),
                         onOpenScheduler = { destination = AppDestination.SCHEDULER },
+                        onChooseModel = {
+                            settingsSection = SettingsSection.AI_MODELS
+                            showingSettings = true
+                        },
                         openers = openersFor(
                             projectName = projects.active?.name,
                             unreadEmail = unreadEmail,
@@ -1757,6 +1769,8 @@ private fun ChatPane(
     /** What the computer is doing later today, if anything. */
     dueLine: String? = null,
     onOpenScheduler: () -> Unit = {},
+    /** Open Settings on AI & Models, for a turn the computer refused for want of a model. */
+    onChooseModel: () -> Unit = {},
     openers: List<String> = emptyList(),
     /** How much floating chrome hangs over the top of the conversation. */
     topInset: Dp = 0.dp,
@@ -1873,6 +1887,7 @@ private fun ChatPane(
     val sending by chat.sending.collectAsStateWithLifecycle()
     val error by chat.error.collectAsStateWithLifecycle()
     val canRetryLast by chat.canRetryLast.collectAsStateWithLifecycle()
+    val needsModel by chat.needsModel.collectAsStateWithLifecycle()
     val waitingForComputer by chat.waitingForComputer.collectAsStateWithLifecycle()
     val reading by chat.reading.collectAsStateWithLifecycle()
     val approval by chat.approval.collectAsStateWithLifecycle()
@@ -1954,6 +1969,7 @@ private fun ChatPane(
             onOpenScheduler = onOpenScheduler,
             onRetryMessage = chat::retry,
             onRetryLast = if (canRetryLast) chat::retryLast else null,
+            onChooseModel = if (needsModel) onChooseModel else null,
             onContinue = { viewModel.sendMessage(dev.anodex.mobile.chat.CONTINUE_MESSAGE) },
             onEditMessage = chat::editAndResend,
             onLoadThinking = chat::loadThinking,

@@ -19,15 +19,15 @@ class TurnFailureTest {
     private fun json(text: String): JsonElement = Json.parseToJsonElement(text)
 
     @Test
-    fun `no model loaded points at somewhere the phone can fix it`() {
+    fun `no model loaded is said plainly, and marked so the phone can offer to choose one`() {
         val reason = turnFailureOf(
             json(
                 """{"ok":false,"error":{"code":"chat.generation-failed",""" +
                     """"message":"No model is loaded. Load one in Settings → AI & Models first."}}"""
             )
         )
-        assertTrue(reason!!.startsWith("No model is loaded on the computer."))
-        assertTrue(reason.contains("Settings on this phone"))
+        assertEquals("No model is loaded on the computer. Choose one, then try again.", reason!!.message)
+        assertTrue(reason.noModel)
     }
 
     @Test
@@ -35,12 +35,12 @@ class TurnFailureTest {
         val reason = turnFailureOf(
             json("""{"ok":false,"error":{"code":"chat.context-too-small","message":"The input is too large."}}""")
         )
-        assertEquals("The input is too large.", reason)
+        assertEquals(TurnFailure("The input is too large."), reason)
     }
 
     @Test
     fun `a failure with no message still says something`() {
-        assertEquals("Your computer couldn't answer that.", turnFailureOf(json("""{"ok":false}""")))
+        assertEquals(TurnFailure("Your computer couldn't answer that."), turnFailureOf(json("""{"ok":false}""")))
     }
 
     @Test

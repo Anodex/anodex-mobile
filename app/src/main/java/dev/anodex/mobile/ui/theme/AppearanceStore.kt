@@ -118,6 +118,22 @@ class AppearanceStore(private val context: Context) {
     }
 
     /**
+     * Whether Android's "stop optimising battery usage?" dialog has been shown.
+     *
+     * Kept here, with the app's other small preferences, so it is asked once per
+     * install rather than once per launch: a Deny used to be met with the same dialog
+     * every time the app opened. After that, Settings says what is missing and offers
+     * the way in, for whoever changes their mind.
+     */
+    val backgroundAsked: Flow<Boolean> = context.appearanceDataStore.data.map { prefs ->
+        prefs[KEY_BACKGROUND_ASKED] ?: false
+    }
+
+    suspend fun markBackgroundAsked() {
+        context.appearanceDataStore.edit { it[KEY_BACKGROUND_ASKED] = true }
+    }
+
+    /**
      * Whether to take the live token stream on a metered connection.
      *
      * Off by default, and that default is the point. Since the computer started
@@ -206,6 +222,7 @@ class AppearanceStore(private val context: Context) {
         val KEY_KEEP_AWAKE = booleanPreferencesKey("keep_awake")
         val KEY_MOTION = stringPreferencesKey("motion")
         val KEY_HAPTICS = booleanPreferencesKey("haptics")
+        val KEY_BACKGROUND_ASKED = booleanPreferencesKey("asked_battery_exemption")
     }
 }
 
