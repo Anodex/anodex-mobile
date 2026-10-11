@@ -8,12 +8,15 @@ import org.junit.Test
 /**
  * When the app holds its own process alive, and when it lets go.
  *
- * Both mistakes here are quiet. Holding through `Offline` leaves the user with an
- * undismissable notification about a connection that gave up hours ago — the exact
- * behaviour that makes people distrust apps which run in the background. Letting go
- * during `Reconnecting` lets Android kill the process in the middle of the Wi-Fi
- * handoff the grace period exists to ride out, which loses the session rather than
- * pausing it, because nothing on the phone is cached to disk.
+ * Letting go during `Reconnecting` lets Android kill the process in the middle of the
+ * Wi-Fi handoff the grace period exists to ride out, which loses the session rather
+ * than pausing it, because nothing on the phone is cached to disk.
+ *
+ * `Offline` used to let go too, to spare the user an ongoing notification about a
+ * computer that is away. Measured on a Galaxy S7, that is what silenced the phone: the
+ * app was reclaimed while the computer slept, and nothing was left to hear it wake.
+ * Notifications reaching the phone outranks the quiet notification that makes it
+ * possible.
  */
 class ProcessHoldTest {
 
@@ -52,12 +55,14 @@ class ProcessHoldTest {
     }
 
     @Test
-    fun `giving up releases the process`() {
+    fun `a computer that is away is still waited for, and not called connected`() {
         val hold = processHoldFor(
             ConnectionState.Offline(host, lastSeenEpochMs = null, networkChanged = false)
         )
 
-        assertNull(hold)
+        assertNotNull(hold)
+        assertEquals("STUDIO-PC", hold!!.hostName)
+        assertEquals(false, hold.connected)
     }
 
     @Test

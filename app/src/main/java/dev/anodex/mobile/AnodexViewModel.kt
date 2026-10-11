@@ -55,6 +55,7 @@ import dev.anodex.mobile.connection.isUpdateAvailable
 import dev.anodex.mobile.connection.localIPv4Addresses
 import dev.anodex.mobile.connection.mostTellingFailure
 import dev.anodex.mobile.connection.processHoldFor
+import dev.anodex.mobile.connection.BackgroundLink
 import dev.anodex.mobile.email.Email
 import dev.anodex.mobile.email.EmailAttachment
 import dev.anodex.mobile.email.EmailDrafter
@@ -3668,6 +3669,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        // The screens hold their own connection from here, so the background one steps
+        // aside before this one is made: the computer sends every notification to every
+        // connection a phone has, and two would mean every one twice.
+        BackgroundLink.uiAttached()
+
         // Walking out of the house changes the answer, and the computer is still
         // sending. Watched rather than checked on connect alone, because the case this
         // exists for is exactly the one where the network changes underneath somebody.
@@ -3879,9 +3885,16 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         // viewModelScope cancellation would stop the loop anyway; saying so explicitly means the
         // controller's lifecycle does not depend on knowing that.
         controller.stop()
-        // The app is going away for good, so the ongoing notification would be
-        // describing a connection nothing is using.
-        ConnectionService.stop(getApplication())
+        // The screens are going — closed from recent apps, most often — but a paired phone
+        // keeps listening: the service holds a quiet connection of its own until they come
+        // back. This used to stop the service, so closing the app silenced it entirely.
+        val host = _paired.value
+        if (host != null) {
+            BackgroundLink.uiDetached(getApplication())
+            ConnectionService.start(getApplication(), host.identity.displayName, connected = false)
+        } else {
+            ConnectionService.stop(getApplication())
+        }
         super.onCleared()
     }
 
