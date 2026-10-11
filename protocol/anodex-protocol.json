@@ -1021,6 +1021,29 @@
       }
     },
     {
+      "channel": "chat:project-switched",
+      "kind": "event",
+      "api": "chat.onProjectSwitched",
+      "args": [],
+      "payload": {
+        "kind": "object",
+        "properties": {
+          "conversationId": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "projectId": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          }
+        }
+      }
+    },
+    {
       "channel": "chat:replay-suggestion",
       "kind": "invoke",
       "api": "chat.replaySuggestion",
@@ -1043,6 +1066,29 @@
             "kind": "string"
           }
         ]
+      }
+    },
+    {
+      "channel": "chat:secret-saved",
+      "kind": "event",
+      "api": "chat.onSecretSaved",
+      "args": [],
+      "payload": {
+        "kind": "object",
+        "properties": {
+          "conversationId": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "secret": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          }
+        }
       }
     },
     {
@@ -6195,6 +6241,59 @@
       }
     },
     {
+      "channel": "models:discard-partial-download",
+      "kind": "invoke",
+      "api": "models.discardPartialDownload",
+      "args": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": {
+            "$ref": "RecommendedModel"
+          }
+        }
+      ],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "void"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "channel": "models:discover",
       "kind": "invoke",
       "api": "models.discover",
@@ -6554,6 +6653,26 @@
       }
     },
     {
+      "channel": "models:partial-downloads",
+      "kind": "invoke",
+      "api": "models.partialDownloads",
+      "args": [
+        {
+          "name": "models",
+          "optional": false,
+          "type": {
+            "kind": "array",
+            "of": {
+              "$ref": "RecommendedModel"
+            }
+          }
+        }
+      ],
+      "result": {
+        "$ref": "Record<string, number>"
+      }
+    },
+    {
       "channel": "models:recommend-settings",
       "kind": "invoke",
       "api": "models.recommendSettingsForFile",
@@ -6717,6 +6836,77 @@
       ],
       "result": {
         "$ref": "RemotePersonalityState"
+      }
+    },
+    {
+      "channel": "processes:changed",
+      "kind": "event",
+      "api": "processes.onChanged",
+      "args": [],
+      "payload": {
+        "$ref": "BackgroundProcessInfo"
+      }
+    },
+    {
+      "channel": "processes:list",
+      "kind": "invoke",
+      "api": "processes.list",
+      "args": [
+        {
+          "name": "projectId",
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        }
+      ],
+      "result": {
+        "kind": "array",
+        "of": {
+          "$ref": "BackgroundProcessInfo"
+        }
+      }
+    },
+    {
+      "channel": "processes:output",
+      "kind": "invoke",
+      "api": "processes.output",
+      "args": [
+        {
+          "name": "id",
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "result": {
+        "kind": "string"
+      }
+    },
+    {
+      "channel": "processes:stop",
+      "kind": "invoke",
+      "api": "processes.stop",
+      "args": [
+        {
+          "name": "id",
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "result": {
+        "kind": "void"
       }
     },
     {
@@ -7747,6 +7937,592 @@
       }
     },
     {
+      "channel": "speech:add-voice",
+      "kind": "invoke",
+      "api": "speech.addVoice",
+      "args": [],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "union",
+                  "of": [
+                    {
+                      "kind": "null"
+                    },
+                    {
+                      "kind": "object",
+                      "properties": {
+                        "id": {
+                          "optional": false,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        "name": {
+                          "optional": false,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        "kind": {
+                          "optional": false,
+                          "type": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:audio",
+      "kind": "event",
+      "api": "speech.onAudio",
+      "args": [],
+      "payload": {
+        "kind": "object",
+        "properties": {
+          "requestId": {
+            "optional": false,
+            "type": {
+              "kind": "string"
+            }
+          },
+          "pcm": {
+            "optional": false,
+            "type": {
+              "$ref": "Uint8Array<ArrayBufferLike>"
+            }
+          },
+          "sampleRate": {
+            "optional": false,
+            "type": {
+              "kind": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "channel": "speech:cancel-download",
+      "kind": "invoke",
+      "api": "speech.cancelDownload",
+      "args": [],
+      "result": {
+        "kind": "void"
+      }
+    },
+    {
+      "channel": "speech:choose-reference",
+      "kind": "invoke",
+      "api": "speech.chooseReference",
+      "args": [],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:delete-voice",
+      "kind": "invoke",
+      "api": "speech.deleteVoice",
+      "args": [
+        {
+          "name": "id",
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "void"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:download",
+      "kind": "invoke",
+      "api": "speech.download",
+      "args": [],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "void"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:get-transcript",
+      "kind": "invoke",
+      "api": "speech.getTranscript",
+      "args": [],
+      "result": {
+        "kind": "string"
+      }
+    },
+    {
+      "channel": "speech:list-voices",
+      "kind": "invoke",
+      "api": "speech.listVoices",
+      "args": [],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "array",
+                  "of": {
+                    "kind": "object",
+                    "properties": {
+                      "id": {
+                        "optional": false,
+                        "type": {
+                          "kind": "string"
+                        }
+                      },
+                      "name": {
+                        "optional": false,
+                        "type": {
+                          "kind": "string"
+                        }
+                      },
+                      "kind": {
+                        "optional": false,
+                        "type": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:prepare",
+      "kind": "invoke",
+      "api": "speech.prepare",
+      "args": [],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "void"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:progress",
+      "kind": "event",
+      "api": "speech.onProgress",
+      "args": [],
+      "payload": {
+        "kind": "object",
+        "properties": {
+          "receivedBytes": {
+            "optional": false,
+            "type": {
+              "kind": "number"
+            }
+          },
+          "totalBytes": {
+            "optional": false,
+            "type": {
+              "kind": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "channel": "speech:release",
+      "kind": "invoke",
+      "api": "speech.release",
+      "args": [],
+      "result": {
+        "kind": "void"
+      }
+    },
+    {
+      "channel": "speech:remove-reference",
+      "kind": "invoke",
+      "api": "speech.removeReference",
+      "args": [],
+      "result": {
+        "kind": "void"
+      }
+    },
+    {
+      "channel": "speech:set-transcript",
+      "kind": "invoke",
+      "api": "speech.setTranscript",
+      "args": [
+        {
+          "name": "text",
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "void"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:speak",
+      "kind": "invoke",
+      "api": "speech.speak",
+      "args": [
+        {
+          "name": "requestId",
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "void"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "speech:status",
+      "kind": "invoke",
+      "api": "speech.status",
+      "args": [],
+      "result": {
+        "kind": "object",
+        "properties": {
+          "runtimeAvailable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "pocketAvailable": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "modelInstalled": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "referenceReady": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "engineReady": {
+            "optional": false,
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "downloadBytes": {
+            "optional": false,
+            "type": {
+              "kind": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "channel": "speech:stop",
+      "kind": "invoke",
+      "api": "speech.stop",
+      "args": [],
+      "result": {
+        "kind": "void"
+      }
+    },
+    {
       "channel": "stats:get-usage-breakdown",
       "kind": "invoke",
       "api": "stats.getUsageBreakdown",
@@ -8293,6 +9069,51 @@
       }
     },
     {
+      "channel": "updates:get-release-notes",
+      "kind": "invoke",
+      "api": "updates.getReleaseNotes",
+      "args": [],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "$ref": "ReleaseNotes"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "channel": "updates:get-status",
       "kind": "invoke",
       "api": "updates.getStatus",
@@ -8640,6 +9461,67 @@
                 "optional": false,
                 "type": {
                   "kind": "string"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "channel": "web-search:test",
+      "kind": "invoke",
+      "api": "webSearch.test",
+      "args": [
+        {
+          "name": "config",
+          "optional": false,
+          "type": {
+            "$ref": "WebSearchTestConfig"
+          }
+        }
+      ],
+      "result": {
+        "kind": "union",
+        "of": [
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "error": {
+                "optional": false,
+                "type": {
+                  "$ref": "AnodexError"
+                }
+              }
+            }
+          },
+          {
+            "kind": "object",
+            "properties": {
+              "ok": {
+                "optional": false,
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              "value": {
+                "optional": false,
+                "type": {
+                  "kind": "object",
+                  "properties": {
+                    "resultCount": {
+                      "optional": false,
+                      "type": {
+                        "kind": "number"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -10215,6 +11097,12 @@
             "$ref": "ComputerControlSettings"
           }
         },
+        "speech": {
+          "optional": false,
+          "type": {
+            "$ref": "SpeechSettings"
+          }
+        },
         "provider": {
           "optional": false,
           "type": {
@@ -10285,6 +11173,31 @@
           "optional": false,
           "type": {
             "$ref": "AgentSettings"
+          }
+        }
+      }
+    },
+    "ArrayBuffer": {
+      "kind": "object",
+      "properties": {
+        "byteLength": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "slice": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "__@toStringTag@140": {
+          "optional": false,
+          "type": {
+            "kind": "literal",
+            "value": "ArrayBuffer"
           }
         }
       }
@@ -10374,6 +11287,135 @@
               },
               {
                 "kind": "number"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "BackgroundProcessInfo": {
+      "kind": "object",
+      "properties": {
+        "id": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "command": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "projectId": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "conversationId": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "cwd": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "startedAt": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "status": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "literal",
+                "value": "running"
+              },
+              {
+                "kind": "literal",
+                "value": "exited"
+              },
+              {
+                "kind": "literal",
+                "value": "stopped"
+              },
+              {
+                "kind": "literal",
+                "value": "failed"
+              }
+            ]
+          }
+        },
+        "exitCode": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          }
+        },
+        "endedAt": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          }
+        },
+        "url": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "string"
               }
             ]
           }
@@ -12766,11 +13808,11 @@
               },
               {
                 "kind": "literal",
-                "value": "paused"
+                "value": "stopped"
               },
               {
                 "kind": "literal",
-                "value": "stopped"
+                "value": "paused"
               },
               {
                 "kind": "literal",
@@ -13944,6 +14986,23 @@
             ]
           }
         },
+        "readRepliesAutomatically": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "boolean"
+              },
+              {
+                "kind": "boolean"
+              }
+            ]
+          }
+        },
         "plan": {
           "optional": true,
           "type": {
@@ -14786,6 +15845,66 @@
               "kind": "string"
             }
           }
+        },
+        "continuesSeriesId": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "kind": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "literal",
+                "value": "reminder"
+              }
+            ]
+          }
+        },
+        "remindVia": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "array",
+                "of": {
+                  "kind": "union",
+                  "of": [
+                    {
+                      "kind": "literal",
+                      "value": "email"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "desktop"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "phone"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
         }
       }
     },
@@ -15307,6 +16426,10 @@
               },
               {
                 "kind": "literal",
+                "value": "failed"
+              },
+              {
+                "kind": "literal",
                 "value": "needs-review"
               },
               {
@@ -15324,10 +16447,6 @@
               {
                 "kind": "literal",
                 "value": "validating"
-              },
-              {
-                "kind": "literal",
-                "value": "failed"
               }
             ]
           }
@@ -15613,11 +16732,11 @@
               },
               {
                 "kind": "literal",
-                "value": "researching"
+                "value": "failed"
               },
               {
                 "kind": "literal",
-                "value": "failed"
+                "value": "researching"
               },
               {
                 "kind": "literal",
@@ -16227,11 +17346,11 @@
               },
               {
                 "kind": "literal",
-                "value": "model"
+                "value": "provider"
               },
               {
                 "kind": "literal",
-                "value": "provider"
+                "value": "model"
               },
               {
                 "kind": "literal",
@@ -18161,11 +19280,11 @@
             "of": [
               {
                 "kind": "literal",
-                "value": "ok"
+                "value": "failed"
               },
               {
                 "kind": "literal",
-                "value": "failed"
+                "value": "ok"
               },
               {
                 "kind": "literal",
@@ -19305,6 +20424,20 @@
               },
               {
                 "kind": "string"
+              }
+            ]
+          }
+        },
+        "storageFreeBytes": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "number"
               }
             ]
           }
@@ -21983,6 +23116,20 @@
             ]
           }
         },
+        "visionProjectorBytes": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          }
+        },
         "tags": {
           "optional": false,
           "type": {
@@ -22163,6 +23310,49 @@
           }
         },
         "reason": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      }
+    },
+    "ReleaseNotes": {
+      "kind": "object",
+      "properties": {
+        "version": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "title": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "body": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "publishedAt": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "url": {
           "optional": false,
           "type": {
             "kind": "string"
@@ -22411,6 +23601,10 @@
               {
                 "kind": "literal",
                 "value": "needs-approval"
+              },
+              {
+                "kind": "literal",
+                "value": "reply-ready"
               }
             ]
           }
@@ -23204,6 +24398,66 @@
             ]
           }
         },
+        "continuesSeriesId": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "kind": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "literal",
+                "value": "reminder"
+              }
+            ]
+          }
+        },
+        "remindVia": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "array",
+                "of": {
+                  "kind": "union",
+                  "of": [
+                    {
+                      "kind": "literal",
+                      "value": "email"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "desktop"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "phone"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
         "createdAt": {
           "optional": false,
           "type": {
@@ -23305,6 +24559,31 @@
           "optional": false,
           "type": {
             "kind": "boolean"
+          }
+        }
+      }
+    },
+    "SharedArrayBuffer": {
+      "kind": "object",
+      "properties": {
+        "byteLength": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "slice": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "__@toStringTag@140": {
+          "optional": false,
+          "type": {
+            "kind": "literal",
+            "value": "SharedArrayBuffer"
           }
         }
       }
@@ -23529,6 +24808,97 @@
             "of": {
               "kind": "string"
             }
+          }
+        }
+      }
+    },
+    "SpeechSettings": {
+      "kind": "object",
+      "properties": {
+        "enabled": {
+          "optional": false,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        "engine": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "literal",
+                "value": "qwen"
+              },
+              {
+                "kind": "literal",
+                "value": "pocket"
+              }
+            ]
+          }
+        },
+        "voice": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "literal",
+                "value": "default"
+              },
+              {
+                "kind": "literal",
+                "value": "personal"
+              },
+              {
+                "kind": "literal",
+                "value": "serena"
+              },
+              {
+                "kind": "literal",
+                "value": "vivian"
+              },
+              {
+                "kind": "literal",
+                "value": "uncle_fu"
+              },
+              {
+                "kind": "literal",
+                "value": "ryan"
+              },
+              {
+                "kind": "literal",
+                "value": "aiden"
+              },
+              {
+                "kind": "literal",
+                "value": "ono_anna"
+              },
+              {
+                "kind": "literal",
+                "value": "sohee"
+              },
+              {
+                "kind": "literal",
+                "value": "eric"
+              },
+              {
+                "kind": "literal",
+                "value": "dylan"
+              }
+            ]
+          }
+        },
+        "pocketVoice": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "speed": {
+          "optional": false,
+          "type": {
+            "kind": "number"
           }
         }
       }
@@ -24609,6 +25979,107 @@
               }
             ]
           }
+        },
+        "secret": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "object",
+                "properties": {
+                  "service": {
+                    "optional": false,
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "getUrl": {
+                    "optional": true,
+                    "type": {
+                      "kind": "union",
+                      "of": [
+                        {
+                          "kind": "undefined"
+                        },
+                        {
+                          "kind": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "placeholder": {
+                    "optional": false,
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "choices": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "array",
+                "of": {
+                  "kind": "object",
+                  "properties": {
+                    "id": {
+                      "optional": false,
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    "label": {
+                      "optional": false,
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    "detail": {
+                      "optional": true,
+                      "type": {
+                        "kind": "union",
+                        "of": [
+                          {
+                            "kind": "undefined"
+                          },
+                          {
+                            "kind": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "size": {
+                      "optional": true,
+                      "type": {
+                        "kind": "union",
+                        "of": [
+                          {
+                            "kind": "undefined"
+                          },
+                          {
+                            "kind": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
         }
       }
     },
@@ -24648,6 +26119,37 @@
               },
               {
                 "kind": "string"
+              }
+            ]
+          }
+        },
+        "secretValue": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "chosenIds": {
+          "optional": true,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "undefined"
+              },
+              {
+                "kind": "array",
+                "of": {
+                  "kind": "string"
+                }
               }
             ]
           }
@@ -24818,6 +26320,287 @@
           "optional": false,
           "type": {
             "kind": "boolean"
+          }
+        }
+      }
+    },
+    "Uint8Array<ArrayBufferLike>": {
+      "kind": "object",
+      "properties": {
+        "BYTES_PER_ELEMENT": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "buffer": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "$ref": "ArrayBuffer"
+              },
+              {
+                "$ref": "SharedArrayBuffer"
+              }
+            ]
+          }
+        },
+        "byteLength": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "byteOffset": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "copyWithin": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "every": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "fill": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "filter": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "find": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "findIndex": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "forEach": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "indexOf": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "join": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "lastIndexOf": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "length": {
+          "optional": false,
+          "type": {
+            "kind": "number"
+          }
+        },
+        "map": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "reduce": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "reduceRight": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "reverse": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "set": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "slice": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "some": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "sort": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "subarray": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "toLocaleString": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "toString": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "valueOf": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "entries": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "keys": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "values": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "includes": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "at": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "findLast": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "findLastIndex": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "toReversed": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "toSorted": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "with": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "__@iterator@138": {
+          "optional": false,
+          "type": {
+            "kind": "function",
+            "note": "not transferable"
+          }
+        },
+        "__@toStringTag@140": {
+          "optional": false,
+          "type": {
+            "kind": "literal",
+            "value": "Uint8Array"
           }
         }
       }
@@ -25649,6 +27432,57 @@
           "optional": false,
           "type": {
             "kind": "boolean"
+          }
+        }
+      }
+    },
+    "WebSearchTestConfig": {
+      "kind": "object",
+      "properties": {
+        "provider": {
+          "optional": false,
+          "type": {
+            "kind": "union",
+            "of": [
+              {
+                "kind": "literal",
+                "value": "google"
+              },
+              {
+                "kind": "literal",
+                "value": "none"
+              },
+              {
+                "kind": "literal",
+                "value": "searxng"
+              },
+              {
+                "kind": "literal",
+                "value": "brave"
+              },
+              {
+                "kind": "literal",
+                "value": "tavily"
+              }
+            ]
+          }
+        },
+        "apiKey": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "baseUrl": {
+          "optional": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        "searchEngineId": {
+          "optional": false,
+          "type": {
+            "kind": "string"
           }
         }
       }
