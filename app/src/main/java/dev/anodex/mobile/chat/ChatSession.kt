@@ -303,6 +303,30 @@ class ChatSession(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _canRetryLast = MutableStateFlow(false)
+
+    /**
+     * The error on screen is a turn the computer could not run, and asking again may
+     * now work — after loading a model, most often. Not set for a message that never
+     * reached the computer, where the connection is what needs fixing.
+     */
+    val canRetryLast: StateFlow<Boolean> = _canRetryLast.asStateFlow()
+
+    private val _needsModel = MutableStateFlow(false)
+
+    /**
+     * The failure on screen is the computer having no model loaded, so the error line
+     * can offer to choose one — the one failure the person can fix from here.
+     */
+    val needsModel: StateFlow<Boolean> = _needsModel.asStateFlow()
+
+    /** Ask the last question again, for the Try again on a failed turn. */
+    fun retryLast() {
+        if (_sending.value) return
+        val question = _messages.value.lastOrNull { it.role == ChatMessage.Role.USER } ?: return
+        send(question.text)
+    }
+
     private val _waitingForComputer = MutableStateFlow(false)
 
     /**
@@ -404,6 +428,8 @@ class ChatSession(
 
         val messageId = UUID.randomUUID().toString()
         _error.value = null
+        _canRetryLast.value = false
+        _needsModel.value = false
         _sending.value = true
 
         // Built before the new turn is appended: the prompt carries this message, so
@@ -493,21 +519,32 @@ class ChatSession(
 
             try {
                 val result = call.await().getOrThrow()
-                // The finished turn carries its whole thinking, which this phone was not
-                // sent as it was written unless somebody had it open.
-                thinkingFromResult(result)?.let { setThinking(assistantIdFor(messageId), it) }
-                if (endedEarlyFromResult(result)) markEndedEarly(assistantIdFor(messageId))
-                setWebSources(
-                    assistantIdFor(messageId),
-                    webSourcesFromResult(result),
-                    webSearchAttemptedFromResult(result),
-                )
-                setRecalled(
-                    assistantIdFor(messageId),
-                    memoryUsedFromResult(result),
-                    recalledFromResult(result),
-                )
-                answered = true
+                // The computer answers a turn it could not run with `{ ok: false, error }`
+                // rather than failing the call, and that answer was read as success: sent
+                // with no model loaded, the message sat on screen with no reply and no
+                // word of why, while the computer knew exactly what was wrong.
+                val failure = turnFailureOf(result)
+                if (failure != null) {
+                    _error.value = failure.message
+                    _canRetryLast.value = true
+                    _needsModel.value = failure.noModel
+                } else {
+                    // The finished turn carries its whole thinking, which this phone was not
+                    // sent as it was written unless somebody had it open.
+                    thinkingFromResult(result)?.let { setThinking(assistantIdFor(messageId), it) }
+                    if (endedEarlyFromResult(result)) markEndedEarly(assistantIdFor(messageId))
+                    setWebSources(
+                        assistantIdFor(messageId),
+                        webSourcesFromResult(result),
+                        webSearchAttemptedFromResult(result),
+                    )
+                    setRecalled(
+                        assistantIdFor(messageId),
+                        memoryUsedFromResult(result),
+                        recalledFromResult(result),
+                    )
+                    answered = true
+                }
             } catch (e: CancellationException) {
                 // Only ours is worth reporting. A cancellation from the scope going
                 // away means the screen is gone and there is nobody to tell.
@@ -1697,6 +1734,32 @@ internal fun chatRequest(
 }
 
 /** What the computer said to cutting a conversation back for an edit. */
+/**
+ * Why `chat:send` produced no reply, when its answer is the computer's
+ * `{ ok: false, error }`. Null for an answer that is a turn.
+ *
+ * The computer's own message is used as it is, except for the commonest one: with no
+ * model loaded it says where to load one *on the computer*, and on the phone that
+ * reads as a dead end when this app can load one too.
+ */
+internal fun turnFailureOf(element: JsonElement?): TurnFailure? {
+    val fields = element as? JsonObject ?: return null
+    if ((fields["ok"] as? JsonPrimitive)?.contentOrNull != "false") return null
+    val error = fields["error"] as? JsonObject
+    val code = (error?.get("code") as? JsonPrimitive)?.contentOrNull
+    val message = (error?.get("message") as? JsonPrimitive)?.contentOrNull?.trim()
+    if (code == "chat.no-model" || message?.startsWith("No model is loaded") == true) {
+        return TurnFailure(
+            message = "No model is loaded on the computer. Choose one, then try again.",
+            noModel = true,
+        )
+    }
+    return TurnFailure(message?.takeIf { it.isNotEmpty() } ?: "Your computer couldn't answer that.")
+}
+
+/** Why a turn produced no reply; see [turnFailureOf]. */
+internal data class TurnFailure(val message: String, val noModel: Boolean = false)
+
 internal enum class EditOutcome { CUT, PROJECT_CHAT, REFUSED, UNSUPPORTED }
 
 /**

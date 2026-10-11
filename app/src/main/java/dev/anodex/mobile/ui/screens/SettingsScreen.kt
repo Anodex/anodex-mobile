@@ -1,5 +1,10 @@
 package dev.anodex.mobile.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -98,6 +103,8 @@ fun SettingsScreen(
     installedVersion: String,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The section to open on, rather than the index — "Choose a model" opens AI & Models. */
+    initialSection: SettingsSection? = null,
     personalities: List<Personality> = emptyList(),
     activePersonalityId: String? = null,
     busy: Boolean = false,
@@ -193,7 +200,7 @@ fun SettingsScreen(
 
     // Which section is open, or null on the index. Saved, so rotating the phone in
     // the middle of choosing a model does not throw you back to the top.
-    var section by rememberSaveable { mutableStateOf<SettingsSection?>(null) }
+    var section by rememberSaveable { mutableStateOf(initialSection) }
 
     // Back leaves the section first and the screen second, which is what the arrow
     // in the corner already implies.
@@ -286,6 +293,7 @@ fun SettingsScreen(
                 )
 
                 SettingsSection.AI_MODELS -> AiAndModelsSection(
+                    revealModels = initialSection == SettingsSection.AI_MODELS,
                     personalities = personalities,
                     activePersonalityId = activePersonalityId,
                     busy = busy,
@@ -673,6 +681,8 @@ private fun AppearanceSection(
     }
 }
 
+// Scrolling to the models (BringIntoViewRequester) is still marked experimental.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AiAndModelsSection(
     personalities: List<Personality>,
@@ -687,9 +697,19 @@ private fun AiAndModelsSection(
     permissionMode: PermissionMode? = null,
     permissionBusy: Boolean = false,
     onSetPermissionMode: (PermissionMode) -> Unit = {},
+    /**
+     * Scroll to the models on opening. Set when the chat's "Choose a model" brought the
+     * person here: the list sits below permissions and personalities, and landing at
+     * the top of a long section is landing somewhere else.
+     */
+    revealModels: Boolean = false,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
+    val modelsHere = remember { BringIntoViewRequester() }
+    LaunchedEffect(revealModels, models.isNotEmpty()) {
+        if (revealModels) modelsHere.bringIntoView()
+    }
 
     SectionBody {
         SectionLabel("What Anodex may do on its own")
@@ -751,28 +771,38 @@ private fun AiAndModelsSection(
 
         Footnote("Changing this changes how the computer replies, for both of you.")
 
-        if (models.isNotEmpty()) {
+        // The heading and what is under it, so scrolling here shows the list (or why
+        // there is none) and not just its title at the bottom edge.
+        Column(Modifier.bringIntoViewRequester(modelsHere)) {
             SectionLabel("Model")
-
-            Group {
-                models.forEachIndexed { index, model ->
-                    if (index > 0) RowDivider()
-                    ModelRow(
-                        model = model,
-                        active = model.path == activeModelPath,
-                        loading = model.path == loadingModelPath,
-                        // One load at a time. A second while the first is still going
-                        // would queue a minutes-long job behind another.
-                        enabled = loadingModelPath == null,
-                        onClick = { onLoadModel(model.path) },
-                    )
+            if (models.isEmpty()) {
+                // Not nothing: "Choose a model" leads here, and an empty space below a
+                // promise to choose one reads as broken.
+                Footnote(
+                    "No models were found on your computer. Download one in Anodex on the " +
+                        "computer, in Settings → AI & Models, and it will show here.",
+                )
+            } else {
+                Group {
+                    models.forEachIndexed { index, model ->
+                        if (index > 0) RowDivider()
+                        ModelRow(
+                            model = model,
+                            active = model.path == activeModelPath,
+                            loading = model.path == loadingModelPath,
+                            // One load at a time. A second while the first is still going
+                            // would queue a minutes-long job behind another.
+                            enabled = loadingModelPath == null,
+                            onClick = { onLoadModel(model.path) },
+                        )
+                    }
                 }
-            }
 
-            Footnote(
-                "Only what is already on your computer. Downloading a new model is done " +
-                    "at the machine.",
-            )
+                Footnote(
+                    "Only what is already on your computer. Downloading a new model is done " +
+                        "at the machine.",
+                )
+            }
         }
     }
 }
