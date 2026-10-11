@@ -151,6 +151,8 @@ fun ChatScreen(
     userName: String? = null,
     /** Ask the same question again. Null where there is no socket to ask down. */
     onRetryMessage: ((String) -> Unit)? = null,
+    /** Ask the last question again; shown on the error line when the turn itself failed. */
+    onRetryLast: (() -> Unit)? = null,
     /** Carry on from a reply that stopped partway. See `canContinue`. */
     onContinue: (() -> Unit)? = null,
     /** Send an edited question in place of the original: (message id, new text). */
@@ -630,17 +632,33 @@ fun ChatScreen(
             }
 
             if (error != null) {
-                Text(
-                    text = error,
-                    style = type.meta,
-                    color = colors.dangerInk,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = Spacing.x4)
                         .clip(Radii.md)
                         .background(colors.dangerSoft)
                         .padding(Spacing.x3),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+                ) {
+                    Text(
+                        text = error,
+                        style = type.meta,
+                        color = colors.dangerInk,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // A failed turn has nothing under it to retry from — its empty reply
+                    // is not kept — so the way to ask again sits with the reason.
+                    if (onRetryLast != null) {
+                        ActionButton(
+                            label = "Try again",
+                            tint = colors.accentInk,
+                            enabled = true,
+                            onClick = onRetryLast,
+                        )
+                    }
+                }
             }
 
             // Editing an earlier question: what is sent replaces it. Said above the

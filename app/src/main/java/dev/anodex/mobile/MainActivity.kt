@@ -1872,6 +1872,7 @@ private fun ChatPane(
     val runGoal = agentRuns.firstOrNull { it.conversationId == chat.conversationId }?.goal
     val sending by chat.sending.collectAsStateWithLifecycle()
     val error by chat.error.collectAsStateWithLifecycle()
+    val canRetryLast by chat.canRetryLast.collectAsStateWithLifecycle()
     val waitingForComputer by chat.waitingForComputer.collectAsStateWithLifecycle()
     val reading by chat.reading.collectAsStateWithLifecycle()
     val approval by chat.approval.collectAsStateWithLifecycle()
@@ -1952,6 +1953,7 @@ private fun ChatPane(
             dueLine = dueLine,
             onOpenScheduler = onOpenScheduler,
             onRetryMessage = chat::retry,
+            onRetryLast = if (canRetryLast) chat::retryLast else null,
             onContinue = { viewModel.sendMessage(dev.anodex.mobile.chat.CONTINUE_MESSAGE) },
             onEditMessage = chat::editAndResend,
             onLoadThinking = chat::loadThinking,
