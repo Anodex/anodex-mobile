@@ -20,6 +20,9 @@ import org.junit.Test
  */
 class ConnectionDetailTest {
 
+    private val WAITING = "Waiting for your computer. Notifications arrive as soon as it's back."
+
+
     private fun detail(
         connected: Boolean = true,
         working: Boolean = false,
@@ -75,8 +78,8 @@ class ConnectionDetailTest {
     fun `reconnecting says that and nothing else`() {
         // Whatever was loaded a moment ago is not knowable now, and guessing at it
         // while the link is down would be reporting a computer the phone cannot see.
-        assertEquals("Trying to reach your computer.", detail(connected = false))
-        assertEquals("Trying to reach your computer.", detail(connected = false, working = true))
+        assertEquals(WAITING, detail(connected = false))
+        assertEquals(WAITING, detail(connected = false, working = true))
     }
 
     @Test

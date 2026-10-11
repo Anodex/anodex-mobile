@@ -15,6 +15,10 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.anodex.mobile.MainActivity
 import dev.anodex.mobile.R
+import dev.anodex.mobile.pairing.PairedHostStore
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Keeps the app alive while it is connected to the computer.
@@ -52,8 +56,10 @@ class ConnectionService : Service() {
     override fun onBind(intent: Intent): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val hostName = intent?.getStringExtra(EXTRA_HOST) ?: "your computer"
-        val connected = intent?.getBooleanExtra(EXTRA_CONNECTED, true) ?: true
+        // No intent means Android restarted this after killing the process, and no host
+        // name means the phone has just booted: either way the pairing on disk knows it.
+        val hostName = intent?.getStringExtra(EXTRA_HOST) ?: savedHostName() ?: "your computer"
+        val connected = intent?.getBooleanExtra(EXTRA_CONNECTED, false) ?: false
         val working = intent?.getBooleanExtra(EXTRA_WORKING, false) ?: false
         val detail = intent?.getStringExtra(EXTRA_DETAIL).orEmpty()
 
@@ -100,13 +106,29 @@ class ConnectionService : Service() {
         if (hold.reachedForeground()) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
+            return START_NOT_STICKY
         }
 
-        // Not restarted with a null intent if the system kills us: without the host
-        // name there is nothing truthful to put in the notification, and the app will
-        // start this again the moment it reconnects.
-        return START_NOT_STICKY
+        // Holds the connection itself whenever the app's screens are not: see BackgroundLink.
+        BackgroundLink.ensureRunning(this)
+
+        // Restarted if the system kills it. This used to be NOT_STICKY on the grounds that
+        // the app would start it again on reconnecting — which never happens once the app
+        // is gone, and "gone" (closed from recent apps, the phone restarted) is exactly when
+        // a notification has nowhere else to arrive. The host name now comes from disk.
+        return START_STICKY
     }
+
+    override fun onDestroy() {
+        BackgroundLink.stop()
+        super.onDestroy()
+    }
+
+    /** The paired computer's name, read from disk for a start that did not carry one. */
+    private fun savedHostName(): String? = runCatching {
+        runBlocking { withTimeoutOrNull(500) { PairedHostStore(this@ConnectionService).paired.first() } }
+            ?.identity?.displayName
+    }.getOrNull()
 
     private fun buildNotification(
         hostName: String,
@@ -266,6 +288,12 @@ data class ProcessHold(val hostName: String, val connected: Boolean)
 /**
  * Whether a given connection state is worth holding the process for.
  *
+ * Every state with something paired, since notifications became the point: an app that
+ * lets go while the computer is away is not there when it comes back, and what the
+ * computer says on waking — a run finished overnight, an approval it is stuck on — goes
+ * nowhere. The cost is a quiet ongoing notification, on a low-importance channel, that
+ * says what it is waiting for.
+ *
  * Pulled out of the service so it can be tested at all: everything else here needs a
  * real Android context, and this is the part with a decision in it. Getting it wrong
  * is not loud — holding through `Offline` leaves an undismissable notification about
@@ -295,7 +323,9 @@ fun connectionDetail(
     usedTokens: Int?,
     contextSize: Int?,
 ): String {
-    if (!connected) return "Trying to reach your computer."
+    // Said as what the hold is for, now that it stays up while the computer is away:
+    // the user keeps an ongoing notification so that the next real one reaches them.
+    if (!connected) return "Waiting for your computer. Notifications arrive as soon as it's back."
 
     // The most useful thing it can say, and the reason to glance at all: a run is
     // going on over there while this phone is in a pocket.
@@ -329,7 +359,11 @@ fun processHoldFor(state: ConnectionState): ProcessHold? = when (state) {
     // period is that it is expected to come back.
     is ConnectionState.Reconnecting -> ProcessHold(state.host.displayName, connected = false)
 
-    // Offline has already exhausted the grace period and Unpaired has nothing to
-    // reach. Neither is worth a notification the user cannot dismiss.
-    is ConnectionState.Offline, ConnectionState.Unpaired -> null
+    // Held too, so the phone is still there when the computer comes back. Releasing it
+    // here let Android reclaim the app while the computer slept, and nothing was left
+    // to reconnect or to show what the computer said once it woke.
+    is ConnectionState.Offline -> ProcessHold(state.host.displayName, connected = false)
+
+    // Nothing paired, nothing to reach.
+    ConnectionState.Unpaired -> null
 }
