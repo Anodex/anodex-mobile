@@ -3,6 +3,9 @@ package dev.anodex.mobile.connection
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import dev.anodex.mobile.agents.AgentRun
+import dev.anodex.mobile.agents.Agents
+import dev.anodex.mobile.agents.parseAgentRuns
 import dev.anodex.mobile.notify.NotificationKind
 import dev.anodex.mobile.notify.Notifications
 import dev.anodex.mobile.pairing.PairedHost
@@ -56,6 +59,12 @@ object BackgroundLink {
     /** What the computer pushes for the phone's notification shade. */
     internal const val CHANNEL_NOTIFICATION = "remote:notification"
 
+    /** A tool prompt answered, withdrawn or expired. Mirrors `PendingApprovals.CHANNEL_CANCELLED`. */
+    private const val CHANNEL_APPROVAL_CANCELLED = "tools:confirm-cancelled"
+
+    /** Runs changed. Mirrors the view model's `agent:runs-changed`. */
+    private const val CHANNEL_AGENT_RUNS = "agent:runs-changed"
+
     /** Ids well above the app's own (which start at 100), so the two never overwrite each other. */
     private const val FIRST_NOTIFICATION_ID = 50_000
 
@@ -72,6 +81,10 @@ object BackgroundLink {
 
     @Volatile
     private var socket: AnodexSocket? = null
+
+    /** Runs on the current connection, for answering a plan from its notification. */
+    @Volatile
+    private var agents: Agents? = null
 
     private var nextNotificationId = FIRST_NOTIFICATION_ID
 
@@ -101,6 +114,7 @@ object BackgroundLink {
     fun stop() {
         loop?.cancel()
         loop = null
+        agents = null
         socket?.close()
         socket = null
     }
@@ -132,7 +146,7 @@ object BackgroundLink {
         while (true) {
             val host = store.paired.first() ?: return ended()
             val outcome = try {
-                holdConnection(host, store, notifications)
+                holdConnection(context, host, store, notifications)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -158,6 +172,7 @@ object BackgroundLink {
 
     /** Connect on the first address that answers and stay until the connection ends. */
     private suspend fun holdConnection(
+        appContext: Context,
         host: PairedHost,
         store: PairedHostStore,
         notifications: Notifications,
@@ -186,9 +201,18 @@ object BackgroundLink {
                 continue
             }
 
-            synchronized(this) { socket = candidate }
+            synchronized(this) {
+                socket = candidate
+                agents = Agents(candidate)
+            }
             Log.i(TAG, "holding the connection to ${host.identity.displayName} for notifications")
             store.recordSeen(System.currentTimeMillis())
+            ConnectionService.showStatus(
+                context = appContext,
+                hostName = host.identity.displayName,
+                connected = true,
+                detail = "Notifications arrive here while Anodex is closed.",
+            )
             val listening = scope.launch {
                 candidate.events.collect { event -> onEvent(event, notifications) }
             }
@@ -196,8 +220,19 @@ object BackgroundLink {
                 val farewell = dropped.await()
                 return if (farewell == RemoteFarewell.UNPAIRED) Outcome.UNPAIRED else Outcome.DROPPED
             } finally {
+                ConnectionService.showStatus(
+                    context = appContext,
+                    hostName = host.identity.displayName,
+                    connected = false,
+                    detail = connectionDetail(false, false, null, null, null),
+                )
                 listening.cancel()
-                synchronized(this) { if (socket === candidate) socket = null }
+                synchronized(this) {
+                    if (socket === candidate) {
+                        socket = null
+                        agents = null
+                    }
+                }
                 candidate.close()
             }
         }
@@ -205,20 +240,80 @@ object BackgroundLink {
         return Outcome.FAILED
     }
 
+    /** The plan whose Approve and Reject are on the approval notification, if any. */
+    @Volatile
+    private var planOnNotification: String? = null
+
     private fun onEvent(event: ServerFrame.Event, notifications: Notifications) {
+        // A prompt answered, withdrawn or expired at the computer: the notification asking
+        // for it would otherwise sit in the shade asking a question nobody is waiting on.
+        if (event.channel == CHANNEL_APPROVAL_CANCELLED) {
+            if (planOnNotification == null) notifications.cancel(Notifications.ID_APPROVAL)
+            return
+        }
+        if (event.channel == CHANNEL_AGENT_RUNS) {
+            val runId = planOnNotification ?: return
+            val stillWaiting = parseAgentRuns(event.payload)
+                .any { it.id == runId && it.status == AgentRun.Status.NEEDS_REVIEW }
+            if (!stillWaiting) {
+                notifications.cancel(Notifications.ID_APPROVAL)
+                planOnNotification = null
+            }
+            return
+        }
         if (event.channel != CHANNEL_NOTIFICATION) return
         val fields = event.payload as? JsonObject ?: return
         val title = (fields["title"] as? JsonPrimitive)?.contentOrNull ?: return
-        val kind = NotificationKind.parse((fields["kind"] as? JsonPrimitive)?.contentOrNull)
+        val rawKind = (fields["kind"] as? JsonPrimitive)?.contentOrNull
+        val kind = NotificationKind.parse(rawKind)
         val body = (fields["body"] as? JsonPrimitive)?.contentOrNull.orEmpty()
         val conversationId = (fields["conversationId"] as? JsonPrimitive)?.contentOrNull
             ?.takeIf { it.isNotBlank() }
-        val id = if (kind == NotificationKind.NEEDS_APPROVAL) {
-            Notifications.ID_APPROVAL
-        } else {
-            synchronized(this) { nextNotificationId++ }
+
+        // The answer to a question asked from this phone. Posted under the same id the
+        // app's screens use for their own, so if both ever fire, one replaces the other.
+        if (NotificationKind.isReplyReady(rawKind)) {
+            val id = conversationId?.let(Notifications::replyNotificationId)
+                ?: synchronized(this) { nextNotificationId++ }
+            notifications.show(id, NotificationKind.FINISHED, title, body, conversationId)
+            return
         }
+
+        if (kind == NotificationKind.NEEDS_APPROVAL) {
+            // A plan waiting on review gets Approve and Reject, as it does with the app
+            // open. Found by its conversation, which is what the computer names. A tool
+            // approval does not: its notification deliberately leaves out what the tool
+            // would do, so it is answered in the app, where that is shown.
+            val runs = agents
+            scope.launch {
+                val planRunId = conversationId?.let { id ->
+                    runCatching { runs?.list() }.getOrNull()?.firstOrNull {
+                        it.conversationId == id && it.status == AgentRun.Status.NEEDS_REVIEW
+                    }?.id
+                }
+                planOnNotification = planRunId
+                notifications.show(Notifications.ID_APPROVAL, kind, title, body, conversationId, planRunId)
+            }
+            return
+        }
+
+        val id = synchronized(this) { nextNotificationId++ }
         notifications.show(id, kind, title, body, conversationId)
+    }
+
+    /**
+     * Approve or reject a plan from its notification while the app is closed.
+     *
+     * False when there is no connection to send it on, so the caller can say to open
+     * the app rather than appear to have answered.
+     */
+    fun answerPlan(runId: String, approve: Boolean): Boolean {
+        val runs = agents ?: return false
+        scope.launch {
+            runCatching { if (approve) runs.approvePlan(runId) else runs.rejectPlan(runId) }
+                .onFailure { Log.w(TAG, "could not answer the plan from its notification", it) }
+        }
+        return true
     }
 
     private fun hexToBytes(hex: String): ByteArray =
