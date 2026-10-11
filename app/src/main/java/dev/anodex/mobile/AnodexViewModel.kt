@@ -4048,6 +4048,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun onNotification(payload: JsonElement?) {
         val fields = payload as? JsonObject ?: return
+        // The screens make their own, from the reply as it streams; see `replyReady`.
+        if (NotificationKind.isReplyReady((fields["kind"] as? JsonPrimitive)?.content)) return
         val kind = NotificationKind.parse((fields["kind"] as? JsonPrimitive)?.content)
         val title = (fields["title"] as? JsonPrimitive)?.content ?: return
         val body = (fields["body"] as? JsonPrimitive)?.content.orEmpty()

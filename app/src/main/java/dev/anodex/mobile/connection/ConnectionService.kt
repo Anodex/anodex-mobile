@@ -12,6 +12,7 @@ import android.app.Service
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import dev.anodex.mobile.MainActivity
 import dev.anodex.mobile.R
@@ -82,7 +83,7 @@ class ConnectionService : Service() {
             ServiceCompat.startForeground(
                 this,
                 NOTIFICATION_ID,
-                buildNotification(hostName, connected, working, detail),
+                buildStatus(this, hostName, connected, working, detail),
                 // The constant only exists from API 34. Below that the type is
                 // taken from the manifest and this argument is ignored anyway.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -130,43 +131,6 @@ class ConnectionService : Service() {
             ?.identity?.displayName
     }.getOrNull()
 
-    private fun buildNotification(
-        hostName: String,
-        connected: Boolean,
-        working: Boolean,
-        detail: String,
-    ): Notification {
-        val open = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            // The title carries the state and the body carries the substance. While
-            // a turn is running that is worth saying in the title itself — it is the
-            // one thing somebody glancing at a locked screen actually wants.
-            .setContentTitle(
-                when {
-                    !connected -> "Reconnecting to $hostName"
-                    working -> "$hostName is working"
-                    else -> "Connected to $hostName"
-                }
-            )
-            .setContentText(detail)
-            .setContentIntent(open)
-            // Silent and unrankable: this is a status line, not news. Every actual
-            // event the user needs gets its own notification on its own channel.
-            .setSilent(true)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .build()
-    }
-
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
@@ -188,6 +152,59 @@ class ConnectionService : Service() {
         private const val TAG = "ConnectionService"
         private const val CHANNEL_ID = "connection"
         private const val NOTIFICATION_ID = 1
+
+        /**
+         * Change what the ongoing notification says, without starting anything.
+         *
+         * For BackgroundLink, which holds the connection from inside the running service:
+         * the screens set this line as they leave, and without an update it went on saying
+         * "Reconnecting" over a connection that was up. Re-posting under the service's own
+         * id replaces the foreground notification rather than adding one.
+         */
+        fun showStatus(context: Context, hostName: String, connected: Boolean, detail: String) {
+            runCatching {
+                NotificationManagerCompat.from(context)
+                    .notify(NOTIFICATION_ID, buildStatus(context, hostName, connected, false, detail))
+            }
+        }
+
+        fun buildStatus(
+            context: Context,
+            hostName: String,
+            connected: Boolean,
+            working: Boolean,
+            detail: String,
+        ): Notification {
+            val open = PendingIntent.getActivity(
+                context,
+                0,
+                Intent(context, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+
+            return NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                // The title carries the state and the body carries the substance. While
+                // a turn is running that is worth saying in the title itself — it is the
+                // one thing somebody glancing at a locked screen actually wants.
+                .setContentTitle(
+                    when {
+                        !connected -> "Reconnecting to $hostName"
+                        working -> "$hostName is working"
+                        else -> "Connected to $hostName"
+                    }
+                )
+                .setContentText(detail)
+                .setContentIntent(open)
+                // Silent and unrankable: this is a status line, not news. Every actual
+                // event the user needs gets its own notification on its own channel.
+                .setSilent(true)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .build()
+        }
         private const val EXTRA_HOST = "host"
         private const val EXTRA_CONNECTED = "connected"
         private const val EXTRA_WORKING = "working"

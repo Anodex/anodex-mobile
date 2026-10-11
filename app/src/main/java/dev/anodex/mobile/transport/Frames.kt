@@ -38,7 +38,14 @@ const val PROTOCOL_VERSION = "1.0.0"
  * Named `feature.major`, so a feature whose wire shape changes becomes `voice.2` and
  * an older peer simply does not recognise it.
  */
-val PHONE_CAPABILITIES: List<String> = emptyList()
+val PHONE_CAPABILITIES: List<String> = listOf(
+    // The computer may send "answer ready" for a question this phone asked; this build
+    // shows it from the background connection when the app is closed. See BackgroundLink.
+    REPLY_READY_CAPABILITY,
+)
+
+/** See [PHONE_CAPABILITIES]. Mirrors `REPLY_READY_CAPABILITY` in the desktop's `replyReady.ts`. */
+const val REPLY_READY_CAPABILITY = "reply-ready.1"
 
 @Serializable
 sealed interface ServerFrame {

@@ -44,13 +44,23 @@ data class NotificationAccess(
     val background: Boolean,
 )
 
-/** Why the phone is being told something. Mirrors the desktop's RemoteNotificationKind. */
+/**
+ * Why the phone is being told something. Mirrors the desktop's RemoteNotificationKind,
+ * except `reply-ready`, which is read as [FINISHED] and recognised by [isReplyReady].
+ */
 enum class NotificationKind {
     NEEDS_APPROVAL,
     FINISHED,
     FAILED;
 
     companion object {
+        /**
+         * The answer to a question this phone asked. The app's screens make their own
+         * "answer ready" notification, so they skip this one; the background
+         * connection shows it when the screens are closed.
+         */
+        fun isReplyReady(value: String?): Boolean = value == "reply-ready"
+
         fun parse(value: String?): NotificationKind = when (value) {
             "needs-approval" -> NEEDS_APPROVAL
             "failed" -> FAILED

@@ -3,14 +3,15 @@ package dev.anodex.mobile.notify
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import dev.anodex.mobile.connection.BackgroundLink
 
 /**
  * Where a plan's Approve or Reject goes when it is pressed on the notification itself.
  *
- * The connection to the computer belongs to the running app, so the answer is handed
- * to it through [RunActionBridge]. When nothing is listening — the app was closed for
- * good, and the connection with it — the notification says to open Anodex rather
- * than swallowing the press. Opening the app from here is not an option: Android no
+ * The running app takes it through [RunActionBridge]. With the app closed, the
+ * background connection answers it ([BackgroundLink.answerPlan]); only when there is no
+ * connection at all does the notification say to open Anodex, rather than swallowing
+ * the press. Opening the app from here is not an option: Android no
  * longer lets a notification button start an activity through a receiver.
  */
 class RunActionReceiver : BroadcastReceiver() {
@@ -21,12 +22,17 @@ class RunActionReceiver : BroadcastReceiver() {
         val notifications = Notifications(context)
 
         val handler = RunActionBridge.handler
-        if (handler == null) {
-            notifications.showOpenToAnswer(intent.getStringExtra(EXTRA_CONVERSATION_ID))
+        if (handler != null) {
+            handler(runId, approve)
+            notifications.cancel(Notifications.ID_APPROVAL)
             return
         }
-        handler(runId, approve)
-        notifications.cancel(Notifications.ID_APPROVAL)
+        // The app is closed: answered over the background connection, when there is one.
+        if (BackgroundLink.answerPlan(runId, approve)) {
+            notifications.cancel(Notifications.ID_APPROVAL)
+            return
+        }
+        notifications.showOpenToAnswer(intent.getStringExtra(EXTRA_CONVERSATION_ID))
     }
 
     companion object {
