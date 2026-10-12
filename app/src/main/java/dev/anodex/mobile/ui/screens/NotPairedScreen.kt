@@ -63,7 +63,10 @@ fun NotPairedScreen(
         )
 
         Text(
-            text = "Open Anodex on your PC, turn on Remote in Settings, and scan the code it shows.",
+            // Where the code is, now that the computer's welcome shows it unasked:
+            // its last step, or Settings → Remote for anyone past the welcome.
+            text = "Open Anodex on your computer. The code is on the last step of its welcome, " +
+                "or in Settings → Remote.",
             style = type.body,
             color = colors.textMuted,
             textAlign = TextAlign.Center,

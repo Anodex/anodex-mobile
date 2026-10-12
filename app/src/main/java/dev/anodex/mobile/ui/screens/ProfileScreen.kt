@@ -1,7 +1,5 @@
 package dev.anodex.mobile.ui.screens
 
-import android.graphics.BitmapFactory
-import android.util.Base64
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,16 +11,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.profile.DayOfUse
@@ -31,7 +25,6 @@ import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Spacing
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.material3.Text
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -39,6 +32,7 @@ import androidx.compose.ui.geometry.Size
 import java.time.LocalDate
 import java.util.Locale
 import kotlin.math.max
+import dev.anodex.mobile.ui.components.UserAvatar
 
 /**
  * Who this is, and what they have been doing.
@@ -106,7 +100,7 @@ private fun Identity(user: UserProfile?) {
     val type = AnodexTheme.type
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Avatar(user?.avatarBase64, user?.displayName)
+        UserAvatar(user?.avatarBase64, user?.displayName, user?.avatarLook ?: 0, size = 56.dp)
         Spacer(Modifier.width(Spacing.x4))
         Column(Modifier.weight(1f)) {
             Text(
@@ -127,51 +121,6 @@ private fun Identity(user: UserProfile?) {
                     color = colors.textMuted,
                 )
             }
-        }
-    }
-}
-
-/**
- * The avatar, or the initial standing in for one.
- *
- * Decoded once per image rather than per recomposition: this sits above a scrolling
- * column, and re-decoding a base64 bitmap on every frame of that scroll is the kind
- * of cost that never shows up on a development machine.
- */
-@Composable
-private fun Avatar(base64: String?, name: String?) {
-    val colors = AnodexTheme.colors
-    val bitmap = remember(base64) {
-        base64?.substringAfter("base64,", base64)?.let { encoded ->
-            runCatching {
-                val bytes = Base64.decode(encoded, Base64.DEFAULT)
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            }.getOrNull()
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .size(56.dp)
-            .clip(CircleShape)
-            .background(
-                Brush.linearGradient(listOf(colors.accent, colors.accentInk))
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(56.dp),
-            )
-        } else {
-            Text(
-                text = name?.trim()?.firstOrNull()?.uppercase() ?: "A",
-                style = AnodexTheme.type.title,
-                color = colors.textOnAccent,
-            )
         }
     }
 }

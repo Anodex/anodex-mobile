@@ -49,6 +49,13 @@ import dev.anodex.mobile.ui.theme.Motion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import dev.anodex.mobile.scheduler.ScheduleMonth
 
 /**
  * What the computer runs on its own, and whether it worked.
@@ -78,10 +85,22 @@ fun SchedulerScreen(
     /** Create the task. Null hides the composer entirely. */
     onCreate: ((String) -> Unit)? = null,
     creating: Boolean = false,
+    /** The month on show in month view, or null while it is read. */
+    month: ScheduleMonth? = null,
+    /** Read a month (0-based), as the computer counts. Null hides the month view. */
+    onLoadMonth: ((year: Int, month: Int) -> Unit)? = null,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
     var draft by rememberSaveable { mutableStateOf("") }
+    var showMonth by rememberSaveable { mutableStateOf(false) }
+    val now = remember { java.util.Calendar.getInstance() }
+    var shownYear by rememberSaveable { mutableIntStateOf(now.get(java.util.Calendar.YEAR)) }
+    var shownMonth by rememberSaveable { mutableIntStateOf(now.get(java.util.Calendar.MONTH)) }
+    var chosenDay by rememberSaveable { mutableIntStateOf(now.get(java.util.Calendar.DAY_OF_MONTH)) }
+    LaunchedEffect(showMonth, shownYear, shownMonth) {
+        if (showMonth) onLoadMonth?.invoke(shownYear, shownMonth)
+    }
 
     ScreenScaffold(
         title = "Scheduled",
@@ -89,10 +108,46 @@ fun SchedulerScreen(
         // Where the work happens, said once. A task that only runs while the phone is
         // awake would be a different promise, and people assume the weaker one.
         subtitle = "Runs on your computer, whether or not this is open.",
+        // List or Month: the desktop's switch, in the same words.
+        trailing = if (onLoadMonth != null) {
+            { LayoutSwitch(showMonth = showMonth, onChange = { showMonth = it }) }
+        } else {
+            null
+        },
     ) { topInset ->
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
                 when {
+                    showMonth -> LazyColumn(
+                        modifier = Modifier.fillMaxSize().fadingEdges(topInset, 0.dp),
+                        contentPadding = listPadding(topInset),
+                    ) {
+                        item(key = "month") {
+                            MonthCalendar(
+                                month = month?.takeIf { it.year == shownYear && it.month == shownMonth },
+                                chosen = chosenDay,
+                                onChoose = { chosenDay = it },
+                                onMove = { delta ->
+                                    val next = java.util.Calendar.getInstance().apply {
+                                        set(shownYear, shownMonth, 1)
+                                        add(java.util.Calendar.MONTH, delta)
+                                    }
+                                    shownYear = next.get(java.util.Calendar.YEAR)
+                                    shownMonth = next.get(java.util.Calendar.MONTH)
+                                    val current = java.util.Calendar.getInstance()
+                                    chosenDay = if (current.get(java.util.Calendar.YEAR) == shownYear &&
+                                        current.get(java.util.Calendar.MONTH) == shownMonth
+                                    ) {
+                                        current.get(java.util.Calendar.DAY_OF_MONTH)
+                                    } else {
+                                        1
+                                    }
+                                },
+                                onOpenTask = onOpenTask,
+                            )
+                        }
+                    }
+
                     loading && tasks.isEmpty() -> ListSkeleton(
                         rows = 3,
                         caption = "Asking your computer…",
@@ -475,5 +530,34 @@ private fun PreviewScheduler() {
             ),
             loading = false,
         )
+    }
+}
+
+/** List | Month, as the desktop's Scheduler header switches it. */
+@Composable
+private fun LayoutSwitch(showMonth: Boolean, onChange: (Boolean) -> Unit) {
+    val colors = AnodexTheme.colors
+    Row(
+        modifier = Modifier
+            .clip(Radii.md)
+            .background(colors.bgSurface2)
+            .border(1.dp, colors.border, Radii.md)
+            .padding(2.dp)
+            .selectableGroup(),
+    ) {
+        for ((label, month) in listOf("List" to false, "Month" to true)) {
+            val on = month == showMonth
+            Text(
+                label,
+                style = AnodexTheme.type.label,
+                color = if (on) colors.text else colors.textMuted,
+                modifier = Modifier
+                    .clip(Radii.sm)
+                    .background(if (on) colors.bgElevated else androidx.compose.ui.graphics.Color.Transparent)
+                    .selectable(selected = on, role = Role.Tab, onClick = { onChange(month) })
+                    .heightIn(min = 36.dp)
+                    .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+            )
+        }
     }
 }

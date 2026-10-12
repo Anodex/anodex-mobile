@@ -82,6 +82,23 @@ class ReleasesTest {
     }
 
     @Test
+    fun `takes the versioned installer over the anodex-apk copy beside it`() {
+        // Every release carries the same file twice; the updater picks the named one
+        // on purpose rather than whichever GitHub lists first.
+        val both = """
+            {
+              "tag_name": "v0.89.0-preview.144",
+              "body": "Notes.",
+              "assets": [
+                { "name": "anodex.apk", "size": 1, "browser_download_url": "https://github.com/Anodex/anodex-mobile/releases/download/v0.89.0-preview.144/anodex.apk" },
+                { "name": "anodex-0.89.0.apk", "size": 2, "browser_download_url": "https://github.com/Anodex/anodex-mobile/releases/download/v0.89.0-preview.144/anodex-0.89.0.apk" }
+              ]
+            }
+        """.trimIndent()
+        assertEquals(2, Releases.parseLatest(both)!!.apkBytes)
+    }
+
+    @Test
     fun `the preview suffix is a label, not part of the version`() {
         // The desktop reports "0.23.0" and compares numerically. A tag that kept its
         // suffix would never match it, so every release would look like an update.

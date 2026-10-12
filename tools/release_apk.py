@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import re
 import subprocess
 import sys
@@ -116,6 +117,14 @@ def main() -> None:
         if args.notes_file:
             create += ["--notes-file", args.notes_file]
         print(run(*create))
+
+        # The same installer under a name that never changes, so
+        # https://github.com/Anodex/anodex-mobile/releases/latest/download/anodex.apk
+        # always means the newest app. The computer's welcome shows that link as a
+        # QR; a versioned name would leave every printed code one release out of date.
+        stable = os.path.join(work, "anodex.apk")
+        shutil.copyfile(named, stable)
+        print(run("gh", "release", "upload", args.tag, stable, "--clobber"))
 
     print(f"published {args.tag} carrying {args.version}")
 

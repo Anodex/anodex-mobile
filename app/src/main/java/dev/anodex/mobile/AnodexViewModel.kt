@@ -89,6 +89,7 @@ import dev.anodex.mobile.profile.UserProfile
 import dev.anodex.mobile.scheduler.ParsedWhen
 import dev.anodex.mobile.scheduler.ScheduledTask
 import dev.anodex.mobile.scheduler.Scheduler
+import dev.anodex.mobile.scheduler.ScheduleMonth
 import dev.anodex.mobile.scheduler.parseTasks
 import dev.anodex.mobile.transport.AnodexSocket
 import dev.anodex.mobile.transport.ServerFrame
@@ -523,6 +524,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         _settingsOpen.value = false
     }
 
+    private val _hello = MutableStateFlow(false)
+
+    /**
+     * True from a pairing until the person has seen "Hi, Sam." — the phone's half of
+     * the computer's welcome. Not persisted: it belongs to the moment of pairing,
+     * and a phone restarted mid-way goes straight to its chats.
+     */
+    val hello: StateFlow<Boolean> = _hello.asStateFlow()
+
+    fun helloSeen() {
+        _hello.value = false
+    }
+
     private val _user = MutableStateFlow<UserProfile?>(null)
 
     /** Whose Anodex this is. Read only — the name and avatar are set at the computer. */
@@ -942,6 +956,19 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private val _month = MutableStateFlow<ScheduleMonth?>(null)
+
+    /** The month on screen in the Scheduler's month view, as the computer worked it out. */
+    val month: StateFlow<ScheduleMonth?> = _month.asStateFlow()
+
+    /** Read one month. `month` is 0-based, as the computer counts. */
+    fun loadMonth(year: Int, month: Int) {
+        val client = schedulerClient ?: return
+        viewModelScope.launch {
+            client.month(year, month)?.let { _month.value = it }
+        }
+    }
+
     fun refreshTasks() {
         val client = schedulerClient
         if (client == null) {
@@ -954,7 +981,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             runCatching { client.list() }
-                .onSuccess { _tasks.value = it }
+                .onSuccess {
+                    _tasks.value = it
+                    // The month on screen changes with the tasks it is built from.
+                    _month.value?.let { shown -> loadMonth(shown.year, shown.month) }
+                }
                 .onFailure {
                     _tasks.value = emptyList()
                     _tasksError.value = it.message ?: "Your computer would not answer."
@@ -3641,6 +3672,7 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                     port = port,
                 )
                 store.save(host)
+                _hello.value = true
                 _paired.value = host
                 _pairingError.value = null
                 pendingManual = null
@@ -3743,6 +3775,9 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
             // Connecting is the moment notifications start being worth anything, and
             // it is a moment the user is almost always looking at the app.
             state.first { it is ConnectionState.Connected }
+            // After the hello, not over it: a battery dialog on top of "Hi, Sam."
+            // would be the first thing a newly paired phone asks instead of says.
+            _hello.first { !it }
             refreshNotificationAccess()
             advanceSetup()
         }

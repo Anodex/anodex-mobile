@@ -89,9 +89,16 @@ object Releases {
         val tag = root["tag_name"]?.jsonPrimitive?.contentOrNull ?: return null
         val version = versionOf(tag) ?: return null
 
-        val asset = (root["assets"] as? JsonArray)
+        // The versioned installer first. Each release also carries the same file as
+        // `anodex.apk`, a name that never changes so the computer's download QR always
+        // means the newest app; the bytes are identical, but choosing on purpose beats
+        // choosing by whichever GitHub happened to list first.
+        val apks = (root["assets"] as? JsonArray)
             ?.filterIsInstance<JsonObject>()
-            ?.firstOrNull { it["name"]?.jsonPrimitive?.contentOrNull?.endsWith(".apk") == true }
+            ?.filter { it["name"]?.jsonPrimitive?.contentOrNull?.endsWith(".apk") == true }
+            .orEmpty()
+        val asset = apks.firstOrNull { it["name"]?.jsonPrimitive?.contentOrNull != STABLE_APK_NAME }
+            ?: apks.firstOrNull()
             ?: return null
 
         val url = asset["browser_download_url"]?.jsonPrimitive?.contentOrNull ?: return null
@@ -132,3 +139,6 @@ object Releases {
         return parsed.host?.lowercase() in ALLOWED_ASSET_HOSTS
     }
 }
+
+/** The unversioned copy every release also carries. See [Releases.releaseOf]. */
+internal const val STABLE_APK_NAME = "anodex.apk"
