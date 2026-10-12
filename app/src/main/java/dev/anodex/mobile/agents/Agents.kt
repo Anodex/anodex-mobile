@@ -46,7 +46,34 @@ data class AgentRun(
     val parentRunId: String? = null,
     /** How many sub-agents this run delegated. Zero for almost every run. */
     val subAgentCount: Int = 0,
+    /**
+     * The piece of work this run belongs to. Null for the first run of one, which
+     * the desktop's `seriesIdOf` reads as the run's own id.
+     */
+    val seriesId: String? = null,
+    /** The tools it was given, so a continuation asks for the same ones. */
+    val enabledTools: List<String> = emptyList(),
 ) {
+    /**
+     * Why a stopped run stopped, when the reason was one of its limits.
+     *
+     * Read from the numbers rather than from [lastError]'s wording, so it is right
+     * for runs a computer described before that wording changed, and for any that
+     * describes it after.
+     */
+    val ranOut: RanOut?
+        get() {
+            if (status != Status.STOPPED || !limitsEnabled) return null
+            return when {
+                maxTokens > 0 && tokensUsed >= maxTokens -> RanOut.TOKENS
+                maxDurationMinutes > 0 && activeMs >= maxDurationMinutes * 60_000L -> RanOut.TIME
+                maxTurns > 0 && turnsUsed >= maxTurns -> RanOut.TURNS
+                else -> null
+            }
+        }
+
+    enum class RanOut { TURNS, TOKENS, TIME }
+
     /**
      * How long this run has worked, the same reading the desktop stops it on.
      *
@@ -151,6 +178,32 @@ class Agents(private val socket: AnodexSocket) {
      */
     private fun toolsFor(lookOnly: Boolean): List<String> =
         if (lookOnly) LOOK_ONLY_TOOLS else emptyList()
+
+    /**
+     * Carry on a run that ran out, as the desktop's Continue does.
+     *
+     * A new run in the same series, so it reads the journal the runs before it
+     * kept and is told it is continuing rather than starting over. Its budgets are
+     * the run's own again — the same number of turns, tokens and minutes — on the
+     * same model and tools. The computer still clamps the tools and still asks for
+     * the plan to be approved, exactly as for a run started here.
+     */
+    suspend fun continueRun(run: AgentRun) {
+        val request = buildJsonObject {
+            put("goal", run.goal)
+            put("continuesSeriesId", run.seriesId ?: run.id)
+            put("projectId", run.projectId?.let(::JsonPrimitive) ?: JsonNull)
+            put("provider", run.provider ?: "local")
+            put("model", run.model?.let(::JsonPrimitive) ?: JsonNull)
+            put("limitsEnabled", run.limitsEnabled)
+            if (run.maxTurns > 0) put("maxTurns", run.maxTurns)
+            if (run.maxTokens > 0) put("maxTokens", run.maxTokens)
+            if (run.maxDurationMinutes > 0) put("maxDurationMinutes", run.maxDurationMinutes)
+            put("requirePlan", true)
+            put("enabledTools", buildJsonArray { for (name in run.enabledTools) add(JsonPrimitive(name)) })
+        }
+        socket.invoke(CHANNEL_CREATE, listOf(request))
+    }
 
     /**
      * One run's turns, as the computer's run page shows them. See [RunTurn].
@@ -268,6 +321,10 @@ private fun JsonObject.toRun(): AgentRun? {
         activeMs = long("activeMs"),
         activeSinceAtEpochMs = long("activeSinceAt").takeIf { it > 0 },
         parentRunId = str("parentRunId")?.takeIf { it.isNotBlank() },
+        seriesId = str("seriesId")?.takeIf { it.isNotBlank() },
+        enabledTools = (this["enabledTools"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+            .orEmpty(),
     )
 }
 

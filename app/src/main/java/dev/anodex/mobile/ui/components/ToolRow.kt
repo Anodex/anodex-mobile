@@ -25,6 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.anodex.mobile.chat.ToolActivity
+import dev.anodex.mobile.chat.toolAction
+import dev.anodex.mobile.chat.toolTarget
 import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.LocalReducedMotion
 import dev.anodex.mobile.ui.theme.Spacing
@@ -42,8 +44,8 @@ import dev.anodex.mobile.workspace.filePathIn
  * blank screen for however long the work took, which reads as the app having frozen
  * rather than the model doing exactly what was asked.
  *
- * Three columns, in the sample's order: the tool's name, what it acted on, and the
- * result. The middle one is the tool's `title` — `Read src/sim/OrbitPanel.tsx` — and
+ * Three columns, in the sample's order: what it did, in words ([toolAction]), what
+ * it acted on, and the result. The middle one is the tool's `title` — `Read src/sim/OrbitPanel.tsx` — and
  * not its `detail`, which is the *result* preview (`318 lines`). Showing detail in
  * the middle, as this first did, meant the file being worked on never appeared
  * anywhere: the row said a file had been read and would not say which.
@@ -80,15 +82,18 @@ fun ToolRow(
     ) {
         StatusMark(activity.status)
 
+        // What it did, in words, where the tool's identifier used to be. The desktop
+        // leads with the action too; `run_command` was the one thing on the row the
+        // reader had no use for.
         Text(
-            text = activity.name,
-            style = type.mono,
+            text = toolAction(activity),
+            style = type.label,
             color = colors.textMuted,
             maxLines = 1,
         )
 
         Text(
-            text = activity.title,
+            text = toolTarget(activity),
             style = type.meta,
             // A path that can be opened is marked as such by colour alone. An icon
             // per row would put a column of chevrons down a transcript that is
@@ -101,7 +106,9 @@ fun ToolRow(
 
         // The result, last and smallest: "318 lines" is the least important thing on
         // the row and the first thing that should be dropped when space runs out.
-        val detail = activity.detail
+        // "exit 0" is dropped: a finished command that succeeded is already said by
+        // the green dot. Any other code stays, because that one is news.
+        val detail = activity.detail?.takeUnless { it.trim() == "exit 0" }
         if (detail != null) {
             Text(text = detail, style = type.meta, color = colors.textFaint, maxLines = 1)
         }

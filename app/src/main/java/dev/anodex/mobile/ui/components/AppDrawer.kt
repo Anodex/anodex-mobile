@@ -39,6 +39,22 @@ import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import kotlinx.coroutines.delay
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.LaunchedEffect
 
 /** Where the drawer can take you. */
 enum class AppDestination(val label: String, val icon: AnodexIcon) {
@@ -50,16 +66,16 @@ enum class AppDestination(val label: String, val icon: AnodexIcon) {
 }
 
 /**
- * The app's navigation, as a drawer.
+ * The app's navigation, as a drawer — laid out the way the desktop's sidebar is.
  *
  * This replaced a bottom tab bar, which every one of the four assistants this was
- * measured against had already abandoned. A permanent strip spends a fixed slice of
- * a small screen on navigation nobody does often, and it competed with the composer
- * for the one edge the thumb actually rests on.
+ * measured against had already abandoned. A drawer costs one tap to reach and has
+ * room for the conversation list, which is the thing people are usually looking for
+ * when they navigate at all.
  *
- * A drawer costs one tap to reach and gives all of it back. It also has room for the
- * conversation list, which is the thing people are usually looking for when they
- * navigate at all — a bottom bar had nowhere to put that except its own tab.
+ * Its shape is the desktop's: a slim rail of section icons down the edge, and beside
+ * it the Chats | Workspace switch over the list. The phone and the computer are one
+ * product, and the menu is the part of it people learn first.
  */
 @Composable
 fun AppDrawer(
@@ -70,10 +86,9 @@ fun AppDrawer(
      * The computer's projects — here to *name* the workspaces the conversations are
      * filed under, not as a list of their own.
      *
-     * The drawer's second half answers "what am I working on", and the answer has
-     * two levels: which workspace, and which conversation inside it. A conversation
-     * carries only its project's id, so without this the groups would all be headed
-     * "Project".
+     * Workspace mode answers "what am I working on", and the answer has two levels:
+     * which workspace, and which conversation inside it. A conversation carries only
+     * its project's id, so without this the groups would all be headed "Project".
      */
     projects: List<Project> = emptyList(),
     activeProjectId: String? = null,
@@ -86,8 +101,7 @@ fun AppDrawer(
      * Open the conversation index with the search field focused.
      *
      * Every assistant this app was measured against puts search at the top of its
-     * drawer. Anodex had it, on the full index, shown only past twelve conversations
-     * and reached only by tapping Chat — so for most people it did not exist.
+     * drawer. It sits on the rail now, second, where the desktop's is.
      */
     onSearch: () -> Unit = onOpenAllConversations,
     hostName: String,
@@ -113,25 +127,42 @@ fun AppDrawer(
     // left behind an hour ago.
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
 
-    // fillMaxHeight, not fillMaxSize: the caller decides the width now, because
-    // this is a panel sliding over the app rather than a screen replacing it.
+    val sections = drawerSections(conversations, projects, activeProjectId)
+
+    // Opens on the side the open conversation lives on, for the same reason as
+    // above: a chat filed under a workspace is found under Workspace, and opening
+    // the menu onto the other list would hide the one row being looked for.
+    var mode by remember {
+        mutableStateOf(initialDrawerMode(destination, activeConversationId, conversations))
+    }
+
+    // fillMaxHeight, not fillMaxSize: the caller decides the width, because this is
+    // a panel sliding over the app rather than a screen replacing it.
     // `bgSurface`, not `bgBase`.
     //
-    // This panel slides *over* the conversation, and it was painted with the bottom
-    // rung of the ladder — darker than the `bgApp` page underneath it, the only
-    // surface in the app below the app's own ground. In the light theme that made it
-    // the muddiest colour in the palette. A panel above the page belongs above it on
-    // the ladder too, which is most of why this read as borrowed from another app.
-    Box(modifier.fillMaxHeight().background(colors.bgSurface)) {
-        Column(Modifier.fillMaxSize()) {
+    // This panel slides *over* the conversation, and it was once painted with the
+    // bottom rung of the ladder — darker than the `bgApp` page underneath it, the
+    // only surface in the app below the app's own ground. A panel above the page
+    // belongs above it on the ladder too.
+    Row(modifier.fillMaxHeight().background(colors.bgSurface)) {
+        DrawerRail(
+            destination = destination,
+            onSelect = onSelect,
+            onSearch = onSearch,
+            agentBadge = agentBadge,
+            emailBadge = emailBadge,
+        )
+        Box(Modifier.fillMaxHeight().width(1.dp).background(colors.border))
+
+        Column(Modifier.weight(1f).fillMaxHeight()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = Spacing.x4, top = Spacing.x5, end = Spacing.x4, bottom = Spacing.x4),
+                    .padding(start = Spacing.x4, top = Spacing.x4, end = Spacing.x2),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
             ) {
-                AnodexMark(size = 26.dp)
+                AnodexMark(size = 24.dp)
                 Text(
                     // The desktop's title bar renders `Anode<span>x</span>` with the accent
                     // on the last letter. Same wordmark, same token — it should not drift
@@ -142,25 +173,8 @@ fun AppDrawer(
                     },
                     style = type.title,
                     color = colors.text,
-                    // Takes the slack, which nothing did before — so the close control
-                    // sat wherever the wordmark happened to end, floating mid-panel
-                    // rather than at the edge a thumb reaches for.
                     modifier = Modifier.weight(1f),
                 )
-                Box(
-                    Modifier
-                        .size(Touch.minTarget)
-                        .clip(Radii.md)
-                        .clickable(role = Role.Button, onClick = onSearch),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AnodexIcon(
-                        AnodexIcon.SEARCH,
-                        size = 18.dp,
-                        tint = colors.textMuted,
-                        contentDescription = "Search conversations",
-                    )
-                }
                 Box(
                     Modifier
                         .size(Touch.minTarget)
@@ -168,10 +182,8 @@ fun AppDrawer(
                         .clickable(role = Role.Button, onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // Drawn, not typed. This was the character `✕` set in the body
-                    // font — the one glyph in an app whose every other symbol is cut
-                    // from the desktop's paths, and it showed: wrong weight, wrong
-                    // optical size, and a screen reader reading out "multiplication x".
+                    // Drawn, not typed: the character `✕` in the body font was the
+                    // wrong weight and a screen reader read out "multiplication x".
                     AnodexIcon(
                         AnodexIcon.CLOSE,
                         size = 18.dp,
@@ -181,38 +193,16 @@ fun AppDrawer(
                 }
             }
 
-            for (entry in AppDestination.entries) {
-                DestinationRow(
-                    destination = entry,
-                    selected = entry == destination,
-                    badge = when (entry) {
-                        AppDestination.AGENTS -> agentBadge
-                        AppDestination.EMAIL -> emailBadge
-                        else -> 0
-                    },
-                    onClick = { onSelect(entry) },
-                )
-            }
-
-            Hairline(Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x4))
-
-            // No "RECENT" heading. What follows is grouped by workspace now, and a
-            // recency heading over it named the wrong axis — the desktop's sidebar
-            // names the two kinds of thing and lets order carry the rest.
-            //
-            // Only what a person started, in both sections. A scheduled run and a
-            // benchmark script write conversations exactly like a real one, so a
-            // list ordered by last write showed the computer's activity rather than
-            // the user's — one chat they had actually used, surrounded by eleven
-            // they had never opened.
-            val sections = drawerSections(conversations, projects, activeProjectId)
-
-            // What the list can actually show, against what exists. The "all
-            // conversations" row appears only when those differ, so it is never a
-            // link to the same six rows already on screen.
-            val shown = sections.workspaces.sumOf {
-                minOf(it.conversations.size, WORKSPACE_CHAT_LIMIT)
-            } + minOf(sections.chats.size, RECENT_LIMIT)
+            DrawerModeSwitch(
+                mode = mode,
+                onChange = { mode = it },
+                modifier = Modifier.padding(
+                    start = Spacing.x3,
+                    end = Spacing.x3,
+                    top = Spacing.x2,
+                    bottom = Spacing.x2,
+                ),
+            )
 
             // Resolved here rather than inside the list. A LazyColumn's content block
             // is not an ordinary composable scope, and reading the expansion map from
@@ -226,147 +216,36 @@ fun AppDrawer(
             // reads as scrolled rather than cropped. Every other scrolling surface
             // in the app does this.
             LazyColumn(Modifier.weight(1f).fadingEdges(Spacing.x4, Spacing.x4)) {
-                if (sections.workspaces.isNotEmpty()) {
-                    item(key = "kind-workspace") {
-                        KindLabel("WORKSPACE", sections.workspaces.size)
-                    }
-                }
-
-                for (workspace in sections.workspaces) {
-                    val open = workspace.id in openWorkspaces
-
-                    item(key = "workspace-${workspace.id}") {
-                        WorkspaceRow(
-                            name = workspace.name,
-                            count = workspace.conversations.size,
-                            expanded = open,
-                            active = workspace.id == activeProjectId,
-                            onClick = { expanded[workspace.id] = !open },
-                        )
-                    }
-
-                    if (!open) continue
-
-                    // Said out loud rather than left blank: a row that opens onto
-                    // nothing is indistinguishable from one that failed to load.
-                    if (workspace.conversations.isEmpty()) {
-                        item(key = "workspace-${workspace.id}-empty") {
-                            Text(
-                                text = "No chats in this workspace yet",
-                                style = type.meta,
-                                color = colors.textFaint,
-                                modifier = Modifier.padding(
-                                    start = INDENT,
-                                    end = Spacing.x4,
-                                    top = Spacing.x2,
-                                    bottom = Spacing.x3,
-                                ),
-                            )
-                        }
-                    }
-
-                    items(
-                        workspace.conversations.take(WORKSPACE_CHAT_LIMIT),
-                        key = { it.id },
-                    ) { conversation ->
-                        ConversationRow(
-                            conversation = conversation,
-                            active = conversation.id == activeConversationId,
-                            indented = true,
-                            onClick = { onOpenConversation(conversation.id) },
-                        )
-                    }
-
-                    if (workspace.conversations.size > WORKSPACE_CHAT_LIMIT) {
-                        item(key = "workspace-${workspace.id}-more") {
-                            MoreRow(
-                                text = "All ${workspace.conversations.size} in " +
-                                    workspace.name,
-                                indented = true,
-                                onClick = onOpenAllConversations,
-                            )
-                        }
-                    }
-                }
-
-                if (sections.chats.isNotEmpty()) {
-                    item(key = "kind-chats") { KindLabel("CHATS", sections.chats.size) }
-                }
-
-                // Plain text, no metadata. Every one of the four apps does this, and
-                // they are right: a title is a sentence, and timestamps are noise at
-                // the moment you are scanning for something you remember writing.
-                items(sections.chats.take(RECENT_LIMIT), key = { it.id }) { conversation ->
-                    ConversationRow(
-                        conversation = conversation,
-                        active = conversation.id == activeConversationId,
-                        indented = false,
-                        onClick = { onOpenConversation(conversation.id) },
+                when (mode) {
+                    DrawerMode.CHATS -> chatsList(
+                        sections = sections,
+                        activeConversationId = activeConversationId,
+                        onOpenConversation = onOpenConversation,
+                        onOpenAllConversations = onOpenAllConversations,
+                    )
+                    DrawerMode.WORKSPACE -> workspaceList(
+                        sections = sections,
+                        openWorkspaces = openWorkspaces,
+                        activeProjectId = activeProjectId,
+                        activeConversationId = activeConversationId,
+                        onToggle = { id, open -> expanded[id] = !open },
+                        onOpenConversation = onOpenConversation,
+                        onOpenAllConversations = onOpenAllConversations,
+                        onBrowseFiles = { onSelect(AppDestination.WORKSPACE) },
                     )
                 }
-
-                // Recents are a shortcut, not the archive. Without this the older
-                // conversations would simply have nowhere to be reached from, which
-                // the bottom bar's Chats tab used to provide.
-                if (sections.totalMine > shown) {
-                    item(key = "all") {
-                        MoreRow(
-                            text = "All ${sections.totalMine} conversations",
-                            indented = false,
-                            onClick = onOpenAllConversations,
-                        )
-                    }
-                }
-
-                // Said out loud, because a filtered list and a lost one look identical.
-                // It also points at where those runs actually are, rather than leaving
-                // somebody to wonder whether the computer threw them away.
-                if (sections.machineMade > 0) {
-                    item(key = "machine-made") {
-                        Text(
-                            text = "${sections.machineMade} scheduled and agent runs are " +
-                                "kept out of this list. They are in Scheduler and Agents.",
-                            style = type.meta,
-                            color = colors.textFaint,
-                            modifier = Modifier.padding(
-                                horizontal = Spacing.x4,
-                                vertical = Spacing.x3,
-                            ),
-                        )
-                    }
-                }
-
             }
 
-            // Pinned above the footer, not floating over the list.
+            // Pinned above the footer, not floating over the list: a pill drawn on
+            // top of the conversations covered the title underneath it.
             //
-            // It was a pill drawn on top of the conversations, 88dp up from the
-            // bottom, and in a panel this narrow it covered most of the width. With
-            // nine conversations it sat on one: a title read "Which of my 14 unread
-            // ema" with a white pill where the rest of the sentence should have been.
-            // Fading the list behind it only made the covered title dimmer, which is
-            // not the same as readable.
-            //
-            // A floating button works over a full-width page where it occupies a
-            // corner. Here the sensible shape is a row that belongs to the panel —
-            // same thumb position, nothing hidden, and it reads as part of the menu
-            // rather than as something dropped on top of it.
-            // Lit in the mark's own violet → blue, rather than outlined in grey.
-            //
-            // This control has now been wrong in both directions. Solid white made it
-            // the loudest thing in a panel whose complaint was bulk; a grey outline
-            // made it so quiet it read as disabled. The answer is not a third weight
-            // of grey — it is colour, and this app already has exactly one gradient
-            // that means Anodex: the violet → blue ramp the mark is drawn in.
-            //
-            // `FacetField` establishes the idiom — the same two colours at around 5%
-            // over a dark ground, present without being loud. This is the same move
-            // with the ramp carried on the edge, where it reads as a lit rim rather
-            // than a filled shape.
+            // Lit in the mark's own violet → blue. Solid white was the loudest thing
+            // in the panel and a grey outline read as disabled; this app has exactly
+            // one gradient that means Anodex, carried on the edge as a lit rim.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = Spacing.x4, vertical = Spacing.x3)
+                    .padding(horizontal = Spacing.x3, vertical = Spacing.x3)
                     .clip(Radii.pill)
                     .background(
                         Brush.horizontalGradient(
@@ -387,7 +266,7 @@ fun AppDrawer(
                     )
                     .clickable(onClick = onNewChat)
                     .heightIn(min = Touch.minTarget)
-                    .padding(horizontal = Spacing.x5),
+                    .padding(horizontal = Spacing.x4),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.x2, Alignment.CenterHorizontally),
             ) {
@@ -402,28 +281,366 @@ fun AppDrawer(
 }
 
 /**
- * Which kind of thing the rows under it are.
+ * The two lists the menu can show, named and ordered as the desktop's title bar names them.
+ */
+internal enum class DrawerMode(val label: String, val icon: AnodexIcon) {
+    CHATS("Chats", AnodexIcon.CHAT),
+    WORKSPACE("Workspace", AnodexIcon.CODE),
+}
+
+/** Workspace when what is on screen belongs to one; Chats otherwise. */
+internal fun initialDrawerMode(
+    destination: AppDestination,
+    activeConversationId: String?,
+    conversations: List<ConversationSummary>,
+): DrawerMode {
+    if (destination == AppDestination.WORKSPACE) return DrawerMode.WORKSPACE
+    val open = conversations.firstOrNull { it.id == activeConversationId }
+    return if (open?.projectId != null) DrawerMode.WORKSPACE else DrawerMode.CHATS
+}
+
+/**
+ * The places the app can go, as a strip of icons down the panel's edge.
  *
- * Quieter than the section headings above it: this separates two short lists inside
- * one area rather than announcing a new area, and a second heading at full strength
- * would compete with the navigation it sits beneath.
+ * The desktop's `SidebarRail`, in its order. It used to be a column of five
+ * labelled rows that took half the menu, so only two conversations fitted under
+ * them. Icons alone are what the desktop does, and the names are not lost: each
+ * says it to a screen reader, and a long press shows it.
+ *
+ * Critical Thinking is the desktop rail's one icon not here. The phone has no
+ * screen for it, and an icon that opens nothing is worse than a missing one.
  */
 @Composable
-private fun KindLabel(text: String, count: Int) {
+private fun DrawerRail(
+    destination: AppDestination,
+    onSelect: (AppDestination) -> Unit,
+    onSearch: () -> Unit,
+    agentBadge: Int,
+    emailBadge: Int,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(RAIL_WIDTH)
+            .padding(vertical = Spacing.x3),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.x1),
+    ) {
+        RailButton(
+            icon = AnodexIcon.CHAT,
+            label = "Chat",
+            selected = destination == AppDestination.CHAT,
+            onClick = { onSelect(AppDestination.CHAT) },
+        )
+        RailButton(
+            icon = AnodexIcon.SEARCH,
+            label = "Search chats",
+            selected = false,
+            onClick = onSearch,
+        )
+        RailButton(
+            icon = AnodexIcon.CLOCK,
+            label = "Scheduler",
+            selected = destination == AppDestination.SCHEDULER,
+            onClick = { onSelect(AppDestination.SCHEDULER) },
+        )
+        RailButton(
+            icon = AnodexIcon.BOT,
+            label = "Agents",
+            selected = destination == AppDestination.AGENTS,
+            badge = agentBadge,
+            onClick = { onSelect(AppDestination.AGENTS) },
+        )
+        RailButton(
+            icon = AnodexIcon.MAIL,
+            label = "Email",
+            selected = destination == AppDestination.EMAIL,
+            badge = emailBadge,
+            onClick = { onSelect(AppDestination.EMAIL) },
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RailButton(
+    icon: AnodexIcon,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    badge: Int = 0,
+) {
+    val colors = AnodexTheme.colors
+    val spoken = if (badge > 0) "$label, $badge new" else label
+
+    // A long press shows the name: the phone's version of the desktop's hover title.
+    // Shown by the press itself, and drawn here rather than with Material's tooltip,
+    // whose own gesture lost to the click: a plain click fires on release however
+    // long the press, so the section opened instead.
+    var showName by remember { mutableStateOf(false) }
+    LaunchedEffect(showName) {
+        if (showName) {
+            delay(NAME_SHOWN_FOR_MS)
+            showName = false
+        }
+    }
+    Box {
+        if (showName) {
+            Popup(
+                alignment = Alignment.CenterStart,
+                offset = with(LocalDensity.current) { IntOffset(Touch.minTarget.roundToPx(), 0) },
+            ) {
+                Text(
+                    text = label,
+                    style = AnodexTheme.type.label,
+                    color = colors.text,
+                    modifier = Modifier
+                        .clip(Radii.md)
+                        .background(colors.bgElevated)
+                        .border(1.dp, colors.borderStrong, Radii.md)
+                        .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
+                )
+            }
+        }
+        Box(
+            Modifier
+                .size(Touch.minTarget)
+                .clip(Radii.md)
+                // The desktop marks the open section with the step-up surface rather
+                // than a colour, and so does this.
+                .background(if (selected) colors.bgSurface2 else Color.Transparent)
+                .semantics { this.selected = selected }
+                .combinedClickable(
+                    role = Role.Tab,
+                    onLongClickLabel = "Show name",
+                    onLongClick = { showName = true },
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            AnodexIcon(
+                icon,
+                size = 20.dp,
+                tint = if (selected) colors.text else colors.textMuted,
+                contentDescription = spoken,
+            )
+            if (badge > 0) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 6.dp, end = 4.dp)
+                        .heightIn(min = 15.dp)
+                        .clip(Radii.pill)
+                        // Ink rather than the base amber: the count is drawn in the
+                        // page's own ground colour, and that on #F5A623 measures
+                        // 1.79:1 in the light theme.
+                        .background(colors.warnInk)
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (badge > 9) "9+" else badge.toString(),
+                        style = AnodexTheme.type.badge,
+                        color = colors.bgBase,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Chats | Workspace, the desktop title bar's switch.
+ *
+ * Words beside the desktop's two icons rather than the icons alone. The desktop
+ * names them in a hover title; a phone has no hover, and there is room here for
+ * the names that a title bar does not have.
+ */
+@Composable
+private fun DrawerModeSwitch(
+    mode: DrawerMode,
+    onChange: (DrawerMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AnodexTheme.colors
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(Radii.md)
+            .background(colors.bgSurface2)
+            .border(1.dp, colors.border, Radii.md)
+            .padding(2.dp)
+            .selectableGroup(),
+    ) {
+        for (option in DrawerMode.entries) {
+            val on = option == mode
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp)
+                    .clip(Radii.sm)
+                    .background(if (on) colors.bgElevated else Color.Transparent)
+                    .selectable(selected = on, role = Role.Tab, onClick = { onChange(option) }),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.x2, Alignment.CenterHorizontally),
+            ) {
+                val tint = if (on) colors.text else colors.textMuted
+                AnodexIcon(option.icon, size = 16.dp, tint = tint, contentDescription = null)
+                Text(option.label, style = AnodexTheme.type.label, color = tint, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Chats mode: the conversations that belong to no workspace. */
+private fun LazyListScope.chatsList(
+    sections: DrawerSections,
+    activeConversationId: String?,
+    onOpenConversation: (String) -> Unit,
+    onOpenAllConversations: () -> Unit,
+) {
+    if (sections.chats.isEmpty()) {
+        item(key = "chats-empty") { EmptyNote("No chats yet. Start one below.") }
+    }
+
+    // Plain text, no metadata. Every one of the four apps does this, and they are
+    // right: a title is a sentence, and timestamps are noise at the moment you are
+    // scanning for something you remember writing.
+    items(sections.chats.take(RECENT_LIMIT), key = { it.id }) { conversation ->
+        ConversationRow(
+            conversation = conversation,
+            active = conversation.id == activeConversationId,
+            indented = false,
+            onClick = { onOpenConversation(conversation.id) },
+        )
+    }
+
+    // Recents are a shortcut, not the archive. Shown only when the index holds more
+    // than is on screen, so it is never a link to the same rows.
+    if (sections.totalMine > minOf(sections.chats.size, RECENT_LIMIT)) {
+        item(key = "all") {
+            MoreRow(
+                text = "All ${sections.totalMine} conversations",
+                indented = false,
+                onClick = onOpenAllConversations,
+            )
+        }
+    }
+
+    // Said out loud, because a filtered list and a lost one look identical. It also
+    // points at where those runs actually are.
+    if (sections.machineMade > 0) {
+        item(key = "machine-made") {
+            Text(
+                text = if (sections.machineMade == 1) {
+                    "1 scheduled or agent run is kept out of this list. " +
+                        "It is in Scheduler or Agents."
+                } else {
+                    "${sections.machineMade} scheduled and agent runs are kept out of " +
+                        "this list. They are in Scheduler and Agents."
+                },
+                style = AnodexTheme.type.meta,
+                color = AnodexTheme.colors.textFaint,
+                modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x3),
+            )
+        }
+    }
+}
+
+/** Workspace mode: each workspace, the chats filed under it, and its files. */
+private fun LazyListScope.workspaceList(
+    sections: DrawerSections,
+    openWorkspaces: Set<String>,
+    activeProjectId: String?,
+    activeConversationId: String?,
+    onToggle: (id: String, open: Boolean) -> Unit,
+    onOpenConversation: (String) -> Unit,
+    onOpenAllConversations: () -> Unit,
+    onBrowseFiles: () -> Unit,
+) {
+    // What used to be the Workspace row in the menu: the project's files, and the
+    // picker that changes which project the computer is in. Kept first, because
+    // switching is global and belongs behind a tap that says so, not behind a
+    // workspace row whose visible job is "show me what is in here".
+    item(key = "browse") {
+        MoreRow(text = "Files and projects", indented = false, onClick = onBrowseFiles)
+    }
+
+    if (sections.workspaces.isEmpty()) {
+        item(key = "workspace-none") {
+            EmptyNote("No workspace chats yet. Open a project to start one.")
+        }
+    }
+
+    for (workspace in sections.workspaces) {
+        val open = workspace.id in openWorkspaces
+
+        item(key = "workspace-${workspace.id}") {
+            WorkspaceRow(
+                name = workspace.name,
+                count = workspace.conversations.size,
+                expanded = open,
+                active = workspace.id == activeProjectId,
+                onClick = { onToggle(workspace.id, open) },
+            )
+        }
+
+        if (!open) continue
+
+        // Said out loud rather than left blank: a row that opens onto nothing is
+        // indistinguishable from one that failed to load.
+        if (workspace.conversations.isEmpty()) {
+            item(key = "workspace-${workspace.id}-empty") {
+                Text(
+                    text = "No chats in this workspace yet",
+                    style = AnodexTheme.type.meta,
+                    color = AnodexTheme.colors.textFaint,
+                    modifier = Modifier.padding(
+                        start = INDENT,
+                        end = Spacing.x4,
+                        top = Spacing.x2,
+                        bottom = Spacing.x3,
+                    ),
+                )
+            }
+        }
+
+        items(workspace.conversations.take(WORKSPACE_CHAT_LIMIT), key = { it.id }) { conversation ->
+            ConversationRow(
+                conversation = conversation,
+                active = conversation.id == activeConversationId,
+                indented = true,
+                onClick = { onOpenConversation(conversation.id) },
+            )
+        }
+
+        if (workspace.conversations.size > WORKSPACE_CHAT_LIMIT) {
+            item(key = "workspace-${workspace.id}-more") {
+                MoreRow(
+                    text = "All ${workspace.conversations.size} in " + workspace.name,
+                    indented = true,
+                    onClick = onOpenAllConversations,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyNote(text: String) {
     Text(
-        // The count belongs to the heading, the way the desktop writes it. It
-        // answers "is anything hidden under here" before the group is opened.
-        text = "$text  $count",
-        style = AnodexTheme.type.badge,
+        text = text,
+        style = AnodexTheme.type.meta,
         color = AnodexTheme.colors.textFaint,
-        modifier = Modifier.padding(
-            start = Spacing.x4,
-            end = Spacing.x4,
-            top = Spacing.x3,
-            bottom = Spacing.x1,
-        ),
+        modifier = Modifier.padding(horizontal = Spacing.x4, vertical = Spacing.x3),
     )
 }
+
+/** How long a long-pressed rail icon keeps its name up. */
+private const val NAME_SHOWN_FOR_MS = 1_500L
+
+/** The desktop's rail is 48px; this is one touch target plus a little air. */
+private val RAIL_WIDTH = 56.dp
 
 /**
  * One workspace, and the switch that shows what is filed under it.
@@ -565,55 +782,6 @@ private fun MoreRow(text: String, indented: Boolean, onClick: () -> Unit) {
     )
 }
 
-@Composable
-private fun DestinationRow(
-    destination: AppDestination,
-    selected: Boolean,
-    badge: Int,
-    onClick: () -> Unit,
-) {
-    val colors = AnodexTheme.colors
-    val type = AnodexTheme.type
-    val tint = if (selected) colors.accent else colors.text
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .leadingWash(selected)
-            .heightIn(min = Touch.minTarget)
-            .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.x4),
-        verticalAlignment = Alignment.CenterVertically,
-        // 12dp, which is what the desktop puts between an icon and its label. The
-        // 16dp here was a step wider and read as loose down a column of five.
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
-    ) {
-        AnodexIcon(destination.icon, size = 19.dp, tint = tint, contentDescription = null)
-        Text(destination.label, style = type.body, color = tint, modifier = Modifier.weight(1f))
-
-        if (badge > 0) {
-            Box(
-                Modifier
-                    .heightIn(min = 17.dp)
-                    .clip(Radii.pill)
-                    // Ink rather than the base amber: the count is drawn in the
-                    // page's own ground colour, and that on #F5A623 measures 1.79:1
-                    // in the light theme — a badge nobody can read is a badge that
-                    // may as well not be there.
-                    .background(colors.warnInk)
-                    .padding(horizontal = Spacing.x2),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (badge > 9) "9+" else badge.toString(),
-                    style = type.badge,
-                    color = colors.bgBase,
-                )
-            }
-        }
-    }
-}
-
 /**
  * The computer, where an account would be in anyone else's drawer.
  *
@@ -687,7 +855,6 @@ private fun HostFooter(
     }
 }
 
-/** Enough to recognise a conversation you were in; the full list lives in Chat. */
 /**
  * Six.
  *

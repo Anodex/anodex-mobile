@@ -265,6 +265,10 @@ class Conversations(private val socket: AnodexSocket) {
             // guess taken from whatever is selected now.
             persona = (this["persona"] as? JsonObject)?.asPersona(),
             attachments = parseRemoteAttachments(this["attachments"]),
+            // What the turn did, as the rows it showed while it ran. The computer
+            // sends these as one line each (desktop 0.17); before that a reopened
+            // chat showed the reply with no sign of the command behind it.
+            tools = parseRemoteTools(this["tools"]),
             hasThinking = this["hasThinking"]?.jsonPrimitive?.contentOrNull() == "true",
             // Read back so a conversation held at the computer shows its sources
             // here too. The desktop has recorded these on every turn for months;
@@ -484,6 +488,32 @@ private fun parseRecalled(element: JsonElement?): List<RecalledChat> {
                 ?: "A past conversation",
             updatedAtEpochMs = o["updatedAt"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 0L,
             excerpts = excerpts,
+        )
+    }
+}
+
+/**
+ * A turn's tool rows from history, in the shape the live stream builds them.
+ *
+ * The same status reading as the live fold in [ChatSession], so a row looks the
+ * same whether it was watched or read back afterwards.
+ */
+internal fun parseRemoteTools(element: JsonElement?): List<ToolActivity> {
+    val array = element as? JsonArray ?: return emptyList()
+    return array.mapNotNull { entry ->
+        val call = entry as? JsonObject ?: return@mapNotNull null
+        fun field(key: String) = call[key]?.jsonPrimitive?.contentOrNull()
+        val id = field("id") ?: return@mapNotNull null
+        ToolActivity(
+            id = id,
+            name = field("name") ?: "tool",
+            title = field("title") ?: field("name") ?: "Ran a tool",
+            detail = field("detail")?.takeIf { it.isNotBlank() },
+            status = when (field("status")) {
+                "running", "pending" -> ToolActivity.Status.RUNNING
+                "error", "failed", "denied" -> ToolActivity.Status.FAILED
+                else -> ToolActivity.Status.DONE
+            },
         )
     }
 }

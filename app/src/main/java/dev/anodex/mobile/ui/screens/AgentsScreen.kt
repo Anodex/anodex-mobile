@@ -115,6 +115,8 @@ fun AgentsScreen(
     onClose: (() -> Unit)? = null,
     /** Set a run going. Null hides the composer — there is nothing to start against. */
     onStart: ((String, Boolean) -> Unit)? = null,
+    /** Continue a run that ran out, in a new run of its series. Null hides the button. */
+    onContinue: ((String) -> Unit)? = null,
     starting: Boolean = false,
     /** The project a run would work in, named so nobody starts one in the wrong place. */
     projectName: String? = null,
@@ -211,6 +213,7 @@ fun AgentsScreen(
                                 onReject = { onReject(run.id) },
                                 onStop = { onStop(run.id) },
                                 onOpen = { onOpenRun(run.id) },
+                                onContinue = onContinue?.let { { it(run.id) } },
                                 projectName = run.projectId?.let { projectNames[it] },
                             )
                         }
@@ -242,7 +245,9 @@ fun AgentsScreen(
                     },
                 )
             } else if (onStart != null) {
-                SecondaryButton(
+                // The gradient, as Email's Write and the menu's New chat wear it: each
+                // starts something new, and the three looked like three different apps.
+                PrimaryButton(
                     label = "New agent run",
                     onClick = { composing = true },
                     modifier = Modifier
@@ -407,6 +412,7 @@ private fun RunCard(
     onReject: () -> Unit,
     onStop: () -> Unit,
     onOpen: () -> Unit,
+    onContinue: (() -> Unit)? = null,
     projectName: String? = null,
 ) {
     val colors = AnodexTheme.colors
@@ -501,6 +507,10 @@ private fun RunCard(
 
             RunOutcome(run)
 
+            // The numbers that used to be the explanation, now under it: what the
+            // run spent, for anyone weighing whether to give it more.
+            run.ranOut?.let { Text(spentLine(run), style = type.meta, color = colors.textFaint) }
+
             // Nothing at all for a run that has finished — the card opens it, and a row
             // holding one button under every card was most of what made this a wall.
             when {
@@ -514,6 +524,11 @@ private fun RunCard(
                 }
 
                 running -> SecondaryButton(label = "Stop", onClick = onStop)
+
+                // What a run that ran out of room needs, offered where it is read.
+                // Not for a sub-agent: its parent decides whether it goes on.
+                run.ranOut != null && run.parentRunId == null && onContinue != null ->
+                    PrimaryButton(label = continueLabel(run), onClick = onContinue)
             }
         }
 
@@ -671,7 +686,7 @@ private fun StatusBadge(run: AgentRun) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.x1),
     ) {
         AnodexIcon(icon, size = 12.dp, tint = ink)
-        Text(statusLabel(run.status), style = type.badge, color = ink)
+        Text(ranOutLabel(run) ?: statusLabel(run.status), style = type.badge, color = ink)
     }
 }
 
@@ -779,7 +794,7 @@ private fun MeterView(meter: Meter, modifier: Modifier = Modifier) {
 private fun RunOutcome(run: AgentRun, maxLines: Int = 3) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
-    val text = (runOutcomeText(run) ?: return).withoutOutcomeHeading()
+    val text = (plainStopReason(run) ?: runOutcomeText(run) ?: return).withoutOutcomeHeading()
 
     val (ink, ground) = when {
         run.status == AgentRun.Status.ERROR -> colors.dangerInk to colors.dangerSoft
@@ -835,6 +850,54 @@ private fun providerLine(run: AgentRun): String? {
 /** 12400 → "12.4k", the desktop's `formatCompactTokens`. */
 internal fun compactTokens(n: Long): String =
     if (n >= 1000) String.format(java.util.Locale.US, "%.1fk", n / 1000.0) else n.toString()
+
+/**
+ * "Ran out of turns", where "Stopped" would leave the reader to work out why.
+ * Null for every run that stopped any other way.
+ */
+internal fun ranOutLabel(run: AgentRun): String? = when (run.ranOut) {
+    AgentRun.RanOut.TURNS -> "Ran out of turns"
+    AgentRun.RanOut.TOKENS -> "Ran out of tokens"
+    AgentRun.RanOut.TIME -> "Ran out of time"
+    null -> null
+}
+
+/**
+ * What happened and what to do, for a run that ran out.
+ *
+ * The computer's own account was written in budget terms — "Used 433 of 50,000
+ * tokens (<1%) and 0 of 30 minutes. The turn limit was the binding constraint" —
+ * which is accurate and answers a question nobody holding a phone was asking. This
+ * says it the way a person would; the figures stay on the line beneath it.
+ */
+internal fun plainStopReason(run: AgentRun): String? = when (run.ranOut) {
+    AgentRun.RanOut.TURNS ->
+        "It used all ${run.maxTurns} of its turns before finishing. Continue it to carry on."
+    AgentRun.RanOut.TOKENS ->
+        "It used its whole budget of ${compactTokens(run.maxTokens)} tokens before finishing. " +
+            "Continue it to carry on."
+    AgentRun.RanOut.TIME ->
+        "It reached its ${run.maxDurationMinutes}-minute limit before finishing. " +
+            "Continue it to carry on."
+    null -> null
+}
+
+/** "Continue for 25 more turns", naming the budget the new run gets. */
+internal fun continueLabel(run: AgentRun): String = when (run.ranOut) {
+    AgentRun.RanOut.TOKENS, AgentRun.RanOut.TIME, null -> "Continue"
+    AgentRun.RanOut.TURNS -> "Continue for ${run.maxTurns} more turns"
+}
+
+/** "433 tokens · under a minute": what the run spent. The provider line above says where. */
+internal fun spentLine(run: AgentRun): String {
+    val minutes = run.activeMs / 60_000
+    val time = when {
+        minutes < 1 -> "under a minute"
+        minutes == 1L -> "1 minute"
+        else -> "$minutes minutes"
+    }
+    return "${compactTokens(run.tokensUsed)} tokens · $time"
+}
 
 /** The desktop's `STATUS_LABEL`, word for word. */
 private fun statusLabel(status: AgentRun.Status): String = when (status) {

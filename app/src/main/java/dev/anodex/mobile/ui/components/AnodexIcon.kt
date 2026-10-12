@@ -471,4 +471,15 @@ enum class AnodexIcon(
             "M10 13.5h4",
         )
     ),
+
+    /**
+     * Angle brackets and a slash. The desktop's `code`, which its title bar uses for
+     * Workspace — the side where chats can change real files.
+     */
+    CODE(
+        listOf(
+            "m8 5-6 7 6 7m8-14 6 7-6 7",
+            "M14 3l-4 18",
+        )
+    ),
 }

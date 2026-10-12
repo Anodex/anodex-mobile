@@ -81,6 +81,7 @@ import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.update.UpdateCheck
+import dev.anodex.mobile.chat.readableModelName
 
 /**
  * Settings, divided the way the desktop divides them.
@@ -1478,8 +1479,11 @@ private fun ModelRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
     ) {
         Column(Modifier.weight(1f)) {
+            // Named the way the desktop names it. The file name stays underneath,
+            // smaller, for anyone matching it against a folder or a download page.
+            val readable = readableModelName(model.name)
             Text(
-                text = model.name,
+                text = readable,
                 style = type.bodyEmphasis,
                 color = if (enabled || active) colors.text else colors.textMuted,
                 maxLines = 2,
@@ -1489,6 +1493,15 @@ private fun ModelRow(
             val detail = model.detailLabel()
             if (detail.isNotBlank()) {
                 Text(detail, style = type.meta, color = colors.textFaint)
+            }
+            if (readable != model.name) {
+                Text(
+                    text = model.name,
+                    style = type.meta,
+                    color = colors.textFaint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
 
