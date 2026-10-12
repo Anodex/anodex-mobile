@@ -16,6 +16,14 @@ class ToolNamesTest {
     }
 
     @Test
+    fun `a failed call never reads as one that happened`() {
+        assertEquals(
+            "Running a command failed",
+            toolAction(call("run_command", "Run: npm test", ToolActivity.Status.FAILED)),
+        )
+    }
+
+    @Test
     fun `and in the present while it is still going`() {
         assertEquals(
             "Running a command",
