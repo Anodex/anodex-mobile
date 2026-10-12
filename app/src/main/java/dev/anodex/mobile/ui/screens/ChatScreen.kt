@@ -79,6 +79,7 @@ import dev.anodex.mobile.chat.ToolActivity
 import dev.anodex.mobile.chat.ToolApproval
 import dev.anodex.mobile.chat.UploadState
 import dev.anodex.mobile.chat.toolSummary
+import dev.anodex.mobile.profile.firstNameOf
 import dev.anodex.mobile.ui.components.AnodexIcon
 import dev.anodex.mobile.ui.components.SendButton
 import dev.anodex.mobile.ui.components.AnodexMark
@@ -1533,7 +1534,9 @@ internal fun greeting(name: String?): String {
         else -> "Good evening"
     }
 
-    val known = name?.trim()?.takeIf { it.isNotEmpty() && !it.equals(DEFAULT_NAME, true) }
+    // The first name, as the computer greets and the hello screen says "Hi, Sam.":
+    // "Good morning, Sam Rivera" read like a letter from the bank.
+    val known = name?.trim()?.takeIf { !it.equals(DEFAULT_NAME, true) }?.let(::firstNameOf)
     return if (known == null) time else "$time, $known"
 }
 
