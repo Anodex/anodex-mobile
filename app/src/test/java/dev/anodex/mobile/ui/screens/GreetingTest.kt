@@ -58,4 +58,10 @@ class GreetingTest {
 
         assertTrue(withName.startsWith(without))
     }
+
+    @Test
+    fun `greets by the first name, as the computer does`() {
+        assertTrue(greeting("Sam Rivera").endsWith(", Sam"))
+        assertFalse(greeting("Sam Rivera").contains("Rivera"))
+    }
 }
