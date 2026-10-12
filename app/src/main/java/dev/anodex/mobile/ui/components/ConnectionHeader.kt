@@ -46,6 +46,7 @@ import dev.anodex.mobile.ui.theme.Motion
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import dev.anodex.mobile.chat.readableModelName
 
 /**
  * The strip that says *which machine is doing the work*.
@@ -113,7 +114,7 @@ fun ConnectionHeader(
         if (model != null) {
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = model.name,
+                    text = readableModelName(model.name),
                     style = type.meta,
                     color = colors.textMuted,
                     maxLines = 1,

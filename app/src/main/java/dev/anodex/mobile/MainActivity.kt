@@ -134,6 +134,7 @@ import dev.anodex.mobile.ui.theme.Touch
 import dev.anodex.mobile.ui.theme.UiFont
 import dev.anodex.mobile.widget.AskWidget
 import kotlinx.coroutines.delay
+import dev.anodex.mobile.chat.readableModelName
 
 /**
  * Mirrors the desktop's CONFIRMATION_TIMEOUT_MS.
@@ -1164,15 +1165,16 @@ private fun ConnectedScaffold(
         AppDrawer(
             destination = destination,
             onSelect = { chosen ->
-                // Every section opens its own index. Agents, Email and Scheduler
-                // already are lists; Chat and Workspace were the two that dropped you
-                // into a single item — or into nothing at all, which is how Workspace
-                // became a dead end.
+                // Chat goes back to the conversation, as the desktop rail's Chat does:
+                // the list it used to open is in the menu itself now, beside the rail.
+                // Workspace opens its files and projects rather than one project,
+                // which is how it stopped being a dead end.
                 drawerOpen = false
                 when (chosen) {
                     AppDestination.CHAT -> {
                         searchingConversations = false
-                        showingAllConversations = true
+                        showingAllConversations = false
+                        destination = AppDestination.CHAT
                     }
                     AppDestination.WORKSPACE -> {
                         destination = AppDestination.WORKSPACE
@@ -1347,12 +1349,37 @@ private fun ConnectedScaffold(
             // Everywhere but a conversation, the header sits in the flow and the
             // page starts underneath it. In a conversation it hangs over the
             // transcript instead — see the floating column below.
+            // The chat's own bar, with the screen's name in the pill. These screens
+            // had a strip of their own that cut the computer's name off and printed
+            // the model as a file name; one bar everywhere is also one less thing
+            // that changes shape as you move around.
             if (!floatingChrome) {
-                ConnectionHeader(
-                    state = state,
+                val screenProject = projects.active.takeIf {
+                    destination == AppDestination.WORKSPACE
+                }
+                ChatHeader(
+                    title = destination.label,
+                    workspaceName = screenProject?.name,
+                    hostName = hostNameOf(state),
+                    connected = state is ConnectionState.Connected,
+                    status = HostStatus(
+                        hostName = hostNameOf(state),
+                        connection = connectionWordFor(state),
+                        connected = state is ConnectionState.Connected,
+                        workspaceName = projects.active?.name,
+                        folderPath = projects.active?.folderPath,
+                        modelName = model?.name?.let(::readableModelName),
+                        // No conversation here, so the computer's own figure for
+                        // whatever it last ran, as the old strip showed.
+                        contextUsedTokens = model?.contextUsedTokens,
+                        contextTotalTokens = model?.contextTotalTokens ?: 0,
+                        conversationId = null,
+                    ),
                     onOpenDrawer = { drawerOpen = true },
+                    onCopyId = {},
+                    onArchive = null,
+                    onOpenFiles = null,
                 )
-                Hairline()
             }
 
             // Under the header on every screen rather than inside chat: a newer app is
@@ -1430,6 +1457,7 @@ private fun ConnectedScaffold(
                             onApprove = viewModel::approvePlan,
                             onReject = viewModel::rejectPlan,
                             onStop = viewModel::stopAgentRun,
+                            onContinue = viewModel::continueAgentRun,
                             onOpenConversation = {
                                 viewModel.openConversation(it)
                                 destination = AppDestination.CHAT
@@ -1532,7 +1560,7 @@ private fun ConnectedScaffold(
                         connected = state is ConnectionState.Connected,
                         workspaceName = chatProject?.name,
                         folderPath = chatProject?.folderPath,
-                        modelName = model?.name,
+                        modelName = model?.name?.let(::readableModelName),
                         // Read from the computer, not derived from the engine
                         // state. `contextTokensUsed` is the live KV-cache index and
                         // is absent between generations, which is why the ring never

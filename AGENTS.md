@@ -246,21 +246,16 @@ and both colour columns on one page, previewed in each theme. Anything added to
 the shared components belongs there too: a component nobody can see in both
 themes has only been designed for one.
 
-**`textFaint` is deliberately below AA, and this is the decision, not an
-oversight.** It measures 2.71:1 at worst on Midnight and 2.15:1 on Light, against
-the 4.5 that `type.meta` and `type.badge` would need to pass — so every timestamp,
-section label and second line on an empty screen is under the bar. It was weighed
-and kept: lifting it collides with `textMuted` (5.06:1 on Light), so the whole
-three-step ramp has to move — about 15/7/4.7 on Midnight and 12.7/7/4.7 on Light
-is what works — and that visibly changes 112 sites, trading the quietest step in
-the hierarchy for legibility. That is a design call, not a bug fix, and it is the
-user's to make rather than a passing contributor's.
+**`textFaint` is the quiet step, and it was lifted on purpose.** It used to sit
+far below AA — 2.71:1 at worst on Midnight, 2.15:1 on Light — and every timestamp,
+hint and second line was hard to read outside. On 2026-10-11 the user chose to lift
+it, on the desktop and here in the same sitting: `#8A8A8A` on Midnight (4.94:1 at
+worst, 5.67:1 on the page) and `#77716A` on Light (3.80:1). `textMuted` did not
+move, and faint stays below it in both themes, so the ramp keeps three steps.
 
-Two things follow. It is **not** symmetric — Light is about twenty percent worse
-than Midnight, and it is the theme where pale-on-cream is harder to begin with —
-so do not repeat the claim that it is even. And `ContrastTest` pins it: a floor it
-may not sink below, and a check that Light does not drift further from Midnight
-than it already has. Changing the ramp means changing that test on purpose.
+It is still **not** symmetric — Light is about three quarters of Midnight, held
+there by `textMuted` above it — and `ContrastTest` pins all of it: faint below
+muted, a floor it may not sink below, and Light no further from Midnight than it is.
 
 Keep 48dp touch targets. Never communicate a waiting state with motion alone;
 pair it with text and a static shape or colour.

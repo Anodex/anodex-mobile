@@ -52,7 +52,7 @@ class DesktopPaletteTest {
     fun `the midnight ink and edges are the desktop's`() {
         assertEquals("#F0F0F0", hex(MidnightColors.text))
         assertEquals("#A0A0A0", hex(MidnightColors.textMuted))
-        assertEquals("#606060", hex(MidnightColors.textFaint))
+        assertEquals("#8A8A8A", hex(MidnightColors.textFaint))
         assertEquals("#1F1F1F", hex(MidnightColors.border))
         assertEquals("#2A2A2A", hex(MidnightColors.borderStrong))
     }

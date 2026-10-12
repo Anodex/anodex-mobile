@@ -140,7 +140,10 @@ fun RecalledContext(
 }
 
 /**
- * "Recalled 2 memories", "Recalled a past chat", "Recalled 2 memories and 3 past chats".
+ * "Used 2 memories", "Used a past chat", "Used 2 memories and 3 past chats".
+ *
+ * "Used" rather than "Recalled": the plain word for what happened, said the way the
+ * tool rows above it now say theirs.
  *
  * Counted rather than listed, because the count is the part that is read at a
  * glance and the list is the part that is opened on purpose.
@@ -150,7 +153,7 @@ internal fun recalledSummary(memories: Int, chats: Int): String {
         if (memories == 1) add("a memory") else if (memories > 1) add("$memories memories")
         if (chats == 1) add("a past chat") else if (chats > 1) add("$chats past chats")
     }
-    return "Recalled " + parts.joinToString(" and ")
+    return "Used " + parts.joinToString(" and ")
 }
 
 /** The desktop's own labels for `MemoryKind`, so the two read the same. */

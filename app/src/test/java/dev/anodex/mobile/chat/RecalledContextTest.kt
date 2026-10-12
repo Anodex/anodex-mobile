@@ -101,10 +101,10 @@ class RecalledContextTest {
 
     @Test
     fun `the summary counts rather than lists`() {
-        assertEquals("Recalled a memory", recalledSummary(1, 0))
-        assertEquals("Recalled 2 memories", recalledSummary(2, 0))
-        assertEquals("Recalled a past chat", recalledSummary(0, 1))
-        assertEquals("Recalled 2 memories and 3 past chats", recalledSummary(2, 3))
+        assertEquals("Used a memory", recalledSummary(1, 0))
+        assertEquals("Used 2 memories", recalledSummary(2, 0))
+        assertEquals("Used a past chat", recalledSummary(0, 1))
+        assertEquals("Used 2 memories and 3 past chats", recalledSummary(2, 3))
     }
 
     @Test

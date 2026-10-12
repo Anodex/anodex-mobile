@@ -180,7 +180,11 @@ val MidnightColors = AnodexColors(
 
     text = Color(0xFFF0F0F0),
     textMuted = Color(0xFFA0A0A0),
-    textFaint = Color(0xFF606060),
+    // A step lighter than it was (#606060, 2.71:1 at worst), so times, hints and
+    // footnotes can be read outside: 4.94:1 at worst, 5.67:1 on the page. Still
+    // the quiet step under textMuted's 6.52:1. Changed on the desktop in the same
+    // sitting, which is where it comes from.
+    textFaint = Color(0xFF8A8A8A),
     textOnAccent = Color(0xFFFFFFFF),
 
     accent = Color(0xFF4F8CFF),
@@ -273,7 +277,9 @@ val LightColors = MidnightColors.copy(
     // Half a step deeper than it was. Against the new deepest ground — the drawer's
     // — the old value measured 4.24:1, just under the floor. Same warm hue.
     textMuted = Color(0xFF645E54),
-    textFaint = Color(0xFFA29C8F),
+    // Lifted with Midnight's, same warm hue: 3.80:1 at worst, up from 2.15:1, and
+    // still under textMuted's 5.06:1 so the ramp keeps its three steps.
+    textFaint = Color(0xFF77716A),
 
     series1 = Color(0xFF5B4EC6),
     series2 = Color(0xFF00A084),

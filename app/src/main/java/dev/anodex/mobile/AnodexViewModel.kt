@@ -2768,6 +2768,25 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun stopAgentRun(runId: String) = actOnRun(runId) { it.stop(runId) }
 
+    /**
+     * Continue a run that ran out of turns, tokens or time, as a new run in its series.
+     *
+     * Said when it fails, unlike the other run actions: this one starts work, and a
+     * tap that quietly started nothing would be read as a run that is coming.
+     */
+    fun continueAgentRun(runId: String) {
+        val client = agentClient ?: return
+        val run = agentRuns.value.firstOrNull { it.id == runId } ?: return
+        _busyRunId.value = runId
+        _agentsError.value = null
+        viewModelScope.launch {
+            runCatching { client.continueRun(run) }
+                .onFailure { _agentsError.value = "Could not continue the run: ${it.message}" }
+            _busyRunId.value = null
+            refreshAgentRuns()
+        }
+    }
+
     private val _projects = MutableStateFlow(ProjectsState(emptyList(), null))
 
     /** What projects exist on the computer, and which one is open. */

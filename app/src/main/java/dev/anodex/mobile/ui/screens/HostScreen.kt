@@ -42,6 +42,7 @@ import dev.anodex.mobile.ui.theme.AnodexTheme
 import dev.anodex.mobile.ui.theme.Radii
 import dev.anodex.mobile.ui.theme.Spacing
 import dev.anodex.mobile.ui.theme.Touch
+import dev.anodex.mobile.chat.readableModelName
 
 /**
  * The computer, in full.
@@ -137,7 +138,7 @@ fun HostScreen(
                         color = colors.textFaint,
                     )
                 } else {
-                    Field("Model", model.name)
+                    Field("Model", readableModelName(model.name))
                     Field("Context", contextLine(model, contextUsage))
 
                     val fraction = contextUsage?.fraction ?: model.contextFraction

@@ -93,6 +93,11 @@ data class HostStatus(
 /**
  * The conversation's own bar: a way out, what this is, and what it is running in.
  *
+ * Every screen's bar now, not only the conversation's. Agents, Email, Scheduler and
+ * Workspace had a strip of their own that cut the computer's name off at "Gort…"
+ * and printed the model as a file name; they wear this one with the screen's name
+ * in the pill, and the model and its context behind the computer button.
+ *
  * The title floats in the middle on its own ground rather than sitting flush left,
  * and it carries a second line naming the workspace and the machine. That line is
  * this app's whole subject: which workspace a conversation belongs to decides
@@ -118,7 +123,8 @@ fun ChatHeader(
     status: HostStatus,
     onOpenDrawer: () -> Unit,
     onCopyId: () -> Unit,
-    onArchive: () -> Unit,
+    /** Null off a conversation: Agents, Email and the rest wear this bar too. */
+    onArchive: (() -> Unit)?,
     /** Null where there is no workspace beside this chat to open. */
     onOpenFiles: (() -> Unit)?,
     /**
@@ -268,7 +274,12 @@ fun ChatHeader(
             }
         }
 
-        Box {
+        // Only where there is something in it. The other screens wear this same bar
+        // with no conversation behind it, and a menu that opens onto nothing is a
+        // control that lies about being one.
+        val hasMenu = onOpenFiles != null || onRename != null ||
+            status.conversationId != null || onArchive != null
+        if (hasMenu) Box {
             RoundButton(onClick = { menuOpen = true }, contentDescription = "More") {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     repeat(3) {
@@ -291,17 +302,21 @@ fun ChatHeader(
                             onRename()
                         }
                     }
-                    MenuItem("Copy conversation ID", AnodexIcon.COPY) {
-                        menuOpen = false
-                        onCopyId()
+                    if (status.conversationId != null) {
+                        MenuItem("Copy conversation ID", AnodexIcon.COPY) {
+                            menuOpen = false
+                            onCopyId()
+                        }
                     }
                     // No confirmation. Archiving is reversible and the undo arrives
                     // straight after the tap, which is a better question than one
                     // asked in front of every tap including the nine hundred that
                     // were not mistakes.
-                    MenuItem("Archive", AnodexIcon.ARCHIVE, danger = true) {
-                        menuOpen = false
-                        onArchive()
+                    if (onArchive != null) {
+                        MenuItem("Archive", AnodexIcon.ARCHIVE, danger = true) {
+                            menuOpen = false
+                            onArchive()
+                        }
                     }
                 }
             }
