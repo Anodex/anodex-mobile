@@ -16,7 +16,13 @@ package dev.anodex.mobile.chat
 fun toolAction(activity: ToolActivity): String {
     val known = TOOL_ACTIONS[activity.name]
     if (known != null) {
-        return if (activity.status == ToolActivity.Status.RUNNING) known.doing else known.did
+        return when (activity.status) {
+            ToolActivity.Status.RUNNING -> known.doing
+            // Never the past tense for a call that did not happen: a red row
+            // reading "Ran a command" claimed exactly what had failed.
+            ToolActivity.Status.FAILED -> "${known.doing} failed"
+            ToolActivity.Status.DONE -> known.did
+        }
     }
     return splitToolTitle(activity.title).first.ifBlank { activity.name }
 }
@@ -88,6 +94,10 @@ private val TOOL_ACTIONS: Map<String, Action> = buildMap {
     put("Remembered something", "Remembering something", "remember_fact")
     put("Made an image", "Making an image", "generate_image")
     put("Previewed a page", "Previewing a page", "preview_html")
+    // An agent run's own steps, named as the desktop's run page names them.
+    put("Finished the goal", "Finishing the goal", "finish_goal")
+    put("Looked for a skill", "Looking for a skill", "find_skill")
+    put("Loaded a skill", "Loading a skill", "load_skill")
     put("Looked at an image", "Looking at an image", "inspect_visual")
     put("Showed an image", "Showing an image", "show_image")
 }
