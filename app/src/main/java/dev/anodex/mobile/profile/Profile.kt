@@ -23,6 +23,8 @@ data class UserProfile(
     val displayName: String,
     /** Base64 PNG/JPEG, or null. Rendered at the size of a thumbnail, never full bleed. */
     val avatarBase64: String?,
+    /** Which of [AVATAR_LOOKS] draws the avatar when there is no photo. */
+    val avatarLook: Int = 0,
     val planTier: String,
     val accountStatus: String,
 )
@@ -100,6 +102,7 @@ class ProfileReader(private val socket: AnodexSocket) {
         return UserProfile(
             displayName = fields.string("displayName")?.takeIf { it.isNotBlank() } ?: "You",
             avatarBase64 = fields.string("avatarBase64")?.takeIf { it.isNotBlank() },
+            avatarLook = fields.int("avatarLook") ?: 0,
             planTier = fields.string("planTier").orEmpty(),
             accountStatus = fields.string("accountStatus").orEmpty(),
         )

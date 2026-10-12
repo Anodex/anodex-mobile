@@ -112,6 +112,7 @@ import dev.anodex.mobile.ui.screens.DiffScreen
 import dev.anodex.mobile.ui.screens.FileScreen
 import dev.anodex.mobile.ui.screens.HostScreen
 import dev.anodex.mobile.ui.screens.ManualPairScreen
+import dev.anodex.mobile.ui.screens.HelloScreen
 import dev.anodex.mobile.ui.screens.NotPairedScreen
 import dev.anodex.mobile.ui.screens.OfflineScreen
 import dev.anodex.mobile.ui.screens.ProjectPickerScreen
@@ -510,6 +511,25 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
             onCancel = { scanning = false },
             pairingError = pairingError,
         )
+        return
+    }
+
+    // Just paired: say hello first, with the name and picture the computer keeps.
+    val hello by viewModel.hello.collectAsStateWithLifecycle()
+    val connectedNow = state as? ConnectionState.Connected
+    if (hello && connectedNow != null) {
+        val user by viewModel.user.collectAsStateWithLifecycle()
+        // A few tries: the profile reader is set up as the link comes up, and the
+        // first moment of Connected can arrive just before it.
+        LaunchedEffect(Unit) {
+            repeat(6) {
+                if (viewModel.user.value != null) return@LaunchedEffect
+                viewModel.refreshProfile()
+                kotlinx.coroutines.delay(500)
+            }
+        }
+        BackHandler { viewModel.helloSeen() }
+        HelloScreen(user = user, hostName = connectedNow.host.displayName, onStart = viewModel::helloSeen)
         return
     }
 
@@ -1023,7 +1043,15 @@ private fun ConnectedScaffold(
         // Same reasoning, same place: read when Settings opens rather than when the
         // Profile section is reached. Two reads on open is cheaper than threading a
         // callback back out of a screen that already knows which section it is on.
-        LaunchedEffect(Unit) { viewModel.refreshProfile() }
+        // A few tries: the profile reader is set up as the link comes up, and the
+        // first moment of Connected can arrive just before it.
+        LaunchedEffect(Unit) {
+            repeat(6) {
+                if (viewModel.user.value != null) return@LaunchedEffect
+                viewModel.refreshProfile()
+                kotlinx.coroutines.delay(500)
+            }
+        }
         LaunchedEffect(Unit) { viewModel.refreshArchive() }
 
         // And kept current while this screen is up. The computer announces memory
@@ -1502,6 +1530,7 @@ private fun ConnectedScaffold(
                         val parsedWhen by viewModel.draftWhen.collectAsStateWithLifecycle()
                         val creatingTask by viewModel.creatingTask.collectAsStateWithLifecycle()
 
+                        val scheduleMonth by viewModel.month.collectAsStateWithLifecycle()
                         SchedulerScreen(
                             tasks = tasks,
                             loading = tasksLoading,
@@ -1511,6 +1540,8 @@ private fun ConnectedScaffold(
                             parsed = parsedWhen,
                             creating = creatingTask,
                             onCreate = { prompt -> viewModel.createTask(prompt) {} },
+                            month = scheduleMonth,
+                            onLoadMonth = viewModel::loadMonth,
                         )
                     }
                 }

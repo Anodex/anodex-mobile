@@ -105,7 +105,7 @@ fun ScanScreen(
             textAlign = TextAlign.Center,
         )
         Text(
-            text = "Anodex → Settings → Remote → Pair a phone.",
+            text = "On the computer: the welcome's last step, or Settings → Remote → Pair a phone.",
             style = type.body,
             color = colors.textMuted,
             textAlign = TextAlign.Center,

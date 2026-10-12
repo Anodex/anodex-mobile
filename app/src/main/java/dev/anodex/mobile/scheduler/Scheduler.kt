@@ -56,6 +56,46 @@ data class ParsedWhen(
     val note: String?,
 )
 
+/**
+ * One month of the schedule, as the computer worked it out.
+ *
+ * Read rather than computed here: projecting when a task fires next is the
+ * computer's `computeNextRunAt`, and a Kotlin copy would be a second opinion
+ * about the hour a task runs. The same reason [ParsedWhen] is read, not parsed.
+ */
+data class ScheduleMonth(
+    val year: Int,
+    /** 0-based, as the computer counts months. */
+    val month: Int,
+    /** Day of the month → what is on it. Frequent tasks are in [everyByDay] instead. */
+    val days: Map<Int, List<MonthEntry>>,
+    /** Things that happen every day or every weekday, listed once above the calendar. */
+    val every: List<EveryEntry>,
+    val everyByDay: Map<Int, List<MonthEntry>>,
+)
+
+data class MonthEntry(
+    val key: String,
+    val taskId: String,
+    val name: String,
+    val atEpochMs: Long,
+    val reminder: Boolean,
+    /** "Every Fri at 4:00 PM", the computer's own wording. */
+    val repeats: String,
+    /** `success`, `error`, `stopped`, or `upcoming`. */
+    val state: String,
+)
+
+data class EveryEntry(
+    val taskId: String,
+    val name: String,
+    val reminder: Boolean,
+    /** "Every day", "Weekdays", "Every 2 hours". */
+    val cadence: String,
+    val hour: Int?,
+    val minute: Int?,
+)
+
 /** One time a task ran. */
 data class TaskRun(
     val id: String,
@@ -146,6 +186,11 @@ class Scheduler(private val socket: AnodexSocket) {
      * Null for anything it cannot read, which is the ordinary state of a field
      * somebody is halfway through typing.
      */
+    /** The month, or null from a computer too old to have the channel. */
+    suspend fun month(year: Int, month: Int): ScheduleMonth? = runCatching {
+        parseMonth(socket.invoke(CHANNEL_MONTH, listOf(JsonPrimitive(year), JsonPrimitive(month))))
+    }.getOrNull()
+
     suspend fun parseWhen(text: String): ParsedWhen? {
         val answer = socket.invoke(CHANNEL_PARSE_WHEN, listOf(JsonPrimitive(text)))
         val obj = answer as? JsonObject ?: return null
@@ -233,6 +278,7 @@ class Scheduler(private val socket: AnodexSocket) {
         const val CHANNEL_LIST = "scheduler:list"
         const val CHANNEL_RUN_NOW = "scheduler:run-now"
         const val CHANNEL_PARSE_WHEN = "scheduler:parse-when"
+        const val CHANNEL_MONTH = "scheduler:month"
         const val CHANNEL_CREATE = "scheduler:create"
     }
 }
@@ -342,3 +388,45 @@ fun timeAgo(epochMs: Long?, now: Long = System.currentTimeMillis()): String? {
 }
 
 private fun plural(count: Long, word: String) = if (count == 1L) word else word + "s"
+
+/** The computer's `ScheduleMonthWire`, read defensively: a malformed entry is dropped, not fatal. */
+internal fun parseMonth(element: JsonElement?): ScheduleMonth? {
+    val obj = element as? JsonObject ?: return null
+    fun JsonObject.str(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull
+    fun JsonObject.int(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt()
+    fun entries(arr: JsonElement?): Map<Int, List<MonthEntry>> =
+        (arr as? JsonArray).orEmpty().mapNotNull { dayElement ->
+            val day = dayElement as? JsonObject ?: return@mapNotNull null
+            val number = day.int("day") ?: return@mapNotNull null
+            val list = (day["entries"] as? JsonArray).orEmpty().mapNotNull { e ->
+                val o = e as? JsonObject ?: return@mapNotNull null
+                MonthEntry(
+                    key = o.str("key") ?: return@mapNotNull null,
+                    taskId = o.str("taskId") ?: return@mapNotNull null,
+                    name = o.str("name") ?: "Task",
+                    atEpochMs = o.str("at")?.toDoubleOrNull()?.toLong() ?: return@mapNotNull null,
+                    reminder = o.str("reminder") == "true",
+                    repeats = o.str("repeats").orEmpty(),
+                    state = o.str("state") ?: "upcoming",
+                )
+            }
+            number to list
+        }.toMap()
+    return ScheduleMonth(
+        year = obj.int("year") ?: return null,
+        month = obj.int("month") ?: return null,
+        days = entries(obj["days"]),
+        every = (obj["every"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            EveryEntry(
+                taskId = o.str("taskId") ?: return@mapNotNull null,
+                name = o.str("name") ?: "Task",
+                reminder = o.str("reminder") == "true",
+                cadence = o.str("cadence").orEmpty(),
+                hour = o.int("hour"),
+                minute = o.int("minute"),
+            )
+        },
+        everyByDay = entries(obj["everyByDay"]),
+    )
+}
