@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -205,17 +206,37 @@ fun AgentsScreen(
                             item(key = "read-failed") { InlineProblem(error) }
                         }
 
-                        items(runs, key = { it.id }) { run ->
-                            RunCard(
-                                run = run,
-                                busy = run.id == busyRunId,
-                                onApprove = { onApprove(run.id) },
-                                onReject = { onReject(run.id) },
-                                onStop = { onStop(run.id) },
-                                onOpen = { onOpenRun(run.id) },
-                                onContinue = onContinue?.let { { it(run.id) } },
-                                projectName = run.projectId?.let { projectNames[it] },
-                            )
+                        // By what each run needs, as the desktop's list is: a run
+                        // waiting on you first, then what is working, then what is
+                        // done. Sorted by age alone, a plan waiting for approval sat
+                        // below runs that needed nothing from anyone.
+                        for ((section, sectionRuns) in runSections(runs)) {
+                            item(key = "section-${section.name}") {
+                                SectionHeading(
+                                    label = section.label,
+                                    count = if (section == RunSection.FINISHED) null else sectionRuns.size,
+                                )
+                            }
+                            items(sectionRuns, key = { it.id }) { run ->
+                                if (section == RunSection.FINISHED) {
+                                    FinishedRow(
+                                        run = run,
+                                        onOpen = { onOpenRun(run.id) },
+                                        projectName = run.projectId?.let { projectNames[it] },
+                                    )
+                                } else {
+                                    RunCard(
+                                        run = run,
+                                        busy = run.id == busyRunId,
+                                        onApprove = { onApprove(run.id) },
+                                        onReject = { onReject(run.id) },
+                                        onStop = { onStop(run.id) },
+                                        onOpen = { onOpenRun(run.id) },
+                                        onContinue = onContinue?.let { { it(run.id) } },
+                                        projectName = run.projectId?.let { projectNames[it] },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -474,6 +495,13 @@ private fun RunCard(
                 overflow = TextOverflow.Ellipsis,
             )
 
+            // What a working run is on right now, as the desktop's live card says it.
+            if (running) {
+                currentStepLine(run)?.let { line ->
+                    Text(line, style = type.meta, color = colors.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+
             providerLine(run)?.let { line ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -533,6 +561,105 @@ private fun RunCard(
         }
 
         RunEdge(run.status, Modifier.matchParentSize())
+    }
+}
+
+/** Where a run sits in the list: what needs you, what is working, what is done. */
+internal enum class RunSection(val label: String) {
+    NEEDS_YOU("Needs you"),
+    WORKING("Working"),
+    FINISHED("Finished"),
+}
+
+/**
+ * A run waiting on a person needs them: a plan to approve, or a run that ran out
+ * of room and is one tap from carrying on. The desktop's `sectionOf`, word for word.
+ */
+internal fun runSection(run: AgentRun): RunSection = when {
+    run.status == AgentRun.Status.RUNNING -> RunSection.WORKING
+    run.status == AgentRun.Status.NEEDS_REVIEW -> RunSection.NEEDS_YOU
+    run.ranOut != null && run.parentRunId == null -> RunSection.NEEDS_YOU
+    else -> RunSection.FINISHED
+}
+
+/** The runs grouped by section, in section order, keeping each section's own order. */
+internal fun runSections(runs: List<AgentRun>): List<Pair<RunSection, List<AgentRun>>> =
+    RunSection.entries
+        .map { section -> section to runs.filter { runSection(it) == section } }
+        .filter { (_, list) -> list.isNotEmpty() }
+
+/** "Persist the choice · step 3 of 4": the plan step a working run is on, or null without a plan. */
+internal fun currentStepLine(run: AgentRun): String? {
+    val steps = run.plan?.steps ?: return null
+    val at = steps.indexOfFirst { it.status == "in_progress" }
+        .takeIf { it >= 0 } ?: steps.indexOfFirst { it.status == "pending" }
+    if (at < 0) return null
+    return "${steps[at].title} · step ${at + 1} of ${steps.size}"
+}
+
+@Composable
+private fun SectionHeading(label: String, count: Int?) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        modifier = Modifier.padding(top = Spacing.x2, start = Spacing.x1),
+    ) {
+        Text(label.uppercase(), style = type.badge, color = colors.textFaint)
+        count?.let { Text(it.toString(), style = type.badge, color = colors.textMuted) }
+    }
+}
+
+/**
+ * A finished run as a quiet row rather than a card: a dot for how it ended, the
+ * goal, the outcome, and when. Only the runs that still want something keep a
+ * card, so they are the ones the eye lands on.
+ */
+@Composable
+private fun FinishedRow(run: AgentRun, onOpen: () -> Unit, projectName: String?) {
+    val colors = AnodexTheme.colors
+    val type = AnodexTheme.type
+    val dot = when (run.status) {
+        AgentRun.Status.DONE -> colors.success
+        AgentRun.Status.ERROR -> colors.danger
+        else -> colors.textFaint
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radii.md)
+            .clickable(onClick = onOpen)
+            .padding(horizontal = Spacing.x3, vertical = Spacing.x3)
+            .semantics(mergeDescendants = true) { contentDescription = statusLabel(run.status) },
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(dot),
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = oneLine(run.goal),
+                style = type.body,
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val outcome = runOutcomeText(run)?.let(::oneLine)
+            (outcome ?: projectName)?.let {
+                Text(
+                    text = it,
+                    style = type.meta,
+                    color = if (run.status == AgentRun.Status.ERROR) colors.danger else colors.textFaint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        timeAgo(run.updatedAtEpochMs)?.let { Text(it, style = type.meta, color = colors.textFaint) }
     }
 }
 
