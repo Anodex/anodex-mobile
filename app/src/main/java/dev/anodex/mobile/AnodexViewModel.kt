@@ -62,6 +62,9 @@ import dev.anodex.mobile.email.EmailDrafter
 import dev.anodex.mobile.email.MailSwipeAction
 import dev.anodex.mobile.email.MailFolder
 import dev.anodex.mobile.email.SavedAttachment
+import dev.anodex.mobile.files.FILES_CAPABILITY
+import dev.anodex.mobile.files.SharedFile
+import dev.anodex.mobile.files.SharedFiles
 import dev.anodex.mobile.email.saveAttachment
 import dev.anodex.mobile.email.MailFlag
 import dev.anodex.mobile.email.EmailNote
@@ -400,6 +403,83 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
     val busyRunId: StateFlow<String?> = _busyRunId.asStateFlow()
 
     private var emailClient: Email? = null
+
+    /** Files the computer sent here; null against a computer that cannot send them. */
+    private var sharedFilesClient: SharedFiles? = null
+
+    private val _sharedFiles = MutableStateFlow<List<SharedFile>>(emptyList())
+
+    /** Files waiting on the computer for this phone to save, newest first. */
+    val sharedFiles: StateFlow<List<SharedFile>> = _sharedFiles.asStateFlow()
+
+    /** Waiting files the strip was dismissed for this session; they stay on the computer. */
+    private val _dismissedSharedFiles = MutableStateFlow<Set<String>>(emptySet())
+    val dismissedSharedFiles: StateFlow<Set<String>> = _dismissedSharedFiles.asStateFlow()
+
+    private val _savingSharedFile = MutableStateFlow<String?>(null)
+
+    /** The waiting file being saved, by id, or null. */
+    val savingSharedFile: StateFlow<String?> = _savingSharedFile.asStateFlow()
+
+    /** Ask the computer which files are waiting. Quiet on failure: the strip just stays as it was. */
+    fun refreshSharedFiles() {
+        val client = sharedFilesClient ?: run {
+            _sharedFiles.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            runCatching { client.list() }.onSuccess { _sharedFiles.value = it }
+        }
+    }
+
+    /** Hide a waiting file's strip for now. It stays on the computer for a week. */
+    fun dismissSharedFile(id: String) {
+        _dismissedSharedFiles.value = _dismissedSharedFiles.value + id
+    }
+
+    /**
+     * Save a file the computer sent to this phone's Downloads, then let the
+     * computer drop its copy. Assembled in memory and written once, as an email
+     * attachment is: a file is at most 100 MB, and a half-written file to clean up
+     * after a dropped connection is worse than holding it briefly.
+     */
+    fun saveSharedFile(file: SharedFile) {
+        val client = sharedFilesClient ?: return
+        if (_savingSharedFile.value != null) return
+        _savingSharedFile.value = file.id
+        viewModelScope.launch {
+            runCatching {
+                val bytes = java.io.ByteArrayOutputStream()
+                var offset = 0L
+                var name = file.name
+                var type = file.mimeType
+                while (true) {
+                    val chunk = client.chunk(file.id, offset)
+                        ?: error("${file.name} is no longer waiting on your computer.")
+                    chunk.filename.takeIf { it.isNotBlank() }?.let { name = it }
+                    chunk.mimeType.takeIf { it.isNotBlank() }?.let { type = it }
+                    val piece = android.util.Base64.decode(chunk.base64, android.util.Base64.DEFAULT)
+                    bytes.write(piece)
+                    offset += piece.size
+                    if (chunk.done) break
+                    if (piece.isEmpty()) error("${file.name} stopped part way.")
+                }
+                val saved = saveAttachment(getApplication(), name, type) { out -> out.write(bytes.toByteArray()) }
+                // Saved here, so the computer's copy has done its job.
+                runCatching { client.remove(file.id) }
+                saved
+            }
+                .onSuccess { where ->
+                    _notice.value = when (where) {
+                        is SavedAttachment.ToDownloads -> "Saved ${where.filename} to Downloads."
+                        is SavedAttachment.ToAppFolder -> "Saved to ${where.path}."
+                    }
+                    _sharedFiles.value = _sharedFiles.value.filterNot { it.id == file.id }
+                }
+                .onFailure { _notice.value = it.message ?: "${file.name} would not download." }
+            _savingSharedFile.value = null
+        }
+    }
 
     private val _emailThreads = MutableStateFlow<List<EmailThread>>(emptyList())
 
@@ -3267,6 +3347,11 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
                 projectClient = Projects(candidate)
                 agentClient = Agents(candidate)
                 emailClient = Email(candidate)
+                // Only against a computer that keeps files for this phone; an older
+                // one has no shelf, and asking it would only fail.
+                sharedFilesClient = SharedFiles(candidate)
+                    .takeIf { FILES_CAPABILITY in handshake.capabilities }
+                refreshSharedFiles()
                 drafter = EmailDrafter(candidate)
                 workspace = Workspace(candidate)
                 personalityClient = Personalities(candidate)
@@ -4112,6 +4197,8 @@ class AnodexViewModel(application: Application) : AndroidViewModel(application) 
         val fields = payload as? JsonObject ?: return
         // The screens make their own, from the reply as it streams; see `replyReady`.
         if (NotificationKind.isReplyReady((fields["kind"] as? JsonPrimitive)?.content)) return
+        // A file arrived: the strip shows it, and the notification below says so.
+        if ((fields["kind"] as? JsonPrimitive)?.content == "file-shared") refreshSharedFiles()
         val kind = NotificationKind.parse((fields["kind"] as? JsonPrimitive)?.content)
         val title = (fields["title"] as? JsonPrimitive)?.content ?: return
         val body = (fields["body"] as? JsonPrimitive)?.content.orEmpty()

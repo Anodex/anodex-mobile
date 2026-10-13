@@ -44,13 +44,20 @@ fun UndoBar(
     /** Null when there is nothing to undo — a failure has only news to deliver. */
     actionLabel: String? = null,
     onAction: () -> Unit = {},
+    /**
+     * False for something that waits for an answer rather than offering an undo:
+     * a file the computer sent stays until it is saved or put aside, with a close
+     * button for the second. Six seconds was too short to reach for it.
+     */
+    autoDismiss: Boolean = true,
 ) {
     val colors = AnodexTheme.colors
     val type = AnodexTheme.type
 
     // Keyed on the text so a second archive restarts the clock rather than
     // inheriting whatever was left of the first one's.
-    LaunchedEffect(text) {
+    LaunchedEffect(text, autoDismiss) {
+        if (!autoDismiss) return@LaunchedEffect
         delay(VISIBLE_MS)
         onDismiss()
     }
@@ -84,6 +91,19 @@ fun UndoBar(
                     .clip(Radii.md)
                     .clickable(onClick = onAction)
                     .padding(horizontal = Spacing.x3, vertical = Spacing.x3),
+            )
+        }
+
+        if (!autoDismiss) {
+            AnodexIcon(
+                AnodexIcon.CLOSE,
+                size = 16.dp,
+                tint = colors.textFaint,
+                contentDescription = "Not now",
+                modifier = Modifier
+                    .clip(Radii.md)
+                    .clickable(onClick = onDismiss)
+                    .padding(Spacing.x3),
             )
         }
     }

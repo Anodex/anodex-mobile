@@ -42,6 +42,9 @@ val PHONE_CAPABILITIES: List<String> = listOf(
     // The computer may send "answer ready" for a question this phone asked; this build
     // shows it from the background connection when the app is closed. See BackgroundLink.
     REPLY_READY_CAPABILITY,
+    // The computer may send files here ("send it to my phone"); this build collects
+    // them from its shelf. See SharedFiles.
+    dev.anodex.mobile.files.FILES_CAPABILITY,
 )
 
 /** See [PHONE_CAPABILITIES]. Mirrors `REPLY_READY_CAPABILITY` in the desktop's `replyReady.ts`. */

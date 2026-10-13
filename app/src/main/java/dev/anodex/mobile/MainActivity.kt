@@ -768,6 +768,9 @@ private fun ConnectedScaffold(
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val archiveNotice by viewModel.archiveNotice.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val sharedFiles by viewModel.sharedFiles.collectAsStateWithLifecycle()
+    val dismissedSharedFiles by viewModel.dismissedSharedFiles.collectAsStateWithLifecycle()
+    val savingSharedFile by viewModel.savingSharedFile.collectAsStateWithLifecycle()
     val archivedMail by viewModel.archivedFromList.collectAsStateWithLifecycle()
     val deletedMail by viewModel.deletedFromList.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
@@ -1672,6 +1675,22 @@ private fun ConnectedScaffold(
                 onDismiss = viewModel::dismissNotice,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
+        }
+
+        // A file the computer sent ("send it to my phone"), offered on whatever is on
+        // screen until it is saved or put aside. Putting it aside only hides it here;
+        // it waits on the computer for a week, and comes back next time the app connects.
+        if (notice == null) {
+            sharedFiles.firstOrNull { it.id !in dismissedSharedFiles }?.let { file ->
+                UndoBar(
+                    text = "${file.name} · from your computer",
+                    actionLabel = if (savingSharedFile == file.id) "Saving…" else "Save",
+                    onAction = { viewModel.saveSharedFile(file) },
+                    onDismiss = { if (savingSharedFile != file.id) viewModel.dismissSharedFile(file.id) },
+                    autoDismiss = false,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
         }
 
         // Mail swiped or selected out of the inbox, with the six seconds it
