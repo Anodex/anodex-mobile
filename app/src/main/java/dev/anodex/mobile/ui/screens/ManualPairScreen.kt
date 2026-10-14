@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -80,7 +80,10 @@ fun ManualPairScreen(
         modifier = modifier
             .fillMaxSize()
             .background(colors.bgApp)
-            .imePadding()
+            // The status bar and the keyboard both, like the screen before it. With only the
+            // keyboard's inset, "Enter the details" sat against the status bar on a phone
+            // that draws edge to edge (a Galaxy S22 Ultra on Android 16).
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(Spacing.x6),
         verticalArrangement = Arrangement.spacedBy(Spacing.x4),
@@ -104,7 +107,11 @@ fun ManualPairScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = state.fingerprint,
+                        // One group of five per line. Left to wrap, the second group broke
+                        // after four bytes and stranded the last one on a line of its own,
+                        // which is the hardest shape to compare against the computer's.
+                        // The characters are the computer's, unchanged.
+                        text = state.fingerprint.replace("  ", "\n"),
                         style = type.mono.copy(fontSize = type.heading.fontSize),
                         color = colors.text,
                         textAlign = TextAlign.Center,

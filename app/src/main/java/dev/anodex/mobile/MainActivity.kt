@@ -538,7 +538,7 @@ private fun AnodexAppContent(viewModel: AnodexViewModel) {
             NotPairedScreen(
                 onScan = { scanning = true },
                 onEnterManually = { typing = true },
-                onPreviewDesign = { showingDesignPreview = true },
+                onPreviewDesign = if (BuildConfig.DEBUG) ({ showingDesignPreview = true }) else null,
                 error = pairingError,
             )
             FloatingUpdateBanner()
