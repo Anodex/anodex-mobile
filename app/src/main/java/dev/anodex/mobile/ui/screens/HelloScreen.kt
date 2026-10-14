@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -80,7 +81,10 @@ fun HelloScreen(user: UserProfile?, hostName: String, onStart: () -> Unit) {
                 Box(
                     Modifier
                         .size(104.dp)
-                        .blur(18.dp)
+                        // Unbounded, so the glow spreads past its own box. The default edge
+                        // treatment cuts the blur off at the bounds, and on a Galaxy S22 Ultra
+                        // the glow showed as a dark-edged square around the round avatar.
+                        .blur(18.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
                         .clip(CircleShape)
                         .background(
                             Brush.sweepGradient(

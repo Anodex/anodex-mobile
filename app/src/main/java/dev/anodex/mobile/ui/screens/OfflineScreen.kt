@@ -77,7 +77,7 @@ fun OfflineScreen(
      * A way into Settings, or null where there is nowhere to go.
      *
      * Null in the design harness and in previews. Everywhere else it is wired,
-     * because this screen used to be a dead end: `Retry` and `Pair another…` were
+     * because this screen used to be a dead end: `Retry` and `Switch computer…` were
      * the only two controls on it, and the settings that fix a connection — keeping
      * the link alive in the background, letting notifications through — were behind
      * a menu that only exists once you are connected.
@@ -110,7 +110,7 @@ fun OfflineScreen(
         // has a headline and nothing else — and when the reason lands, a
         // centre-aligned column pushes everything below it down.
         //
-        // What sits below it is `Pair another…`, which unpairs. Somebody reaching
+        // What sits below it is `Switch computer…`, which unpairs. Somebody reaching
         // for `Settings` as the screen settles gets the destructive control in the
         // place they aimed at; that is not hypothetical, it happened to me while
         // testing this screen, and the confirm dialog is all that stopped it.
@@ -237,7 +237,10 @@ fun OfflineScreen(
                 SecondaryButton(label = "Retry", onClick = onRetry)
                 PrimaryButton(label = "Pair again", onClick = onPairAgain)
             } else {
-                SecondaryButton(label = "Pair another…", onClick = onReplacePairing)
+                // "Switch", not "another": it replaces this computer rather than adding one.
+                // "Pair another…" read as adding a second computer, and only the confirm
+                // dialog said otherwise.
+                SecondaryButton(label = "Switch computer…", onClick = onReplacePairing)
                 PrimaryButton(label = "Retry", onClick = onRetry)
             }
         }

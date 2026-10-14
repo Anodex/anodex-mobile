@@ -31,12 +31,16 @@ import dev.anodex.mobile.ui.theme.Spacing
  * not read a later offline screen as the app being broken.
  *
  * The scan button is the only way forward, so it is the only primary action on the screen.
+ *
+ * `onPreviewDesign` is null in a release build, and the button with it. It is a tool for whoever
+ * is building the app, and it sat on the first screen of the released one: seen on 0.90.0, on the
+ * screen a person lands on after unpairing, between the two ways to pair.
  */
 @Composable
 fun NotPairedScreen(
     onScan: (() -> Unit)?,
     onEnterManually: () -> Unit,
-    onPreviewDesign: () -> Unit,
+    onPreviewDesign: (() -> Unit)?,
     modifier: Modifier = Modifier,
     error: String? = null,
 ) {
@@ -124,11 +128,13 @@ fun NotPairedScreen(
             modifier = Modifier.padding(top = Spacing.x3),
         )
 
-        SecondaryButton(
-            label = "Preview design states",
-            onClick = onPreviewDesign,
-            modifier = Modifier.padding(top = Spacing.x3),
-        )
+        if (onPreviewDesign != null) {
+            SecondaryButton(
+                label = "Preview design states",
+                onClick = onPreviewDesign,
+                modifier = Modifier.padding(top = Spacing.x3),
+            )
+        }
     }
 }
 
